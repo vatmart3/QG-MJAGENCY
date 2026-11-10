@@ -7,6 +7,8 @@ import type { AgentState } from "@/data/types";
 import {
   agentFromRow,
   approvalFromRow,
+  fluxFromMessage,
+  rapportFromRow,
   journalFromRow,
   memoryFromRow,
   missionFromRow,
@@ -28,7 +30,7 @@ import {
 } from "@/lib/supabase/rows";
 import { getDirector, type LiveAdapter } from "@/sim/director";
 import { uiStore } from "@/store/ui";
-import { world } from "@/store/world";
+import { world, type FluxEvent, type RapportItem, type TaskItem } from "@/store/world";
 
 /**
  * Mode « direct » : charge l'état depuis Supabase puis écoute Realtime
@@ -39,6 +41,29 @@ export type LiveStart = { ok: true; stop: () => void } | { ok: false; reason: "n
 
 const agentRows = new Map<string, AgentRow>();
 const taskRows = new Map<string, TaskRow>();
+let liveSb: SupabaseClient | null = null;
+
+const missionOfTask = (taskId: string | null | undefined): string | undefined => (taskId ? (taskRows.get(taskId)?.mission_id ?? undefined) : undefined);
+
+const fluxFromMission = (m: MissionRow): FluxEvent => ({
+  id: `mission_${m.id}`,
+  at: new Date(m.cree_le).getTime(),
+  type: "mission",
+  from: "fondateurs",
+  to: m.cible ?? "marius",
+  text: m.texte,
+  missionId: m.id,
+});
+
+const fluxFromApproval = (a: ApprovalRow): FluxEvent | null =>
+  a.agent_id
+    ? { id: `douane_${a.id}`, at: new Date(a.cree_le).getTime(), type: "douane", from: a.agent_id, to: "fondateurs", text: a.titre, taskId: a.task_id ?? undefined, missionId: missionOfTask(a.task_id) }
+    : null;
+
+function pushRapport(t: TaskRow): void {
+  const r = rapportFromRow(t);
+  if (r) world.upsertRapport(r);
+}
 
 function refreshRuntime(id: string): void {
   const r = agentRows.get(id);
@@ -60,7 +85,8 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
   if (allowed.data !== true) return { ok: false, reason: "non_autorise", message: `${email} n'est pas dans l'allowlist du port.` };
 
   const since = new Date(Date.now() - 36 * 3600_000).toISOString();
-  const [poles, agents, settings, memory, routines, tasks, running, approvals, journal, missions] = await Promise.all([
+  liveSb = sb;
+  const [poles, agents, settings, memory, routines, tasks, running, approvals, journal, missions, doneTasks, messages] = await Promise.all([
     sb.from("poles").select("*").order("ordre"),
     sb.from("agents").select("*").order("ordre"),
     sb.from("settings").select("*").eq("id", 1).maybeSingle(),
@@ -71,8 +97,10 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
     sb.from("approvals").select("*").eq("statut", "en_attente").order("cree_le"),
     sb.from("journal").select("*").order("cree_le", { ascending: false }).limit(250),
     sb.from("missions").select("*").order("cree_le", { ascending: false }).limit(30),
+    sb.from("tasks").select("*").eq("statut", "done").order("maj_le", { ascending: false }).limit(80),
+    sb.from("agent_messages").select("*").neq("type", "bavardage").order("cree_le", { ascending: false }).limit(300),
   ]);
-  const firstErr = [poles, agents, settings, memory, routines, tasks, running, approvals, journal, missions].find((r) => r.error)?.error;
+  const firstErr = [poles, agents, settings, memory, routines, tasks, running, approvals, journal, missions, doneTasks].find((r) => r.error)?.error;
   if (firstErr) return { ok: false, reason: "erreur", message: traduireErreur(firstErr.message) };
   if (!poles.data?.length || !agents.data?.length) {
     return { ok: false, reason: "erreur", message: "La base est vide : applique les migrations puis supabase/seed.sql (voir README)." };
@@ -94,7 +122,12 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
   world.setChatter(catalogStore.getState().settings.bavardageActif);
 
   // ---- état
-  for (const t of [...((tasks.data ?? []) as TaskRow[]), ...((running.data ?? []) as TaskRow[])]) taskRows.set(t.id, t);
+  for (const t of [...((doneTasks.data ?? []) as TaskRow[]), ...((tasks.data ?? []) as TaskRow[]), ...((running.data ?? []) as TaskRow[])]) taskRows.set(t.id, t);
+  const rapports: Record<string, RapportItem> = {};
+  for (const t of taskRows.values()) {
+    const r = rapportFromRow(t);
+    if (r) rapports[t.id] = r;
+  }
   const runtimes = Object.fromEntries(
     agentList
       .filter((a) => a.actif)
@@ -109,7 +142,14 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
     approvals: ((approvals.data ?? []) as ApprovalRow[]).map(approvalFromRow),
     journal: ((journal.data ?? []) as JournalRow[]).map(journalFromRow),
     missions: ((missions.data ?? []) as MissionRow[]).map(missionFromRow),
+    rapports,
   });
+  // flux : missions, échanges entre agents, passages en Douane (la migration « livrables » peut manquer : on ignore l'erreur)
+  world.addFlux([
+    ...((missions.data ?? []) as MissionRow[]).map(fluxFromMission),
+    ...((messages.data ?? []) as MessageRow[]).flatMap((m) => fluxFromMessage(m, missionOfTask(m.task_id)) ?? []),
+    ...((approvals.data ?? []) as ApprovalRow[]).flatMap((a) => fluxFromApproval(a) ?? []),
+  ]);
 
   setRepo(liveRepo(sb));
 
@@ -178,6 +218,18 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
       const t = p.new as TaskRow;
       taskRows.set(t.id, t);
       world.upsertTask(taskFromRow(t));
+      if (t.statut === "done") {
+        if (t.mission_id && !t.parent_id && t.agent_id)
+          world.addFlux([{ id: `synth_${t.id}`, at: Date.now(), type: "livrable", from: t.agent_id, to: "fondateurs", text: `Compte rendu : ${t.titre}`, taskId: t.id, missionId: t.mission_id }], true);
+        if (t.resultat) pushRapport(t);
+        else
+          void sb
+            .from("tasks")
+            .select("*")
+            .eq("id", t.id)
+            .maybeSingle()
+            .then(({ data }) => data && pushRapport(data as TaskRow));
+      }
       for (const [id, r] of agentRows) if (r.tache_courante_id === t.id) refreshRuntime(id);
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "approvals" }, (p) => {
@@ -187,6 +239,10 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
         return;
       }
       const a = p.new as ApprovalRow;
+      if (p.eventType === "INSERT") {
+        const ev = fluxFromApproval(a);
+        if (ev) world.addFlux([ev], true);
+      }
       const exists = world.get().approvals.some((x) => x.id === a.id);
       if (a.statut === "en_attente" && !exists) world.hydrate({ approvals: [...world.get().approvals, approvalFromRow(a)] });
       if (a.statut !== "en_attente" && exists) world.removeApproval(a.id);
@@ -197,6 +253,7 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "missions" }, (p) => {
       if (p.eventType === "DELETE") return;
+      if (p.eventType === "INSERT") world.addFlux([fluxFromMission(p.new as MissionRow)], true);
       const m = missionFromRow(p.new as MissionRow);
       const list = world.get().missions;
       world.hydrate({ missions: list.some((x) => x.id === m.id) ? list.map((x) => (x.id === m.id ? m : x)) : [m, ...list] });
@@ -204,7 +261,9 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "agent_messages" }, (p) => {
       const m = p.new as MessageRow;
       const text = (m.resume_bulle ?? m.contenu ?? "").slice(0, 90);
-      getDirector().playMessage({ conversationId: m.conversation_id, from: m.from_agent, to: m.to_agent, text });
+      getDirector().playMessage({ conversationId: m.conversation_id, from: m.from_agent, to: m.to_agent, text, type: m.type });
+      const ev = fluxFromMessage(m, missionOfTask(m.task_id));
+      if (ev) world.addFlux([ev], true);
     })
     .subscribe((status) => {
       uiStore.setState({ conn: status === "SUBSCRIBED" ? "direct" : status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "hors_ligne" : "connexion" });
@@ -213,11 +272,51 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
   return {
     ok: true,
     stop: () => {
+      liveSb = null;
       clearInterval(pinger);
       void sb.removeChannel(channel);
       getDirector().stop();
     },
   };
+}
+
+// ------------------------------------------------------------------ flux d'une mission (vue « Flux »)
+export interface MissionFluxData {
+  tasks: TaskItem[];
+  events: FluxEvent[];
+}
+
+/** Toutes les tâches et tous les échanges d'une mission (y compris anciens). Mode démo : état local. */
+export async function loadMissionFlux(missionId: string): Promise<MissionFluxData> {
+  const local = (): MissionFluxData => {
+    const w = world.get();
+    return { tasks: w.tasks.filter((t) => t.missionId === missionId), events: w.flux.filter((e) => e.missionId === missionId) };
+  };
+  const sb = liveSb;
+  if (!sb) return local();
+  const [tasks, mission] = await Promise.all([
+    sb.from("tasks").select("*").eq("mission_id", missionId).order("cree_le").limit(200),
+    sb.from("missions").select("*").eq("id", missionId).maybeSingle(),
+  ]);
+  const rows = (tasks.data ?? []) as TaskRow[];
+  for (const t of rows) {
+    taskRows.set(t.id, t);
+    pushRapport(t);
+  }
+  const ids = rows.map((t) => t.id);
+  const [messages, approvals] = ids.length
+    ? await Promise.all([
+        sb.from("agent_messages").select("*").in("task_id", ids).neq("type", "bavardage").order("cree_le").limit(400),
+        sb.from("approvals").select("*").in("task_id", ids).order("cree_le").limit(100),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const events: FluxEvent[] = [
+    ...(mission.data ? [fluxFromMission(mission.data as MissionRow)] : []),
+    ...((messages.data ?? []) as MessageRow[]).flatMap((m) => fluxFromMessage(m, missionId) ?? []),
+    ...((approvals.data ?? []) as ApprovalRow[]).flatMap((a) => fluxFromApproval({ ...a }) ?? []).map((e) => ({ ...e, missionId })),
+  ];
+  world.addFlux(events);
+  return { tasks: rows.map(taskFromRow), events: events.sort((a, b) => a.at - b.at) };
 }
 
 // ------------------------------------------------------------------ moteur

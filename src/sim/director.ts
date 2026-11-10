@@ -4,7 +4,8 @@ import { APPROVALS, CHATTER, MISSION_ROUTES, STANDUP_LINES, TALKS, type Scripted
 import { parisHour } from "@/lib/paris";
 import { mulberry32 } from "@/lib/rng";
 import { isWorkingHour } from "@/world/daynight";
-import { uid, world, type AgentRuntime, type Line, type Meeting, type TaskRef } from "@/store/world";
+import type { Rapport } from "@/lib/rapport";
+import { uid, world, type AgentRuntime, type FluxEvent, type Line, type Meeting, type TaskRef } from "@/store/world";
 
 /**
  * Directeur de démo (Phase 1) : simule le moteur d'agents côté client.
@@ -17,6 +18,44 @@ const rng = mulberry32(Date.now() & 0xffffffff);
 const rand = () => rng();
 const chance = (p: number) => rng() < p;
 const pickOne = <T,>(arr: readonly T[]): T => arr[Math.floor(rng() * arr.length)]!;
+
+const flux = (e: Omit<FluxEvent, "id" | "at">, animate = true): void => world.addFlux([{ ...e, id: uid("fx"), at: Date.now() }], animate);
+
+/** Compte rendu d'exemple (mode démo, sans moteur). */
+function demoRapport(agentId: string, titre: string, mission?: string, livrables?: { nom: string; titre: string }[]): Rapport {
+  const a = agentById(agentId);
+  const nom = a?.nom ?? agentId;
+  if (livrables?.length) {
+    return {
+      titre: `Synthèse — ${titre}`,
+      resume: `Les ${livrables.length} sous-tâches de la mission sont revenues. La proposition est prête à être relue par Jérémy et Matheis. (Exemple de démo.)`,
+      points_cles: livrables.map((l) => `${l.nom} : ${l.titre}`),
+      sections: [
+        { titre: "Ce qui a été produit", contenu: livrables.map((l) => `- **${l.nom}** — ${l.titre} ✓`).join("\n") },
+        { titre: "Répartition", contenu: ["| Agent | Livrable | État |", "|---|---|---|", ...livrables.map((l) => `| ${l.nom} | ${l.titre} | ✓ livré |`)].join("\n") },
+      ],
+      prochaines_etapes: [
+        { action: "Relire la proposition", qui: "Jérémy ou Matheis", echeance: "cette semaine" },
+        { action: "Valider l'envoi au client en Douane", qui: "Fondateurs" },
+      ],
+      fichiers: [{ nom: "synthese-mission.md", type: "md", description: "Synthèse à partager", contenu: `# ${titre}\n\n${livrables.map((l) => `## ${l.nom}\n${l.titre}\n`).join("\n")}\n_Exemple de démo._` }],
+    };
+  }
+  return {
+    titre,
+    resume: `${nom} (${a?.role ?? "agent"}) a terminé « ${titre} ». Le livrable est prêt à être relu. (Exemple de démo : branche le moteur pour de vrais comptes rendus.)`,
+    points_cles: ["Ton local et concret", "Un seul appel à l'action", "À relire avant envoi"],
+    sections: [
+      { titre: "Proposition", contenu: `- Angle : un exemple de commerce sétois\n- Format : court, concret\n- **Appel à l'action** : prendre rendez-vous${mission ? `\n\nMission d'origine : ${mission}` : ""}` },
+      { titre: "Chiffres", contenu: "| Élément | Valeur |\n|---|---|\n| Délai | 1 semaine |\n| Budget indicatif | à définir |" },
+    ],
+    prochaines_etapes: [{ action: "Relire et valider", qui: "Fondateurs", echeance: "sous 48 h" }],
+    fichiers: [
+      { nom: `${nom.toLowerCase()}-brouillon.md`, type: "md", description: "Brouillon prêt à l'emploi", contenu: `# ${titre}\n\nBonjour,\n\n(Brouillon d'exemple rédigé par ${nom}.)\n\nL'équipe MJAGENCY` },
+      { nom: "chiffres.csv", type: "csv", description: "Tableau d'exemple", contenu: "element;valeur\ndelai;1 semaine\nbudget;a definir\n" },
+    ],
+  };
+}
 
 interface Timer {
   at: number;
@@ -235,6 +274,7 @@ class Director {
       world.patchAgent(agentId, { state: "waiting_approval", approvalId: ap.id });
       world.upsertTask({ id: task.id, agentId, title: task.title, status: "waiting_approval", createdAt: task.startedAt, updatedAt: Date.now() });
       world.log({ agentId, poleId: a.pole, type: "validation", title: `${a.nom} dépose en Douane : ${tpl.title}` });
+      flux({ type: "douane", from: agentId, to: "fondateurs", text: tpl.title, taskId: task.id, missionId: task.missionId });
       world.say(agentId, "Je dépose ça à La Douane.", 3000);
       // l'enveloppe est livrée par l'animation ; filet de sécurité
       this.later(45_000, () => world.markDelivered(ap.id));
@@ -244,8 +284,14 @@ class Director {
       });
       return;
     }
-    world.upsertTask({ id: task.id, agentId, title: task.title, status: "done", createdAt: task.startedAt, updatedAt: Date.now(), missionId: task.missionId });
-    world.log({ agentId, poleId: a.pole, type: "action", title: `${a.nom} — ${task.title}` });
+    const mission = task.missionId ? world.get().missions.find((m) => m.id === task.missionId) : undefined;
+    const viaMarius = !!mission && mission.target === "marius" && agentId !== "marius";
+    const parentId = viaMarius ? `synth_${mission!.id}` : undefined;
+    world.upsertTask({ id: task.id, agentId, title: task.title, status: "done", createdAt: task.startedAt, updatedAt: Date.now(), missionId: task.missionId, parentId });
+    world.log({ agentId, poleId: a.pole, type: "action", title: `📄 ${a.nom} — ${task.title}` });
+    if (task.missionId || task.important)
+      world.upsertRapport({ taskId: task.id, agentId, missionId: task.missionId, parentId, tache: task.title, at: Date.now(), rapport: demoRapport(agentId, task.title, mission?.text) });
+    if (viaMarius) flux({ type: "livrable", from: agentId, to: "marius", text: `Livré : ${task.title}`, taskId: task.id, missionId: task.missionId });
     if (task.important) {
       world.patchAgent(agentId, { state: "done", task: null });
       world.celebrate(agentId);
@@ -277,6 +323,9 @@ class Director {
     world.setConversation({ id, a: t.a, b: t.b, lines, phase: "gathering", idx: 0, startedAt: Date.now(), ready: false });
     world.patchAgent(t.a, { state: "talking", talkWith: t.b });
     world.patchAgent(t.b, { state: "talking", talkWith: t.a });
+    const [l1, l2] = t.lines;
+    if (l1) flux({ type: "question", from: l1[0], to: l1[0] === t.a ? t.b : t.a, text: l1[1] });
+    if (l2) this.later(LINE_MS * 1.2, () => flux({ type: "reponse", from: l2[0], to: l2[0] === t.a ? t.b : t.a, text: l2[1] }));
     this.later(1, () => world.log({ agentId: t.a, poleId: agentById(t.a)?.pole, type: "echange", title: t.journal, detail: t.lines.map(([w, x]) => `${agentById(w)?.nom} : ${x}`).join("\n") }));
   }
 
@@ -316,9 +365,10 @@ class Director {
   }
 
   /** Mode direct : un message entre agents (table agent_messages) devient une bulle dans la ville. */
-  playMessage(m: { conversationId: string | null; from: string | null; to: string | null; text: string }): void {
+  playMessage(m: { conversationId: string | null; from: string | null; to: string | null; text: string; type?: string }): void {
     if (!m.from || !m.text) return;
-    if (!m.to) {
+    // délégation / livrable : une bulle chez l'émetteur et une liaison dans la ville, sans faire se déplacer les agents
+    if (!m.to || m.type === "delegation" || m.type === "livrable") {
       world.say(m.from, m.text, 3800);
       return;
     }
@@ -393,6 +443,7 @@ class Director {
       return;
     }
 
+    flux({ type: "mission", from: "fondateurs", to: tagged?.id ?? "marius", text: clean, missionId });
     if (tagged && tagged.id !== "marius") {
       world.addMission({ id: missionId, text: clean, target: tagged.id, plan: [{ agentId: tagged.id, title: short }], status: "en_cours", createdAt: Date.now() });
       world.log({ agentId: tagged.id, poleId: tagged.pole, type: "mission", title: `Mission directe pour ${tagged.nom} : ${short}` });
@@ -425,6 +476,7 @@ class Director {
         detail: plan.map((p) => `• ${agentById(p.agentId)?.nom} — ${p.title}`).join("\n"),
       });
       for (const m of members) if (world.get().agents[m]?.state === "offline") world.patchAgent(m, { state: "idle", offlineReason: null });
+      plan.forEach((p, i) => this.later(400 + i * 700, () => flux({ type: "delegation", from: "marius", to: p.agentId, text: p.title, missionId })));
       const lines: Line[] = [
         { from: "marius", text: `Mission : ${shorten(short, 44)}` },
         ...plan.map((p) => ({ from: p.agentId, text: `Je prends : ${shorten(p.title, 42)}` })),
@@ -462,6 +514,19 @@ class Director {
         ? `Mission « ${shorten(mission.text, 60)} » terminée. ${mission.plan.map((p) => `${agentById(p.agentId)?.nom} : ${p.title}`).join(" · ") || "Tâche réalisée."}`
         : "Mission terminée.";
       world.patchMission(missionId, { status: "terminee", synthese: synth });
+      if (mission && mission.target === "marius") {
+        const synthId = `synth_${missionId}`;
+        world.upsertTask({ id: synthId, agentId: "marius", title: `Synthèse : ${shorten(mission.text, 60)}`, status: "done", createdAt: mission.createdAt, updatedAt: Date.now(), missionId });
+        world.upsertRapport({
+          taskId: synthId,
+          agentId: "marius",
+          missionId,
+          tache: mission.text,
+          at: Date.now(),
+          rapport: demoRapport("marius", shorten(mission.text, 80), mission.text, mission.plan.map((p) => ({ nom: agentById(p.agentId)?.nom ?? p.agentId, titre: p.title }))),
+        });
+        flux({ type: "livrable", from: "marius", to: "fondateurs", text: "Synthèse livrée", missionId });
+      }
       world.log({ agentId: mission?.target ?? "marius", poleId: "direction", type: "mission", title: "Synthèse livrée aux fondateurs", detail: synth });
       const who = mission?.target ?? "marius";
       world.say(who, "Mission terminée, synthèse dans le Journal !", 4200);

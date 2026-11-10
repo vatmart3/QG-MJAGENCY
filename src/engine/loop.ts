@@ -1,3 +1,4 @@
+import { rapportDepuisTexte, rapportVersMarkdown, type Rapport } from "@/lib/rapport";
 import type Anthropic from "@anthropic-ai/sdk";
 import { formatInTimeZone } from "date-fns-tz";
 import { fr } from "date-fns/locale";
@@ -130,13 +131,13 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
     const texte = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
     if (!texte) return fail(db, task, agent, "Réponse vide du modèle.");
     await db.saveRun(task.id, { messages, iterations: run.iterations + 1, cout: Number(run.cout) + cout });
-    await completeTask(db, task, agent, mission, { texte, important: false }, pushStep(etapes, "Livrable rendu", true));
+    await completeTask(db, task, agent, mission, { rapport: rapportDepuisTexte(task.titre, texte), important: false }, pushStep(etapes, "Compte rendu rendu", true));
     return "done";
   }
 
   const results: ToolResultBlock[] = [];
   const attente: ERun["attente"] = [];
-  let finish: { texte: string; important: boolean } | null = null;
+  let finish: { rapport: Rapport; important: boolean } | null = null;
   for (const u of uses) {
     const def = toolByName(u.name);
     if (!def || !defs.includes(def)) {
@@ -165,7 +166,7 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
     // les résultats en attente n'ont plus d'objet : on clôt proprement l'historique
     const closing = [...results, ...attente.map((w) => ({ type: "tool_result" as const, tool_use_id: w.tool_use_id, content: "Sans objet : tâche terminée." }))];
     await db.saveRun(task.id, { messages: [...messages, { role: "user", content: closing }], iterations, cout: totalCout, attente: [], resultats_en_suspens: [] });
-    await completeTask(db, task, agent, mission, finish, pushStep(etapes, "Livrable rendu", true));
+    await completeTask(db, task, agent, mission, finish, pushStep(etapes, "Compte rendu rendu", true));
     return "done";
   }
 
@@ -183,14 +184,26 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
   return "continue";
 }
 
-async function completeTask(db: EngineDb, task: ETask, agent: EAgent, mission: EMission | null, finish: { texte: string; important: boolean }, etapes: TaskStep[]): Promise<void> {
+async function completeTask(db: EngineDb, task: ETask, agent: EAgent, mission: EMission | null, finish: { rapport: Rapport; important: boolean }, etapes: TaskStep[]): Promise<void> {
   const isRoot = !!mission && !task.parent_id;
-  await db.updateTask(task.id, { statut: "done", resultat: { texte: finish.texte }, locked_until: null, etapes: etapes.map((s) => ({ ...s, done: true })) });
+  const r = finish.rapport;
+  // texte complet : transmis tel quel à l'agent qui attend ce livrable (Marius, un collègue)
+  const texte = rapportVersMarkdown(r, { agentNom: agent.nom, agentRole: agent.role });
+  const apercu = [r.resume, r.points_cles?.length ? r.points_cles.map((p) => `• ${p}`).join("\n") : "", r.fichiers?.length ? `📎 ${r.fichiers.map((f) => f.nom).join(", ")}` : ""]
+    .filter(Boolean)
+    .join("\n\n");
+  await db.updateTask(task.id, { statut: "done", resultat: { texte, rapport: r }, locked_until: null, etapes: etapes.map((s) => ({ ...s, done: true })) });
   await db.updateAgent(agent.id, { etat: finish.important || isRoot ? "done" : "idle", tache_courante_id: null, interlocuteur: null });
-  await db.insertJournal({ type: "action", titre: `${agent.nom} — ${task.titre}`, contenu: finish.texte.slice(0, 4000), agent_id: agent.id, pole_id: agent.pole_id });
+  await db.insertJournal({ type: "action", titre: `📄 ${agent.nom} — ${r.titre}`.slice(0, 300), contenu: apercu.slice(0, 4000), agent_id: agent.id, pole_id: agent.pole_id });
+  // le livrable « remonte » vers l'agent qui l'a demandé (visible dans le flux et dans la ville)
+  if (task.parent_id) {
+    const [parent] = await db.tasks([task.parent_id]);
+    if (parent?.agent_id && parent.agent_id !== agent.id)
+      await db.insertMessage({ from_agent: agent.id, to_agent: parent.agent_id, task_id: task.id, type: "livrable", contenu: `${r.titre}\n\n${r.resume}`, resume_bulle: bulle(`Livré : ${r.titre}`) });
+  }
   if (isRoot && mission) {
-    await db.updateMission(mission.id, { statut: "terminee", synthese: finish.texte });
-    await db.insertJournal({ type: "mission", titre: `Synthèse livrée : ${mission.texte.slice(0, 120)}`, contenu: finish.texte.slice(0, 8000), agent_id: agent.id, pole_id: agent.pole_id });
+    await db.updateMission(mission.id, { statut: "terminee", synthese: `${r.resume}${r.prochaines_etapes?.length ? `\n\nProchaine étape : ${r.prochaines_etapes[0]!.action}` : ""}` });
+    await db.insertJournal({ type: "mission", titre: `Synthèse livrée : ${mission.texte.slice(0, 120)}`, contenu: apercu.slice(0, 8000), agent_id: agent.id, pole_id: agent.pole_id });
     await db.insertMessage({ from_agent: agent.id, to_agent: null, task_id: task.id, type: "bavardage", contenu: "Mission terminée.", resume_bulle: bulle("Mission terminée, la synthèse est dans le Journal !") });
   }
 }

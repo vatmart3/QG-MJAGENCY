@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { agentById, poleById, useCatalogVersion } from "@/data/catalog";
 import { formatParis } from "@/lib/paris";
@@ -20,6 +22,8 @@ export function TachesPanel() {
   useCatalogVersion();
   const tasks = useWorld((s) => s.tasks);
   const missions = useWorld((s) => s.missions);
+  const rapports = useWorld((s) => s.rapports);
+  const router = useRouter();
   const [tab, setTab] = useState<TaskItem["status"]>("running");
   const list = tasks.filter((t) => t.status === tab);
 
@@ -47,6 +51,19 @@ export function TachesPanel() {
                   </ul>
                 )}
                 {m.synthese && <p className="mt-2 font-hand text-lg leading-tight">{m.synthese}</p>}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Link href={`/flux?mission=${encodeURIComponent(m.id)}`} className="rounded-full border border-ink/15 px-2.5 py-1 text-[12px] hover:bg-white">
+                    🔀 Voir le flux
+                  </Link>
+                  {(() => {
+                    const s = Object.values(rapports).find((r) => r.missionId === m.id && !r.parentId && r.agentId === m.target);
+                    return s ? (
+                      <Link href={`/rapports?id=${encodeURIComponent(s.taskId)}`} className="rounded-full bg-ink px-2.5 py-1 text-[12px] text-white">
+                        📄 Compte rendu
+                      </Link>
+                    ) : null;
+                  })()}
+                </div>
               </li>
             ))}
           </ul>
@@ -76,6 +93,7 @@ export function TachesPanel() {
               <button
                 type="button"
                 onClick={() => {
+                  if (rapports[t.id]) return router.push(`/rapports?id=${encodeURIComponent(t.id)}`);
                   getGame()?.flyToAgent(t.agentId);
                   ui.selectAgent(t.agentId);
                 }}
@@ -86,6 +104,7 @@ export function TachesPanel() {
                   <span className="block truncate text-sm font-medium">{t.title}</span>
                   <span className="block text-[11px] text-ink-soft">
                     {a?.nom} · {poleById(a?.pole ?? "")?.court} · {formatParis(t.updatedAt, "HH:mm")}
+                    {rapports[t.id] && <span className="ml-1 text-ink">· 📄 compte rendu</span>}
                   </span>
                 </span>
               </button>

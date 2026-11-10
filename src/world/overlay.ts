@@ -1,6 +1,7 @@
 import { agentById, agentsOfPole, poleById } from "@/data/catalog";
 import { STATE_ICON, STATE_LABEL } from "@/data/types";
-import type { AgentRuntime, Bubble } from "@/store/world";
+import { FLUX_STYLE } from "@/lib/flux";
+import type { AgentRuntime, Bubble, FlowLink } from "@/store/world";
 import { iso, type Layout } from "./layout";
 
 /**
@@ -17,6 +18,16 @@ interface Label {
   zone: string;
 }
 
+interface LinkEl {
+  g: SVGGElement;
+  path: SVGPathElement;
+  glow: SVGPathElement;
+  dot: SVGCircleElement;
+  chip: HTMLDivElement;
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 interface BubbleEl {
   el: HTMLDivElement;
   id: number;
@@ -28,6 +39,8 @@ export class Overlay {
   private tooltip: HTMLDivElement;
   private lastTooltip = "";
   private root: HTMLDivElement;
+  private svg: SVGSVGElement;
+  private links = new Map<string, LinkEl>();
 
   constructor(
     host: HTMLElement,
@@ -39,6 +52,11 @@ export class Overlay {
     root.className = "overlay-layer";
     host.appendChild(root);
     this.root = root;
+    // liaisons entre agents (sous les étiquettes et les bulles)
+    this.svg = document.createElementNS(SVG_NS, "svg");
+    this.svg.setAttribute("class", "flow-layer");
+    this.svg.setAttribute("aria-hidden", "true");
+    root.appendChild(this.svg);
     for (const z of layout.zones) {
       const pole = poleById(z.id);
       if (!pole) continue;
@@ -92,8 +110,10 @@ export class Overlay {
     agents: Record<string, AgentRuntime>;
     hover: string | null;
     now: number;
+    links: FlowLink[];
   }): void {
-    const { toScreen, scale, heads, bubbles, presence, pending, agents, hover, now } = params;
+    const { toScreen, scale, heads, bubbles, presence, pending, agents, hover, now, links } = params;
+    this.updateLinks(links, heads, toScreen, scale, now);
     const compact = scale < 0.9;
     this.root.dataset.compact = compact ? "1" : "0";
     this.root.dataset.medium = !compact && scale < 1.5 ? "1" : "0";
@@ -174,8 +194,78 @@ export class Overlay {
     }
   }
 
+  private updateLinks(
+    links: FlowLink[],
+    heads: Map<string, { x: number; y: number; hidden: boolean }>,
+    toScreen: (x: number, y: number) => { x: number; y: number },
+    scale: number,
+    now: number,
+  ): void {
+    const seen = new Set<string>();
+    for (const l of links) {
+      if (l.until < now) continue;
+      const a = heads.get(l.from);
+      const b = heads.get(l.to);
+      if (!a || !b || a.hidden || b.hidden) continue;
+      seen.add(l.id);
+      let el = this.links.get(l.id);
+      const st = FLUX_STYLE[l.type];
+      if (!el) {
+        const g = document.createElementNS(SVG_NS, "g");
+        const glow = document.createElementNS(SVG_NS, "path");
+        glow.setAttribute("class", "flow-glow");
+        const path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("class", "flow-path");
+        const dot = document.createElementNS(SVG_NS, "circle");
+        dot.setAttribute("class", "flow-dot");
+        dot.setAttribute("r", "4.5");
+        g.style.setProperty("--flow", st.color);
+        g.append(glow, path, dot);
+        this.svg.appendChild(g);
+        const chip = document.createElement("div");
+        chip.className = "flow-chip";
+        chip.style.setProperty("--flow", st.color);
+        chip.innerHTML = `<span>${st.icon}</span><span class="fc-l"> ${st.label}</span>`;
+        this.root.appendChild(chip);
+        el = { g, path, glow, dot, chip };
+        this.links.set(l.id, el);
+      }
+      const s = toScreen(a.x, a.y - 4);
+      const e = toScreen(b.x, b.y - 4);
+      const dx = e.x - s.x;
+      const dy = e.y - s.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      // arc vers le haut, proportionnel à la distance
+      const lift = Math.min(160, 24 + dist * 0.28) * Math.max(0.6, Math.min(1.4, scale));
+      const cx = (s.x + e.x) / 2;
+      const cy = (s.y + e.y) / 2 - lift;
+      const d = `M${s.x.toFixed(1)},${s.y.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${e.x.toFixed(1)},${e.y.toFixed(1)}`;
+      el.path.setAttribute("d", d);
+      el.glow.setAttribute("d", d);
+      // point lumineux qui voyage de l'émetteur au destinataire
+      const t = ((now - l.at) % 1300) / 1300;
+      const u = 1 - t;
+      el.dot.setAttribute("cx", (u * u * s.x + 2 * u * t * cx + t * t * e.x).toFixed(1));
+      el.dot.setAttribute("cy", (u * u * s.y + 2 * u * t * cy + t * t * e.y).toFixed(1));
+      const life = Math.min(1, (now - l.at) / 300, (l.until - now) / 600);
+      el.g.style.opacity = String(Math.max(0, life));
+      // étiquette au sommet de l'arc
+      const mx = 0.25 * s.x + 0.5 * cx + 0.25 * e.x;
+      const my = 0.25 * s.y + 0.5 * cy + 0.25 * e.y;
+      el.chip.style.opacity = String(Math.max(0, life));
+      el.chip.style.transform = `translate3d(${Math.round(mx)}px, ${Math.round(my)}px, 0) translate(-50%, -50%)`;
+    }
+    for (const [id, el] of this.links) {
+      if (seen.has(id)) continue;
+      el.g.remove();
+      el.chip.remove();
+      this.links.delete(id);
+    }
+  }
+
   destroy(): void {
     this.root.remove();
+    this.links.clear();
     this.bubbles.clear();
   }
 }

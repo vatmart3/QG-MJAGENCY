@@ -1,5 +1,6 @@
 import type { AgentDef, AgentState, MemoryEntry, ModelTier, Pole, Routine, Settings, WallStyleName } from "@/data/types";
-import type { AgentRuntime, Approval, ApprovalType, JournalEntry, Mission, TaskItem, TaskRef, TaskStep } from "@/store/world";
+import { lireRapport, rapportDepuisTexte } from "@/lib/rapport";
+import type { AgentRuntime, Approval, ApprovalType, FluxEvent, FluxType, JournalEntry, Mission, RapportItem, TaskItem, TaskRef, TaskStep } from "@/store/world";
 
 /** Lignes des tables Supabase (noms de colonnes en snake_case sans accents) et conversions. */
 
@@ -53,6 +54,7 @@ export interface TaskRow {
   statut: TaskItem["status"];
   etapes: TaskStep[] | null;
   priorite: number;
+  resultat?: { texte?: string; erreur?: string; rapport?: unknown } | null;
   cree_le: string;
   maj_le: string;
 }
@@ -96,7 +98,8 @@ export interface MessageRow {
   conversation_id: string | null;
   from_agent: string | null;
   to_agent: string | null;
-  type: "question" | "reponse" | "delegation" | "bavardage";
+  task_id: string | null;
+  type: "question" | "reponse" | "delegation" | "livrable" | "bavardage";
   contenu: string;
   resume_bulle: string | null;
   cree_le: string;
@@ -200,7 +203,25 @@ export const taskFromRow = (r: TaskRow): TaskItem => ({
   createdAt: ms(r.cree_le),
   updatedAt: ms(r.maj_le),
   missionId: r.mission_id ?? undefined,
+  parentId: r.parent_id ?? undefined,
 });
+
+/** Compte rendu d'une tâche terminée (ancien livrable en texte libre → rapport minimal). */
+export const rapportFromRow = (r: TaskRow): RapportItem | null => {
+  if (r.statut !== "done" || !r.resultat) return null;
+  const rapport = lireRapport(r.resultat.rapport) ?? (r.resultat.texte ? rapportDepuisTexte(r.titre, r.resultat.texte) : null);
+  if (!rapport) return null;
+  return { taskId: r.id, agentId: r.agent_id ?? "", missionId: r.mission_id ?? undefined, parentId: r.parent_id ?? undefined, tache: r.titre, at: ms(r.maj_le), rapport };
+};
+
+const FLUX_TYPES: Record<MessageRow["type"], FluxType | null> = { question: "question", reponse: "reponse", delegation: "delegation", livrable: "livrable", bavardage: null };
+
+/** Message entre agents → évènement du flux (les répliques d'ambiance n'y figurent pas). */
+export const fluxFromMessage = (m: MessageRow, missionId?: string): FluxEvent | null => {
+  const type = FLUX_TYPES[m.type];
+  if (!type || !m.from_agent) return null;
+  return { id: m.id, at: ms(m.cree_le), type, from: m.from_agent, to: m.to_agent, text: (m.contenu || m.resume_bulle || "").slice(0, 600), taskId: m.task_id ?? undefined, missionId };
+};
 
 export const approvalFromRow = (r: ApprovalRow): Approval => ({
   id: r.id,

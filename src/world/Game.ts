@@ -574,6 +574,7 @@ export class Game {
       agents: st.agents,
       hover,
       now,
+      links: st.links,
     });
   }
 

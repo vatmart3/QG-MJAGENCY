@@ -2,6 +2,7 @@ import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import { allAgents } from "@/data/catalog";
 import type { AgentState } from "@/data/types";
+import type { Rapport } from "@/lib/rapport";
 
 /**
  * État « réel » de l'entreprise côté client.
@@ -101,6 +102,7 @@ export interface TaskItem {
   createdAt: number;
   updatedAt: number;
   missionId?: string;
+  parentId?: string;
 }
 
 export interface Mission {
@@ -111,6 +113,43 @@ export interface Mission {
   status: "nouvelle" | "planification" | "en_cours" | "terminee" | "annulee";
   createdAt: number;
   synthese?: string;
+}
+
+export type FluxType = "mission" | "delegation" | "question" | "reponse" | "livrable" | "douane";
+
+/** Un échange entre agents (ou avec les fondateurs), pour la vue « Flux » et les liaisons dans la ville. */
+export interface FluxEvent {
+  id: string;
+  at: number;
+  type: FluxType;
+  /** agent émetteur, ou "fondateurs" */
+  from: string;
+  /** agent destinataire, "fondateurs", ou null (toute l'équipe) */
+  to: string | null;
+  text: string;
+  taskId?: string;
+  missionId?: string;
+}
+
+/** Liaison animée affichée dans la ville entre deux bonshommes. */
+export interface FlowLink {
+  id: string;
+  from: string;
+  to: string;
+  type: FluxType;
+  at: number;
+  until: number;
+}
+
+/** Compte rendu rendu par un agent à la fin d'une tâche. */
+export interface RapportItem {
+  taskId: string;
+  agentId: string;
+  missionId?: string;
+  parentId?: string;
+  tache: string;
+  at: number;
+  rapport: Rapport;
 }
 
 export interface ChatMessage {
@@ -129,6 +168,9 @@ export interface WorldState {
   tasks: TaskItem[];
   missions: Mission[];
   chats: Record<string, ChatMessage[]>;
+  flux: FluxEvent[];
+  links: FlowLink[];
+  rapports: Record<string, RapportItem>;
   /** agents présents dans la zone de leur pôle (calculé par la ville) */
   presence: Record<string, number>;
   /** heure forcée (démo), null = heure réelle de Paris */
@@ -153,6 +195,9 @@ export const worldStore = createStore<WorldState>(() => ({
   tasks: [],
   missions: [],
   chats: {},
+  flux: [],
+  links: [],
+  rapports: {},
   presence: {},
   clockOverride: null,
   chatterEnabled: true,
@@ -257,8 +302,30 @@ export const world = {
     for (const id of ids) next[id] = cur[id] ?? { id, state: "idle", task: null, talkWith: null, offlineReason: null, approvalId: null, since: Date.now() };
     set({ agents: next });
   },
+  /** ajoute des échanges au fil du flux (sans doublon), du plus récent au plus ancien */
+  addFlux(events: FluxEvent[], animate = false): void {
+    if (!events.length) return;
+    const cur = get().flux;
+    const known = new Set(cur.map((e) => e.id));
+    const fresh = events.filter((e) => !known.has(e.id));
+    if (!fresh.length) return;
+    const flux = [...fresh, ...cur].sort((a, b) => b.at - a.at).slice(0, 600);
+    const now = Date.now();
+    const links = animate
+      ? [
+          ...get().links.filter((l) => l.until > now),
+          ...fresh
+            .filter((e) => e.to && e.to !== "fondateurs" && e.from !== "fondateurs" && e.from !== e.to)
+            .map((e) => ({ id: e.id, from: e.from, to: e.to!, type: e.type, at: now, until: now + (e.type === "livrable" ? 7000 : 5500) })),
+        ].slice(-24)
+      : get().links;
+    set({ flux, links });
+  },
+  upsertRapport(r: RapportItem): void {
+    set((s) => ({ rapports: { ...s.rapports, [r.taskId]: r } }));
+  },
   /** remplace en bloc (chargement initial depuis la base) */
-  hydrate(patch: Partial<Pick<WorldState, "agents" | "approvals" | "journal" | "tasks" | "missions">>): void {
+  hydrate(patch: Partial<Pick<WorldState, "agents" | "approvals" | "journal" | "tasks" | "missions" | "rapports">>): void {
     set(patch);
   },
   setPresence(p: Record<string, number>): void {

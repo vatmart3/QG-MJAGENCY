@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type { EAgent, ERun, ETask, EngineDb } from "../db";
+import type { Rapport } from "@/lib/rapport";
 import type { LLM } from "../llm";
 
 export interface ToolCtx {
@@ -21,7 +22,7 @@ export interface ToolOutcome {
   /** l'outil attend quelque chose (sous-tâches, décision d'un fondateur) */
   wait?: { kind: "tasks"; ids: string[] } | { kind: "approval"; id: string };
   /** la tâche est terminée */
-  finish?: { texte: string; important: boolean };
+  finish?: { rapport: Rapport; important: boolean };
   /** libellé de l'étape, affiché dans la fiche de l'agent */
   etape?: string;
 }

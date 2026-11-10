@@ -120,6 +120,19 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
 
+## Comptes rendus et flux entre agents
+
+- **Comptes rendus rangés** : chaque agent termine sa tâche avec un compte rendu structuré (`finish_task`) — résumé, sections en
+  Markdown, points clés, prochaines étapes (qui, quand) et **fichiers joints** prêts à l'emploi (.md, .csv, .txt, .html, .json).
+  Stocké dans `tasks.resultat.rapport` (schéma partagé : `src/lib/rapport.ts`). Le texte complet remonte tel quel à l'agent qui l'attend.
+- **Onglet Rapports** : tous les comptes rendus par jour, recherche, filtre « Synthèses de mission ». Chaque compte rendu se lit dans
+  la fiche et se télécharge : **PDF** (page mise en forme + impression « Enregistrer au format PDF »), **.zip** (compte rendu .html + .md
+  + fichiers), **.md**, ou un fichier joint seul. Liens depuis la fiche agent (Historique) et l'onglet Tâches.
+- **Onglet Flux** : en direct, qui parle à qui (mission, délégation, question, réponse, livrable, Douane) ; par mission, un **schéma
+  des échanges** (un couloir par agent, une flèche par échange, clic = détail) et « Qui fait quoi » avec l'état de chaque sous-tâche.
+- **Dans la ville** : chaque échange trace une **liaison animée** entre les deux bonshommes (couleur et étiquette selon le type).
+- Base : migration `…0600_le_port_livrables.sql` (type d'échange « livrable », index par tâche et par mission).
+
 ## Ce qu'apporte la Phase 2
 
 - **Base Supabase** : 14 tables (pôles, agents, missions, tâches + exécutions, échanges entre agents, Douane, règles d'autonomie,

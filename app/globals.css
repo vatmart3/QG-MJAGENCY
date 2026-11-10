@@ -273,3 +273,132 @@ body {
     animation: none;
   }
 }
+
+/* ---- liaisons entre agents (flux) ---- */
+.flow-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.flow-path {
+  fill: none;
+  stroke: var(--flow);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 7 7;
+  animation: flow-dash 0.6s linear infinite;
+}
+.flow-glow {
+  fill: none;
+  stroke: var(--flow);
+  stroke-width: 9;
+  stroke-opacity: 0.18;
+  stroke-linecap: round;
+}
+.flow-dot {
+  fill: #fff;
+  stroke: var(--flow);
+  stroke-width: 2.5;
+}
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+.flow-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--flow);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+}
+.overlay-layer[data-compact="1"] .flow-chip {
+  padding: 2px 4px;
+}
+.overlay-layer[data-compact="1"] .flow-chip .fc-l {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-path {
+    animation: none;
+  }
+}
+
+/* ---- comptes rendus (Markdown rendu) ---- */
+.rapport-md {
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+.rapport-md p {
+  margin: 0 0 0.5em;
+}
+.rapport-md ul,
+.rapport-md ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.2em;
+}
+.rapport-md ul {
+  list-style: disc;
+}
+.rapport-md ol {
+  list-style: decimal;
+}
+.rapport-md li {
+  margin-bottom: 0.15em;
+}
+.rapport-md h3,
+.rapport-md h4,
+.rapport-md h5 {
+  font-weight: 700;
+  margin: 0.8em 0 0.3em;
+}
+.rapport-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.3em 0 0.8em;
+  font-size: 13px;
+}
+.rapport-md th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-soft, #5b6275);
+}
+.rapport-md th,
+.rapport-md td {
+  border-bottom: 1px solid rgb(0 0 0 / 0.08);
+  padding: 4px 8px 4px 0;
+  vertical-align: top;
+}
+.rapport-md code {
+  font-size: 12px;
+  background: rgb(0 0 0 / 0.05);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+.rapport-md blockquote {
+  border-left: 3px solid #3a7bd5;
+  background: rgb(58 123 213 / 0.06);
+  padding: 4px 10px;
+  margin: 0.4em 0;
+}
+.rapport-md a {
+  color: #2f6f9f;
+  text-decoration: underline;
+}
+.rapport-md hr {
+  margin: 0.8em 0;
+  border-color: rgb(0 0 0 / 0.1);
+}

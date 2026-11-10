@@ -19,6 +19,7 @@ export function TopBar() {
   const mobile = useIsMobile();
   const approvals = useWorld((s) => s.approvals.length);
   const running = useWorld((s) => s.tasks.filter((t) => t.status === "running").length);
+  const rapports = useWorld((s) => Object.keys(s.rapports).length);
   const online = useWorld((s) => Object.values(s.agents).filter((a) => a.state !== "offline").length);
   const hour = useHour();
 
@@ -26,6 +27,8 @@ export function TopBar() {
     { href: "/", label: "Ville", count: undefined as number | undefined },
     { href: "/equipe", label: "Équipe", count: allAgents().length },
     { href: "/taches", label: "Tâches", count: running },
+    { href: "/flux", label: "Flux" },
+    { href: "/rapports", label: "Rapports", count: rapports || undefined },
     { href: "/douane", label: "Douane", count: approvals, alert: approvals > 0 },
     { href: "/finances", label: "Finances" },
     { href: "/journal", label: "Journal" },

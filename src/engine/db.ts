@@ -22,7 +22,7 @@ export interface ETask {
   statut: "queued" | "running" | "waiting_tool" | "waiting_approval" | "waiting_founder" | "done" | "failed" | "cancelled";
   priorite: number;
   etapes: TaskStep[];
-  resultat: { texte?: string; erreur?: string } | null;
+  resultat: { texte?: string; erreur?: string; rapport?: unknown } | null;
   profondeur: number;
   depend_de: string[];
   pas_avant: string | null;
@@ -131,7 +131,7 @@ export interface EngineDb {
   run(taskId: string): Promise<ERun | null>;
   saveRun(taskId: string, patch: Partial<ERun>): Promise<ERun>;
 
-  insertMessage(row: { conversation_id?: string | null; from_agent: string | null; to_agent: string | null; task_id?: string | null; type: "question" | "reponse" | "delegation" | "bavardage"; contenu: string; resume_bulle: string | null }): Promise<void>;
+  insertMessage(row: { conversation_id?: string | null; from_agent: string | null; to_agent: string | null; task_id?: string | null; type: "question" | "reponse" | "delegation" | "livrable" | "bavardage"; contenu: string; resume_bulle: string | null }): Promise<void>;
   insertJournal(row: { type: string; titre: string; contenu?: string | null; agent_id?: string | null; pole_id?: string | null }): Promise<void>;
   journalSince(titre: string, sinceIso: string): Promise<boolean>;
   insertApproval(row: { agent_id: string; task_id: string | null; type_action: string; titre: string; apercu: string; destinataire?: string | null; objet?: string | null; payload?: Record<string, unknown> }): Promise<string>;

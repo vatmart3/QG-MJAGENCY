@@ -2,6 +2,7 @@
  * Test d'intégration du moteur d'agents sur un Postgres local (schéma LE PORT appliqué),
  * avec le modèle simulé. Usage : npm run test:moteur  (DATABASE_URL=postgres://…)
  */
+import { lireRapport } from "../src/lib/rapport";
 import { Pool } from "pg";
 import { pgEngineDb } from "@/engine/db-pg";
 import { MockLLM } from "@/engine/llm";
@@ -38,12 +39,18 @@ async function scenarioMission() {
   check(mi?.statut === "terminee", `mission terminée en ${ticks + 1} ticks`);
   const team = (mi?.plan ?? []).map((p) => p.agentId).sort();
   check(JSON.stringify(team) === JSON.stringify(["elsa", "mila", "victor"]), `plan de Marius : ${team.join(", ")}`);
-  check(!!mi?.synthese && mi.synthese.includes("Elsa") && mi.synthese.includes("Victor"), "la synthèse reprend les livrables des agents");
-  const tasks = await q<{ agent_id: string; statut: string; parent_id: string | null }>("select agent_id, statut, parent_id from public.tasks");
+  check(!!mi?.synthese, "la mission porte un résumé de synthèse");
+  const tasks = await q<{ agent_id: string; statut: string; parent_id: string | null; resultat: { texte?: string; rapport?: unknown } | null }>("select agent_id, statut, parent_id, resultat from public.tasks");
   check(tasks.length === 4 && tasks.every((t) => t.statut === "done"), `4 tâches terminées (${tasks.map((t) => `${t.agent_id}:${t.statut}`).join(", ")})`);
+  const rapports = tasks.map((t) => lireRapport(t.resultat?.rapport));
+  check(rapports.every((r) => !!r && r.sections.length > 0 && !!r.resume), "chaque tâche rend un compte rendu structuré (résumé + sections)");
+  check(rapports.every((r) => (r?.fichiers?.length ?? 0) > 0), "chaque compte rendu a des fichiers joints téléchargeables");
+  const root = tasks.find((t) => !t.parent_id);
+  check(!!root?.resultat?.texte && root.resultat.texte.includes("Elsa") && root.resultat.texte.includes("Victor"), "la synthèse de Marius reprend les livrables des agents");
   const msgs = await q<{ type: string; from_agent: string; to_agent: string | null; resume_bulle: string }>("select type, from_agent, to_agent, resume_bulle from public.agent_messages order by cree_le");
   const count = (t: string) => msgs.filter((x) => x.type === t).length;
   check(count("delegation") === 3, `3 délégations jouées dans la ville (${count("delegation")})`);
+  check(count("livrable") === 3 && msgs.filter((x) => x.type === "livrable").every((x) => x.to_agent === "marius"), `3 livrables remontés à Marius (${count("livrable")})`);
   check(count("question") === 3 && count("reponse") === 3, `3 questions / 3 réponses entre agents (${count("question")}/${count("reponse")})`);
   check(msgs.every((x) => !x.resume_bulle || x.resume_bulle.length <= 90), "bulles ≤ 90 caractères");
   console.log("  exemples de bulles :", msgs.slice(0, 6).map((x) => `${x.from_agent}→${x.to_agent ?? "tous"} « ${x.resume_bulle} »`).join(" | "));

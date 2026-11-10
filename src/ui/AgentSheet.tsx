@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { agentById, poleById, useCatalogVersion } from "@/data/catalog";
 import { STATE_ICON, STATE_LABEL } from "@/data/types";
@@ -24,6 +25,7 @@ export function AgentSheet() {
   const agent = id ? agentById(id) : undefined;
   const rt = useWorld((s) => (id ? s.agents[id] : undefined));
   const tasks = useWorld((s) => s.tasks);
+  const rapports = useWorld((s) => s.rapports);
   const chat = useWorld((s) => (id ? s.chats[id] : undefined));
   const [msg, setMsg] = useState("");
   const chatEnd = useRef<HTMLDivElement>(null);
@@ -128,7 +130,13 @@ export function AgentSheet() {
                 <li key={t.id} className="flex items-baseline gap-2 text-sm">
                   <span className="font-silk text-[9px] text-ink-soft">{formatParis(t.updatedAt, "HH:mm")}</span>
                   <span className="flex-1">{t.title}</span>
-                  <span className="text-xs">{t.status === "waiting_approval" ? "⏳" : t.status === "done" ? "✓" : ""}</span>
+                  {rapports[t.id] ? (
+                    <Link href={`/rapports?id=${encodeURIComponent(t.id)}`} className="shrink-0 rounded-full border border-ink/15 px-2 py-0.5 text-[11px] hover:bg-white" aria-label={`Compte rendu : ${t.title}`}>
+                      📄 Compte rendu
+                    </Link>
+                  ) : (
+                    <span className="text-xs">{t.status === "waiting_approval" ? "⏳" : t.status === "done" ? "✓" : ""}</span>
+                  )}
                 </li>
               ))}
             </ul>

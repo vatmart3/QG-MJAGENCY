@@ -134,7 +134,28 @@ export class MockLLM implements LLM {
         ...base,
         content: [
           toolUse("finish_task", {
-            resultat: `Synthèse pour Jérémy et Matheis — ${m.taskTitle}\n\n${resultats || "Mission traitée."}\n\nProchaine étape : valider la proposition en Douane. (Synthèse simulée.)`,
+            titre: `Synthèse — ${m.taskTitle.replace(/^Mission : /, "")}`.slice(0, 160),
+            resume: `Les sous-tâches de la mission sont revenues : chaque pôle a rendu sa partie. La proposition est prête à être relue par Jérémy et Matheis. (Synthèse simulée.)`,
+            points_cles: (m.team ?? []).slice(0, 5).map((t) => `${t.titre} — livré`),
+            sections: [
+              { titre: "Ce qui a été produit", contenu: resultats ? resultats.slice(0, 11_000) : "Mission traitée." },
+              {
+                titre: "Répartition",
+                contenu: ["| Agent | Sous-tâche | État |", "|---|---|---|", ...(m.team ?? []).map((t) => `| ${t.agentId} | ${t.titre} | ✓ livré |`)].join("\n"),
+              },
+            ],
+            prochaines_etapes: [
+              { action: "Relire la proposition et la valider", qui: "Jérémy ou Matheis", echeance: "cette semaine" },
+              { action: "Envoyer la version finale au client depuis La Douane", qui: "Fondateurs" },
+            ],
+            fichiers: [
+              {
+                nom: "synthese-mission.md",
+                type: "md",
+                description: "Synthèse prête à partager",
+                contenu: `# ${m.taskTitle}\n\n${resultats || "Mission traitée."}\n\n_Document simulé._`,
+              },
+            ],
             important: true,
           }),
         ],
@@ -157,7 +178,15 @@ export class MockLLM implements LLM {
       ...base,
       content: [
         toolUse("finish_task", {
-          resultat: `${m.agentNom} (${m.role}) — ${m.taskTitle} : proposition prête, ton local et concret, à relire par les fondateurs. (Livrable simulé.)`,
+          titre: m.taskTitle.slice(0, 160),
+          resume: `${m.agentNom} (${m.role}) a préparé « ${m.taskTitle} » : proposition prête, ton local et concret, à relire par les fondateurs. (Livrable simulé.)`,
+          points_cles: ["Ton local, sétois et concret", "Message court, un seul appel à l'action", "À relire avant envoi"],
+          sections: [
+            { titre: "Proposition", contenu: `- Angle : un exemple de commerce sétois\n- Format : court, concret\n- **Appel à l'action** : prendre rendez-vous\n\n(Contenu simulé : ajoute une clé API Anthropic pour un vrai livrable.)` },
+            { titre: "Chiffres", contenu: "| Élément | Valeur |\n|---|---|\n| Délai | 1 semaine |\n| Budget indicatif | à définir |" },
+          ],
+          prochaines_etapes: [{ action: "Relire et valider", qui: "Fondateurs", echeance: "sous 48 h" }],
+          fichiers: [{ nom: `${m.agentNom.toLowerCase()}-proposition.md`, type: "md", description: "Brouillon prêt à l'emploi", contenu: `# ${m.taskTitle}\n\nBrouillon simulé rédigé par ${m.agentNom}.` }],
           important: false,
         }),
       ],
