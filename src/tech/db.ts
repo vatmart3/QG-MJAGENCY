@@ -36,6 +36,7 @@ export interface TechDb {
   findSites(ref: string): Promise<SiteSuivi[]>;
   insertSite(row: { nom: string; url: string; client_id?: string | null }): Promise<SiteSuivi | null>;
   updateSite(id: string, patch: Partial<SiteSuivi>): Promise<void>;
+  deleteSite(id: string): Promise<void>;
 }
 
 /** Normalise une adresse saisie (« monsite.fr » → « https://monsite.fr/ »). */
@@ -76,6 +77,9 @@ export function supabaseTechDb(sb: SupabaseClient): TechDb {
     },
     async updateSite(id, patch) {
       ok(await sb.from("sites_monitored").update(patch).eq("id", id));
+    },
+    async deleteSite(id) {
+      ok(await sb.from("sites_monitored").delete().eq("id", id));
     },
   };
 }

@@ -9,6 +9,7 @@ import { startLive } from "@/sync/live";
 import { uiStore, useUI } from "@/store/ui";
 import { world } from "@/store/world";
 import { AgentSheet } from "./AgentSheet";
+import { Ambiance } from "./Ambiance";
 import { CityCanvas } from "./CityCanvas";
 import { CommandBar } from "./CommandBar";
 import { MiniMap } from "./MiniMap";
@@ -85,6 +86,7 @@ export function PortShell({ children }: { children: ReactNode }) {
       <CommandBar />
       <AgentSheet />
       <PoleSheet />
+      <Ambiance />
       {children}
     </main>
   );

@@ -101,6 +101,7 @@ export interface EApproval {
   destinataire?: string | null;
   objet?: string | null;
   execution_statut?: ExecutionStatut | null;
+  cree_le?: string;
 }
 
 export type ExecutionStatut = "a_faire" | "en_cours" | "fait" | "echec" | "simule" | "annule";
@@ -223,6 +224,7 @@ export interface EngineDb {
 
   // ---- lectures pour les récaps
   pendingApprovals(): Promise<EApproval[]>;
+  journalParType(type: string, iso: string, limit: number): Promise<{ titre: string; contenu: string | null; cree_le: string }[]>;
   emailsSince(iso: string): Promise<EEmail[]>;
   tasksDoneSince(iso: string, limit: number): Promise<ETask[]>;
   openTasks(limit: number): Promise<ETask[]>;
@@ -418,6 +420,9 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     },
     async pendingApprovals() {
       return rows(await sb.from("approvals").select("*").eq("statut", "en_attente").order("cree_le").limit(50));
+    },
+    async journalParType(type, iso, limit) {
+      return rows(await sb.from("journal").select("titre, contenu, cree_le").eq("type", type).gt("cree_le", iso).order("cree_le").limit(limit));
     },
     async emailsSince(iso) {
       return rows(await sb.from("emails").select("*").gte("recu_le", iso).order("recu_le", { ascending: false }).limit(60));

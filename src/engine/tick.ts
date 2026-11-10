@@ -5,6 +5,7 @@ import type { Services } from "@/integrations/types";
 import { deliverReports, runRoutines } from "./routines";
 import type { EngineDb } from "./db";
 import { executeApprovals } from "./douane";
+import { notifierFondateurs } from "./notifications";
 import type { LLM } from "./llm";
 import { isCritical, resumeWaiting, runStep, type Shared, type StepResult } from "./loop";
 
@@ -124,10 +125,15 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
     report.envois = r.faits;
   });
   await safe("routines", async () => {
-    report.routines = await runRoutines(db, services, team, now);
+    const r = await runRoutines(db, services, team, now);
+    report.routines = r.lancees;
+    report.erreurs.push(...r.erreurs.map((e) => `routine ${e}`));
   });
   await safe("récaps", async () => {
     report.rapportsEnvoyes = await deliverReports(db, services, settings.recap_destinataires, now);
+  });
+  await safe("notifications", async () => {
+    await notifierFondateurs(db, services, now);
   });
 
   // 5. tâches de plus de 24 h

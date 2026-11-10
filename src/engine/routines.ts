@@ -46,18 +46,23 @@ export function dueBefore(r: ERoutine, now: Date): Date | null {
   return occ;
 }
 
-export async function runRoutines(db: EngineDb, services: Services, team: EAgent[], now: Date): Promise<string[]> {
+export async function runRoutines(db: EngineDb, services: Services, team: EAgent[], now: Date): Promise<{ lancees: string[]; erreurs: string[] }> {
   const lancees: string[] = [];
+  const erreurs: string[] = [];
   for (const r of await db.activeRoutines()) {
     if (ROUTINES_PLUS_TARD[r.id] || r.id === "rt_nuit") continue;
     if (!team.some((a) => a.id === r.agent_id && a.actif)) continue;
     const before = dueBefore(r, now);
     if (!before) continue;
     if (!(await db.claimRoutine(r.id, before.toISOString(), now.toISOString()))) continue;
-
-    if (await launchRoutine(db, services, team, r, now, null)) lancees.push(r.nom);
+    // une routine en échec (ex. table pas encore migrée) n'empêche jamais les autres de tourner
+    try {
+      if (await launchRoutine(db, services, team, r, now, null)) lancees.push(r.nom);
+    } catch (e) {
+      erreurs.push(`${r.nom} : ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
-  return lancees;
+  return { lancees, erreurs };
 }
 
 /**

@@ -7,6 +7,7 @@ import { formatParis } from "@/lib/paris";
 import { browserSupabase } from "@/lib/supabase/client";
 import { useUI } from "@/store/ui";
 import { Portrait } from "../../Portrait";
+import { TelephoneCard } from "./TelephoneCard";
 
 interface Status {
   configure: { client: boolean; cle: boolean; serveur: boolean };
@@ -39,6 +40,7 @@ export function ConnexionsTab() {
       <GoogleCard />
       <RulesCard />
       <CourrierCard />
+      <TelephoneCard />
     </div>
   );
 }

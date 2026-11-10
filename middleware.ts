@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 
 // /api/engine et /api/cron vérifient eux-mêmes CRON_SECRET ou la session
-const PUBLIC = ["/login", "/confidentialite", "/auth/", "/api/auth/", "/api/engine/", "/api/cron/"];
+const PUBLIC = ["/login", "/confidentialite", "/sw.js", "/manifest.webmanifest", "/apple-icon", "/auth/", "/api/auth/", "/api/engine/", "/api/cron/"];
 
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -22,6 +22,7 @@ import { demoBoutique } from "@/boutique/shopify";
 import { surveillerBoutique } from "@/boutique/surveillance";
 import { executeApprovals } from "@/engine/douane";
 import { kpis, kpisTexte } from "@/engine/kpis";
+import { notifierFondateurs } from "@/engine/notifications";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -475,6 +476,18 @@ async function scenarioAtelierBoutique() {
   check(rech.sources.length > 0 && rech.texte.includes("simulée"), "recherche web de Gabin (simulée sans clé)");
   const usage1 = Number((await q<{ n: string }>("select count(*) as n from public.usage"))[0]!.n);
   check(usage0 === usage1, "surveillance, audit, boutique et KPIs : aucun appel à l'IA");
+
+  // notifications push : nouvelles demandes en Douane et alertes depuis le dernier passage, une seule fois
+  const recues: { titre: string; url: string }[] = [];
+  const avecPush = { ...demoServices, notifier: async (n: { titre: string; url: string }) => (recues.push(n), 1) };
+  const n0 = new Date();
+  await notifierFondateurs(db, avecPush, n0);
+  await new Promise((r) => setTimeout(r, 20));
+  await pool.query("insert into public.approvals (agent_id, type_action, titre, apercu, statut) values ('noe', 'email', 'Réponse à La Marée', 'Bonjour…', 'en_attente')");
+  await db.insertJournal({ type: "alerte", titre: "🚨 Site test : en panne", agent_id: "jade" });
+  await notifierFondateurs(db, avecPush, new Date());
+  await notifierFondateurs(db, avecPush, new Date(Date.now() + 1000));
+  check(recues.length === 2 && recues[0]!.url === "/douane" && recues[1]!.titre.includes("Site test"), `notifications : Douane + alerte, une seule fois (${recues.map((r) => r.titre).join(" | ")})`);
 }
 
 (async () => {

@@ -30,6 +30,7 @@ export function TopBar() {
     { href: "/flux", label: "Flux" },
     { href: "/rapports", label: "Rapports", count: rapports || undefined },
     { href: "/commercial", label: "Commercial" },
+    { href: "/atelier", label: "Atelier" },
     { href: "/douane", label: "Douane", count: approvals, alert: approvals > 0 },
     { href: "/finances", label: "Finances" },
     { href: "/journal", label: "Journal" },

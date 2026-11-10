@@ -4,7 +4,7 @@ Une petite île-port sétoise en pixel art isométrique, vivante, où chaque pô
 et chaque agent IA un petit bonhomme qui travaille, va au café, rejoint La Criée et parle avec les autres.
 Ce qu'on voit dans la ville est le reflet de l'état réel des agents.
 
-> **État : Phase 7 terminée — prospection (Google Places, scoring), messages de Sacha, pipeline commercial en kanban, devis de Victor, fiches RDV de Théo.**
+> **État : les 8 phases sont terminées — Atelier Tech (santé des sites, audits), boutique Shopify, recherche web, KPIs, application installable, notifications et sons.**
 > Sans variables Supabase, tout tourne en **mode démo** (local), exactement comme en Phase 1.
 > 📄 Compte rendu à télécharger : [`docs/compte-rendu.pdf`](docs/compte-rendu.pdf) (source : `docs/compte-rendu.html`, mis à jour à chaque phase).
 
@@ -119,6 +119,33 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 ```
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
+
+## Atelier, boutique, veille et finitions (Phase 8)
+
+Onglet **Atelier** : sites clients, boutique, chiffres. Tout ce qui suit tourne **sans IA** sauf la recherche web.
+
+- **Jade — santé des sites clients** (routine `rt_sante_sites`, toutes les heures de 6 h à 23 h) : réponse HTTP et
+  temps de réponse à chaque passage ; certificat SSL (date, validité) et expiration du nom de domaine (RDAP, registres
+  publics) une fois par jour. Alerte au Journal une seule fois (panne confirmée au 2e échec, SSL < 14 j, domaine < 30 j,
+  lenteur > 3 s), puis « tout est rentré dans l'ordre ». Historique des 48 derniers contrôles (`src/tech/`).
+- **Oscar — `audit_url`** : SEO de base (titre, description, H1, indexation, canonique, sitemap, robots, données
+  structurées), mobile, HTTPS, vitesse, poids, Open Graph, favicon, textes alternatifs ; note sur 100 et corrections par
+  priorité. Aussi pour le site d'un prospect (« Auditer seulement »).
+- **Boutique MJ E-comm (Shopify)** : commandes, catalogue, stocks (Admin GraphQL `2026-10`). **Yanis** (routine
+  `rt_boutique`, toutes les 2 h) signale nouvelles commandes, commandes payées non expédiées après 48 h, stocks bas et
+  ruptures. **Iris** répond au SAV (mails « commande / colis » triés vers elle). **Toute modification** (stock, prix,
+  mise en ligne) passe par **La Douane** (`shopify_update`). Sans clés : boutique DÉMO.
+  Connexion : application du **Dev Dashboard** installée sur la boutique → `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_CLIENT_ID`,
+  `SHOPIFY_CLIENT_SECRET` (jeton de 24 h renouvelé tout seul) ; ou ancien jeton `SHOPIFY_ADMIN_TOKEN` (shpat_…).
+- **Gabin, Rose, Lina, Elsa, Tom, Capucine, Chloé — `web_search`** : outil de recherche web d'Anthropic, uniquement
+  quand une tâche le demande (Haiku d'abord, 3 recherches max, ≈ 1 centime la recherche, compté dans le budget).
+- **Diane — `get_kpis`** et onglet Atelier → Chiffres : finance du mois, prospects et pipeline, sites, boutique, coût IA.
+- **Application installable** (manifeste, icônes pixel art générées en code, service worker) et **notifications
+  push** : nouvelles demandes en Douane et alertes, groupées, une seule fois (Réglages → Connexions → Téléphone ; clés
+  VAPID créées dans le navigateur, à mettre dans Vercel : `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`).
+- **Sons discrets** (Web Audio, aucun fichier, désactivables) et **célébrations** : nouvelle commande, facture payée,
+  affaire signée, site rétabli.
+- Migration `…1200` : `sites_monitored`, `push_subscriptions`, réglages boutique, routines et outils.
 
 ## Prospection & commercial (Phase 7)
 
@@ -278,7 +305,7 @@ en direct, c'est Supabase Realtime. En Phase 3, le moteur d'agents (`/api/engine
 | 3 | `ANTHROPIC_API_KEY` (sans clé : moteur simulé) et un `CRON_SECRET` (chaîne aléatoire) |
 | 4 | Client OAuth Google (Gmail + Agenda) autorisé sur `mjagency.officiel@gmail.com` |
 | 7 | `GOOGLE_PLACES_API_KEY` (Places API New) |
-| 8 | Domaine Shopify + token Admin API (custom app) |
+| 8 | Shopify : `SHOPIFY_STORE_DOMAIN` + `SHOPIFY_CLIENT_ID` / `SHOPIFY_CLIENT_SECRET` (Dev Dashboard) ; notifications : clés VAPID (Réglages → Téléphone) |
 
 Toutes les variables sont listées dans `.env.example`. `MOCK_MODE=true` : tout fonctionne en démo sans clé.
 
@@ -291,4 +318,4 @@ Toutes les variables sont listées dans `.env.example`. `MOCK_MODE=true` : tout 
 - [x] Phase 5 — Pilote automatique + routines + récaps (à la demande)
 - [x] Phase 6 — Finance
 - [x] Phase 7 — Prospection & Commercial
-- [ ] Phase 8 — Les autres pôles + finitions
+- [x] Phase 8 — Les autres pôles + finitions

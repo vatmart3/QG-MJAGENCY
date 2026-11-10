@@ -90,6 +90,8 @@ export interface Services {
   places(): Promise<import("./places").Places>;
   /** Shopify (MJ E-comm) ou boutique de DÉMO */
   boutique(): Promise<import("@/boutique/shopify").Boutique>;
+  /** notification push sur le téléphone des fondateurs (absent en DÉMO) ; renvoie le nombre d'envois */
+  notifier?(n: { titre: string; corps: string; url: string; tag?: string }): Promise<number>;
 }
 
 /** Extrait l'adresse d'un en-tête « Nom <adresse> ». */

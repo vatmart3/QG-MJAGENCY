@@ -190,6 +190,9 @@ export function pgEngineDb(pool: Pool): EngineDb {
     async pendingApprovals() {
       return (await q("select * from public.approvals where statut = 'en_attente' order by cree_le limit 50")) as unknown as EApproval[];
     },
+    async journalParType(type, iso, limit) {
+      return (await q<{ titre: string; contenu: string | null; cree_le: Date }>("select titre, contenu, cree_le from public.journal where type = $1 and cree_le > $2 order by cree_le limit $3", [type, iso, limit])).map((r) => ({ ...r, cree_le: new Date(r.cree_le).toISOString() }));
+    },
     async emailsSince(since) {
       return (await q("select * from public.emails where recu_le >= $1 order by recu_le desc limit 60", [since])) as unknown as EEmail[];
     },
@@ -367,6 +370,9 @@ function pgTechDb(q: Q): TechDb {
         return typeof v === "object" && v !== null ? JSON.stringify(v) : v;
       });
       await q(`update public.sites_monitored set ${keys.map((k, i) => `"${k}" = $${i + 1}`).join(",")} where id = $${keys.length + 1}`, [...vals, id]);
+    },
+    async deleteSite(id) {
+      await q("delete from public.sites_monitored where id = $1", [id]);
     },
   };
 }

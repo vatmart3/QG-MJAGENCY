@@ -38,6 +38,9 @@ import { world, type FluxEvent, type RapportItem, type TaskItem } from "@/store/
  * (agents, agent_messages, approvals, journal, tasks, missions). La ville reflète la base.
  */
 
+/** pièces et affaires déjà fêtées (une seule célébration chacune) */
+const fetes = new Set<string>();
+
 export type LiveStart = { ok: true; stop: () => void } | { ok: false; reason: "non_connecte" | "non_autorise" | "erreur"; message: string };
 
 const agentRows = new Map<string, AgentRow>();
@@ -268,6 +271,31 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "journal" }, (p) => {
       const e = journalFromRow(p.new as JournalRow);
       if (!world.get().journal.some((x) => x.id === e.id)) world.hydrate({ journal: [e, ...world.get().journal].slice(0, 400) });
+      // petites fêtes au port : nouvelle commande sur la boutique, site client rétabli
+      if (e.title.startsWith("🛍️ Nouvelle commande")) world.celebrate("yanis");
+      if (e.title.startsWith("✅") && e.agentId === "jade") world.celebrate("jade");
+    })
+    // une facture payée ou une affaire signée : l'équipe concernée fait la fête
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "invoices" }, (p) => {
+      const n = p.new as { id: string; statut?: string; numero?: string | null };
+      const o = p.old as { statut?: string };
+      // (l'ancienne ligne n'a souvent que l'id : on ne fête qu'une fois par pièce)
+      if (n.statut === "payee" && o.statut !== "payee" && !fetes.has(n.id)) {
+        fetes.add(n.id);
+        world.celebrate("bastien");
+        world.celebrate("agathe");
+        world.say("bastien", `Facture ${n.numero ?? ""} payée ! 💶`.replace("  ", " "), 5000);
+      }
+    })
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "opportunities" }, (p) => {
+      const n = p.new as { id: string; etape?: string; titre?: string };
+      const o = p.old as { etape?: string };
+      if (n.etape === "signe" && o.etape !== "signe" && !fetes.has(n.id)) {
+        fetes.add(n.id);
+        world.celebrate("victor");
+        world.celebrate("margaux");
+        world.say("victor", `Signé : ${(n.titre ?? "").slice(0, 50)} 🎉`, 5000);
+      }
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "missions" }, (p) => {
       if (p.eventType === "DELETE") return;
