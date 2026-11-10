@@ -6,6 +6,7 @@ Ce qu'on voit dans la ville est le reflet de l'état réel des agents.
 
 > **État : Phase 3 terminée — le moteur d'agents (Marius planifie, les agents se parlent et livrent).**
 > Sans variables Supabase, tout tourne en **mode démo** (local), exactement comme en Phase 1.
+> 📄 Compte rendu à télécharger : [`docs/compte-rendu.pdf`](docs/compte-rendu.pdf) (source : `docs/compte-rendu.html`, mis à jour à chaque phase).
 
 ## Démarrer
 

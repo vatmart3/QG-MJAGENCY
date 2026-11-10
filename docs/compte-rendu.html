@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LE PORT — Compte rendu</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 18mm; }
+  :root { --ink:#1f2433; --soft:#5b6275; --line:#e3ddd0; --paper:#fbf8f2; --sea:#2f6f9f; --moss:#3d8a5a; --phare:#c8463c; --amber:#b7791f; }
+  * { box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.4; margin: 0; }
+  h1 { font-size: 24pt; margin: 0 0 2mm; letter-spacing: -0.5px; }
+  h2 { font-size: 13.5pt; margin: 6mm 0 2.5mm; padding-bottom: 1.5mm; border-bottom: 2px solid var(--ink); break-after: avoid; }
+  h3 { font-size: 11pt; margin: 4mm 0 1.5mm; break-after: avoid; }
+  p { margin: 0 0 2mm; }
+  .sub { color: var(--soft); font-size: 10.5pt; }
+  .cover { background: var(--paper); border: 1px solid var(--line); border-radius: 4mm; padding: 7mm 8mm; margin-bottom: 4mm; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 4mm; }
+  .box { border: 1px solid var(--line); border-radius: 3mm; padding: 3mm 4mm; background: #fff; }
+  .box b { display: block; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .6px; color: var(--soft); margin-bottom: 1mm; }
+  table { width: 100%; border-collapse: collapse; margin: 1mm 0 3mm; font-size: 9pt; break-inside: auto; }
+  th { text-align: left; background: var(--paper); font-size: 8.5pt; text-transform: uppercase; letter-spacing: .5px; color: var(--soft); }
+  th, td { border-bottom: 1px solid var(--line); padding: 1.4mm 2mm; vertical-align: top; }
+  tr { break-inside: avoid; }
+  code { font-family: Menlo, Consolas, monospace; font-size: 8.8pt; background: #f2eee5; padding: 0 1mm; border-radius: 1mm; }
+  .tag { display: inline-block; font-size: 8pt; font-weight: 700; padding: .4mm 2mm; border-radius: 10mm; white-space: nowrap; }
+  .ok { background: #e3f2e8; color: var(--moss); }
+  .todo { background: #fbeee0; color: var(--amber); }
+  .next { background: #e4eef7; color: var(--sea); }
+  .no { background: #f1f1f1; color: var(--soft); }
+  ul { margin: 0 0 2mm; padding-left: 5mm; }
+  li { margin-bottom: .8mm; }
+  .check li { list-style: none; margin-left: -5mm; }
+  .note { border-left: 3px solid var(--phare); background: #fdf3f1; padding: 2.5mm 4mm; margin: 2mm 0 3mm; font-size: 9.5pt; }
+  .page-break { break-before: page; }
+  footer { margin-top: 8mm; color: var(--soft); font-size: 8.5pt; border-top: 1px solid var(--line); padding-top: 2mm; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>⚓ LE PORT</h1>
+  <p class="sub">Quartier général IA de MJAGENCY · Compte rendu d'avancement</p>
+  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 3 terminées</b> · prochaine étape : Phase 4</p>
+  <div class="grid">
+    <div class="box"><b>Site en ligne</b>https://qg-mjagency.vercel.app</div>
+    <div class="box"><b>Code</b>GitHub · vatmart3/QG-MJAGENCY<br>branche <code>claude/practical-goodall-xeybyi</code></div>
+    <div class="box"><b>Base de données</b>Supabase · organisation « QG »<br>projet <code>pssnhxlwcdlujgaomaip</code></div>
+    <div class="box"><b>Hébergement</b>Vercel · redéploie seul à chaque mise à jour du code</div>
+  </div>
+</div>
+
+<h2>1. Où en est-on ?</h2>
+<table>
+  <tr><th style="width:9%">Phase</th><th style="width:36%">Contenu</th><th style="width:14%">État</th><th>Ce que ça change pour vous</th></tr>
+  <tr><td>1</td><td>La ville vivante (pixel art)</td><td><span class="tag ok">✓ Terminée</span></td><td>L'île, les 15 pôles, les 39 agents qui bougent selon leur état</td></tr>
+  <tr><td>2</td><td>Supabase, connexion, temps réel</td><td><span class="tag ok">✓ Terminée</span></td><td>Données sauvegardées, accès réservé, tout est modifiable dans Réglages</td></tr>
+  <tr><td>3</td><td>Le moteur d'agents (Claude)</td><td><span class="tag ok">✓ Terminée · testée en ligne</span></td><td>Les agents réfléchissent, se parlent et livrent pour de vrai</td></tr>
+  <tr><td>4</td><td>Douane + Gmail + Agenda</td><td><span class="tag next">→ Prochaine</span></td><td>Vrais mails envoyés après votre validation, agenda partagé</td></tr>
+  <tr><td>5</td><td>Routines + récap quotidien</td><td><span class="tag no">À venir</span></td><td>Le moteur tourne seul, récap de 07:30 par mail</td></tr>
+  <tr><td>6</td><td>Finance</td><td><span class="tag no">À venir</span></td><td>Devis, factures, impayés</td></tr>
+  <tr><td>7</td><td>Prospection & commercial</td><td><span class="tag no">À venir</span></td><td>Recherche de prospects (Google Places), suivi des leads</td></tr>
+  <tr><td>8</td><td>Autres pôles + finitions</td><td><span class="tag no">À venir</span></td><td>Shopify, derniers pôles, polish</td></tr>
+</table>
+
+<h2>2. Ce qui a été construit</h2>
+
+<h3>Phase 1 — La ville</h3>
+<ul>
+  <li><b>Île isométrique</b> en pixel art : canal, ponts, quais, phare, barques, mouettes.</li>
+  <li><b>15 pôles + 5 lieux communs</b> : La Criée (réunions), Le Quai (café), La Douane (validations), Les Archives, la détente.</li>
+  <li><b>39 agents</b>, chacun avec une apparence unique, qui marchent, travaillent, discutent, boivent un café, dorment.</li>
+  <li><b>Jour/nuit à l'heure de Paris</b> : le phare clignote plus vite quand des éléments attendent en Douane.</li>
+  <li><b>Interface en français</b> : barre de commande vers Marius (avec dictée vocale), fiches agent et pôle, mini-carte, version mobile.</li>
+  <li>Tout est dessiné par le code : <b>aucune image externe</b>.</li>
+</ul>
+
+<h3>Phase 2 — Données et accès</h3>
+<ul>
+  <li><b>14 tables</b> dans Supabase : pôles, agents, missions, tâches, échanges, Douane, journal, routines, mémoire, coûts, réglages…</li>
+  <li><b>Accès réservé</b> aux adresses de l'allowlist, vérifié sur chaque table.</li>
+  <li><b>Temps réel</b> : ce qui change en base se voit aussitôt dans la ville, sur tous les écrans ouverts.</li>
+  <li><b>Réglages modifiables sans code</b> : agents, pôles (couleur, emplacement), routines, mémoire d'entreprise, allowlist, budget, signature.</li>
+</ul>
+
+<h3>Phase 3 — Le moteur d'agents</h3>
+<ul>
+  <li><b>Marius orchestre</b> : il découpe chaque mission en sous-tâches, réunit l'équipe à La Criée, puis écrit la synthèse.</li>
+  <li><b>Les agents collaborent</b> : ils posent des questions, délèguent et demandent des réunions. Chaque échange apparaît en bulle.</li>
+  <li><b>Vous restez maîtres</b> : toute question ou modification de la mémoire d'entreprise passe par la Douane.</li>
+  <li><b>Modèles</b> : Opus pour Marius, Sonnet pour la rédaction, Haiku pour le tri.</li>
+  <li><b>Budget suivi en euros</b> : alerte à 80 %. À 100 %, seuls les agents critiques (Lucie, Diane, Rémi) continuent.</li>
+  <li><b>Sécurité</b> : un mail ou une page lus ne sont que des données. Un agent qui y trouve des ordres les signale au lieu d'obéir.</li>
+  <li><b>Mode simulé</b> sans clé API : le même circuit tourne, sans aucune dépense.</li>
+</ul>
+
+<h3>Ajout du 10 novembre — Connexion par mot de passe</h3>
+<ul>
+  <li>Onglets « Mot de passe » et « Lien par e-mail » sur la page de connexion.</li>
+  <li>Changement de mot de passe dans <b>Réglages → Accès & budget</b>.</li>
+</ul>
+
+<div style="break-inside:avoid"><h2>3. Configuration — ce qui est fait, ce qui reste</h2>
+<table>
+  <tr><th style="width:52%">Élément</th><th style="width:16%">État</th><th>Où</th></tr>
+  <tr><td>Base installée (tables, sécurité, temps réel, données de départ)</td><td><span class="tag ok">✓ Fait</span></td><td>Supabase QG</td></tr>
+  <tr><td>Site déployé</td><td><span class="tag ok">✓ Fait</span></td><td>Vercel</td></tr>
+  <tr><td>Variables Supabase (URL, clé publique, clé service)</td><td><span class="tag ok">✓ Fait</span></td><td>Vercel → Settings → Environment Variables</td></tr>
+  <tr><td>Clé Anthropic (moteur réel, badge CLAUDE)</td><td><span class="tag ok">✓ Fait</span></td><td>Vercel → Environment Variables</td></tr>
+  <tr><td><code>CRON_SECRET</code></td><td><span class="tag ok">✓ Fait</span></td><td>Vercel → Environment Variables</td></tr>
+  <tr><td>Compte de Jérémy avec mot de passe</td><td><span class="tag ok">✓ Fait</span></td><td>Supabase → Authentication → Users</td></tr>
+  <tr><td>Compte de Matheis (même méthode, « Auto Confirm User » coché)</td><td><span class="tag todo">À vérifier</span></td><td>Supabase → Authentication → Users</td></tr>
+  <tr><td>Adresse de Matheis dans l'allowlist</td><td><span class="tag todo">À vérifier</span></td><td>LE PORT → Réglages → Accès & budget</td></tr>
+  <tr><td>Site URL = <code>https://qg-mjagency.vercel.app</code> et Redirect URL = <code>…/auth/callback</code></td><td><span class="tag todo">À vérifier</span></td><td>Supabase → Authentication → URL Configuration</td></tr>
+  <tr><td>Désactiver « Allow new users to sign up »</td><td><span class="tag todo">Conseillé</span></td><td>Supabase → Authentication → Sign In / Providers</td></tr>
+  <tr><td>Supprimer les anciennes tables LE PORT du projet « MJAGENCY » (ancien compte)</td><td><span class="tag no">Optionnel</span></td><td>Uniquement sur votre accord</td></tr>
+</table>
+
+</div>
+<div class="note"><b>Règle de sécurité :</b> les clés secrètes (clé service Supabase, clé Anthropic, <code>CRON_SECRET</code>) ne s'écrivent <b>jamais dans la conversation</b>. Elles se tapent uniquement dans Vercel.</div>
+
+<h3>Variables d'environnement (Vercel)</h3>
+<table>
+  <tr><th style="width:36%">Nom</th><th style="width:12%">Phase</th><th>À quoi ça sert</th></tr>
+  <tr><td><code>NEXT_PUBLIC_SUPABASE_URL</code></td><td>2</td><td>Adresse de la base</td></tr>
+  <tr><td><code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></td><td>2</td><td>Clé publique (protégée par la sécurité des tables)</td></tr>
+  <tr><td><code>SUPABASE_SERVICE_ROLE_KEY</code></td><td>2</td><td>Clé serveur, <b>secrète</b> : moteur, création des comptes</td></tr>
+  <tr><td><code>APP_URL</code></td><td>2</td><td><code>https://qg-mjagency.vercel.app</code></td></tr>
+  <tr><td><code>ANTHROPIC_API_KEY</code></td><td>3</td><td>Cerveau des agents, <b>secrète</b>. Sans elle, mode simulé</td></tr>
+  <tr><td><code>CRON_SECRET</code></td><td>3</td><td>Mot de passe du réveil automatique du moteur, <b>secret</b></td></tr>
+  <tr><td><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code></td><td>4</td><td>Gmail + Agenda (à fournir pour la Phase 4)</td></tr>
+  <tr><td><code>ENCRYPTION_KEY</code></td><td>4</td><td>Chiffre les jetons Google en base</td></tr>
+  <tr><td><code>GOOGLE_PLACES_API_KEY</code></td><td>7</td><td>Prospection</td></tr>
+  <tr><td><code>SHOPIFY_STORE_DOMAIN</code> / <code>SHOPIFY_ADMIN_TOKEN</code></td><td>8</td><td>Boutique</td></tr>
+  <tr><td><code>MOCK_MODE</code></td><td>—</td><td><code>true</code> = force le mode simulé (tests sans dépense)</td></tr>
+</table>
+
+<h2>4. Utiliser LE PORT au quotidien</h2>
+<table>
+  <tr><th style="width:34%">Je veux…</th><th>Comment</th></tr>
+  <tr><td>Donner une mission</td><td>Barre du bas : « Prépare une offre NFC pour un restaurant de Sète ». Marius s'en charge.</td></tr>
+  <tr><td>Parler à un agent précis</td><td><code>@Bastien relance les impayés</code>, ou clic sur l'agent → chat dans sa fiche</td></tr>
+  <tr><td>Valider ce que les agents proposent</td><td>Onglet <b>Douane</b> : Envoyer / Modifier / Refuser / Toujours autoriser</td></tr>
+  <tr><td>Voir ce qui s'est passé</td><td>Onglet <b>Journal</b></td></tr>
+  <tr><td>Faire avancer le moteur à la main</td><td>Réglages → Affichage & tests → <b>⚙️ Faire avancer le moteur</b></td></tr>
+  <tr><td>Suivre la dépense IA</td><td>Même carte : « Dépense IA du jour »</td></tr>
+  <tr><td>Changer budget, allowlist, signature</td><td>Réglages → Accès & budget</td></tr>
+  <tr><td>Modifier un agent ou un pôle</td><td>Réglages → Agents / Pôles. La ville se redessine toute seule.</td></tr>
+</table>
+<p class="sub"><b>Bon à savoir :</b> d'ici la Phase 5, le moteur avance quand une page LE PORT est ouverte (toutes les 20 s s'il y a du travail). Un réveil automatique passe aussi une fois par jour.</p>
+
+<h2>5. Dépannage rapide</h2>
+<table>
+  <tr><th style="width:38%">Problème</th><th>Solution</th></tr>
+  <tr><td>Le badge affiche SIMULÉ au lieu de CLAUDE</td><td>Vérifier <code>ANTHROPIC_API_KEY</code> dans Vercel et que <code>MOCK_MODE</code> n'est pas à <code>true</code>, puis Redeploy</td></tr>
+  <tr><td>Le lien par e-mail n'arrive pas</td><td>Regarder les spams (expéditeur <code>noreply@mail.app.supabase.io</code>), sinon utiliser le mot de passe</td></tr>
+  <tr><td>« Accès refusé » après connexion</td><td>L'adresse doit être dans l'allowlist (Réglages → Accès & budget)</td></tr>
+  <tr><td>Message ⚠️ rouge dans la carte du moteur</td><td>Copier le texte et me l'envoyer</td></tr>
+  <tr><td>Les agents ne bougent plus</td><td>Le budget du jour est peut-être atteint (voir la jauge) : l'augmenter ou attendre le lendemain</td></tr>
+</table>
+
+<h2>6. Prochaine étape — Phase 4</h2>
+<ul>
+  <li><b>Gmail</b> : les agents lisent et trient la boîte <code>mjagency.officiel@gmail.com</code> et préparent les réponses.</li>
+  <li><b>Douane réelle</b> : un mail ne part qu'après votre clic sur « Envoyer », signé Jérémy, Matheis ou l'équipe.</li>
+  <li><b>Agenda</b> : Céleste propose des créneaux en tenant compte de vos contraintes.</li>
+</ul>
+<p><b>À préparer :</b> un client OAuth Google (Gmail + Agenda) autorisé sur <code>mjagency.officiel@gmail.com</code>. Je vous guiderai pas à pas au début de la phase.</p>
+
+</body>
+</html>
