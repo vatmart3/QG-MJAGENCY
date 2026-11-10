@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { POLE_BY_ID, agentsOfPole } from "@/data/seed";
+import { agentsOfPole, poleById, useCatalogVersion } from "@/data/catalog";
 import { useWorld } from "@/store/world";
 import { ui } from "@/store/ui";
 import { GH, GW, T, getLayout, idx } from "@/world/layout";
@@ -29,6 +29,7 @@ const TILE_COL: Partial<Record<T, string>> = {
 };
 
 export function MiniMap() {
+  useCatalogVersion();
   const ref = useRef<HTMLCanvasElement>(null);
   const presence = useWorld((s) => s.presence);
   const agents = useWorld((s) => s.agents);
@@ -92,7 +93,7 @@ export function MiniMap() {
             <canvas ref={ref} width={W} height={H} className="absolute inset-0 h-full w-full" />
             <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full overflow-visible">
               {layout.zones.map((z) => {
-                const pole = POLE_BY_ID[z.id];
+                const pole = poleById(z.id);
                 if (!pole) return null;
                 const pts = [mini(z.x, z.y), mini(z.x + z.w, z.y), mini(z.x + z.w, z.y + z.h), mini(z.x, z.y + z.h)];
                 const c = mini(z.x + z.w / 2, z.y + z.h / 2);

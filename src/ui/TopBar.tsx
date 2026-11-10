@@ -3,17 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import { AGENTS, POLE_BY_ID } from "@/data/seed";
+import { allAgents, poleById, useCatalogVersion } from "@/data/catalog";
 import { STATE_ICON } from "@/data/types";
 import { hhmm } from "@/lib/paris";
 import { phaseLabel } from "@/world/daynight";
 import { useWorld } from "@/store/world";
-import { ui } from "@/store/ui";
+import { ui, useUI } from "@/store/ui";
 import { getGame } from "./gameRef";
 import { useHour, useIsMobile } from "./hooks";
 import { Portrait } from "./Portrait";
 
 export function TopBar() {
+  useCatalogVersion();
   const path = usePathname();
   const mobile = useIsMobile();
   const approvals = useWorld((s) => s.approvals.length);
@@ -23,7 +24,7 @@ export function TopBar() {
 
   const tabs = [
     { href: "/", label: "Ville", count: undefined as number | undefined },
-    { href: "/equipe", label: "Équipe", count: AGENTS.length },
+    { href: "/equipe", label: "Équipe", count: allAgents().length },
     { href: "/taches", label: "Tâches", count: running },
     { href: "/douane", label: "Douane", count: approvals, alert: approvals > 0 },
     { href: "/finances", label: "Finances" },
@@ -37,7 +38,7 @@ export function TopBar() {
         <span className="grid size-8 place-items-center rounded-full bg-ink text-sm text-white">⚓</span>
         <span className="leading-none">
           <span className="block font-pixel text-[15px] font-semibold tracking-wide">LE PORT</span>
-          <span className="block font-silk text-[8px] text-ink-soft">MJAGENCY</span>
+          <ConnBadge />
         </span>
       </Link>
 
@@ -86,7 +87,20 @@ export function TopBar() {
   );
 }
 
+function ConnBadge() {
+  const conn = useUI((s) => s.conn);
+  const label = { demo: "DÉMO", connexion: "CONNEXION…", direct: "EN DIRECT", hors_ligne: "HORS LIGNE" }[conn];
+  const color = { demo: "text-phare", connexion: "text-ink-soft", direct: "text-moss", hors_ligne: "text-phare" }[conn];
+  return (
+    <span className={`flex items-center gap-1 font-silk text-[8px] ${color}`} title={conn === "direct" ? "Synchronisé en temps réel avec Supabase" : conn === "demo" ? "Mode démo : rien n'est enregistré côté serveur" : ""}>
+      {conn === "direct" && <span className="size-1.5 rounded-full bg-moss" />}
+      {label}
+    </span>
+  );
+}
+
 export function AgentSearch({ onPicked }: { onPicked?: () => void }) {
+  useCatalogVersion();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -95,8 +109,8 @@ export function AgentSearch({ onPicked }: { onPicked?: () => void }) {
   const results = useMemo(() => {
     const n = q.trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
     if (!n) return [];
-    return AGENTS.filter((a) =>
-      `${a.nom} ${a.role} ${POLE_BY_ID[a.pole]?.nom ?? ""}`.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").includes(n),
+    return allAgents().filter((a) =>
+      `${a.nom} ${a.role} ${poleById(a.pole)?.nom ?? ""}`.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").includes(n),
     ).slice(0, 7);
   }, [q]);
 
@@ -151,7 +165,7 @@ export function AgentSearch({ onPicked }: { onPicked?: () => void }) {
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold">{a.nom}</span>
                   <span className="block truncate text-xs text-ink-soft">
-                    {POLE_BY_ID[a.pole]?.icone} {a.role}
+                    {poleById(a.pole)?.icone} {a.role}
                   </span>
                 </span>
                 <span className="text-sm">{STATE_ICON[agents[a.id]?.state ?? "idle"]}</span>

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { AGENT_BY_ID } from "@/data/seed";
+import { agentById, useCatalogVersion } from "@/data/catalog";
 import { formatParis } from "@/lib/paris";
 import { getDirector } from "@/sim/director";
 import { useWorld, type Approval } from "@/store/world";
@@ -17,9 +17,12 @@ const VERB: Record<Approval["type"], string> = {
   relance: "veut envoyer cette relance",
   rdv: "veut envoyer cette invitation",
   question: "te pose une question",
+  memoire: "propose de mettre à jour la mémoire",
+  autre: "attend ton feu vert",
 };
 
 export function DouanePanel() {
+  useCatalogVersion();
   const approvals = useWorld((s) => s.approvals);
   return (
     <RoutePanel title="La Douane" kicker={`${approvals.length} élément${approvals.length > 1 ? "s" : ""} à valider`} icon="📦" accent="#c0392b" width={500}>
@@ -46,7 +49,7 @@ export function DouanePanel() {
 }
 
 function ApprovalCard({ ap }: { ap: Approval }) {
-  const agent = AGENT_BY_ID[ap.agentId];
+  const agent = agentById(ap.agentId);
   const [mode, setMode] = useState<"view" | "edit" | "refuse">("view");
   const [draft, setDraft] = useState(ap.preview);
   const [motif, setMotif] = useState("");
@@ -121,7 +124,7 @@ function ApprovalCard({ ap }: { ap: Approval }) {
         )}
         {mode === "edit" && (
           <>
-            <button type="button" onClick={() => d.approve(ap.id, "modifie")} className="rounded-full bg-ink px-3.5 py-1.5 text-[13px] font-medium text-white">
+            <button type="button" onClick={() => d.approve(ap.id, "modifie", draft)} className="rounded-full bg-ink px-3.5 py-1.5 text-[13px] font-medium text-white">
               Envoyer la version modifiée
             </button>
             <button type="button" onClick={() => setMode("view")} className="rounded-full px-3 py-1.5 text-[13px] text-ink-soft">

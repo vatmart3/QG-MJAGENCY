@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AGENTS, AGENT_BY_ID, POLES, POLE_BY_ID } from "@/data/seed";
+import { agentById, allAgents, allPoles, poleById, useCatalogVersion } from "@/data/catalog";
 import { formatParis } from "@/lib/paris";
 import { useWorld, type JournalEntry } from "@/store/world";
 import { DemoBadge, SectionTitle } from "../Sheet";
@@ -14,21 +14,23 @@ const TYPE_ICON: Record<JournalEntry["type"], string> = {
   mission: "🎯",
   alerte: "⚠️",
   validation: "📦",
+  recap: "📰",
 };
 
 export function JournalPanel() {
+  useCatalogVersion();
   const journal = useWorld((s) => s.journal);
   const [pole, setPole] = useState("");
   const [agent, setAgent] = useState("");
   const [open, setOpen] = useState<string | null>(null);
-  const list = journal.filter((e) => (!pole || e.poleId === pole || AGENT_BY_ID[e.agentId ?? ""]?.pole === pole) && (!agent || e.agentId === agent));
+  const list = journal.filter((e) => (!pole || e.poleId === pole || agentById(e.agentId ?? "")?.pole === pole) && (!agent || e.agentId === agent));
 
   return (
     <RoutePanel title="Journal" kicker="Tout ce qui se passe au port" icon="📓" accent="#355c8c" width={480}>
       <div className="flex gap-2">
         <select value={pole} onChange={(e) => setPole(e.target.value)} className="min-w-0 flex-1 rounded-full border border-paper-edge bg-white/70 px-3 py-2 text-sm" aria-label="Filtrer par pôle">
           <option value="">Tous les pôles</option>
-          {POLES.map((p) => (
+          {allPoles().map((p) => (
             <option key={p.id} value={p.id}>
               {p.icone} {p.nom}
             </option>
@@ -36,7 +38,7 @@ export function JournalPanel() {
         </select>
         <select value={agent} onChange={(e) => setAgent(e.target.value)} className="min-w-0 flex-1 rounded-full border border-paper-edge bg-white/70 px-3 py-2 text-sm" aria-label="Filtrer par agent">
           <option value="">Tous les agents</option>
-          {AGENTS.map((a) => (
+          {allAgents().map((a) => (
             <option key={a.id} value={a.id}>
               {a.nom}
             </option>
@@ -47,8 +49,8 @@ export function JournalPanel() {
       <SectionTitle right={<DemoBadge />}>Aujourd&apos;hui</SectionTitle>
       <ol className="relative ml-2 border-l-2 border-dashed border-paper-edge">
         {list.slice(0, 120).map((e) => {
-          const a = e.agentId ? AGENT_BY_ID[e.agentId] : undefined;
-          const p = POLE_BY_ID[e.poleId ?? a?.pole ?? ""];
+          const a = e.agentId ? agentById(e.agentId) : undefined;
+          const p = poleById(e.poleId ?? a?.pole ?? "");
           return (
             <li key={e.id} className="relative pb-3 pl-5">
               <span className="absolute top-0.5 -left-[11px] grid size-5 place-items-center rounded-full bg-paper text-[11px] ring-2 ring-paper-edge">{TYPE_ICON[e.type]}</span>

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AGENTS, POLE_BY_ID } from "@/data/seed";
+import { allAgents, poleById, useCatalogVersion } from "@/data/catalog";
 import { getDirector } from "@/sim/director";
 import { getGame } from "./gameRef";
 import { Portrait } from "./Portrait";
@@ -29,6 +29,7 @@ function speechCtor(): SRCtor | null {
 const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 export function CommandBar() {
+  useCatalogVersion();
   const [text, setText] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
@@ -49,7 +50,7 @@ export function CommandBar() {
     const m = text.match(/@([\p{L}]*)$/u);
     if (!m) return null;
     const q = norm(m[1] ?? "");
-    return AGENTS.filter((a) => norm(a.nom).startsWith(q)).slice(0, 6);
+    return allAgents().filter((a) => norm(a.nom).startsWith(q)).slice(0, 6);
   }, [text]);
 
   const applyMention = (nom: string) => {
@@ -62,8 +63,8 @@ export function CommandBar() {
     if (!t) return;
     getDirector().submitMission(t);
     const tag = t.match(/@([\p{L}]+)/u)?.[1];
-    const target = tag ? AGENTS.find((a) => norm(a.nom) === norm(tag)) : undefined;
-    const who = target && target.id !== "marius" ? target : AGENTS.find((a) => a.id === "marius");
+    const target = tag ? allAgents().find((a) => norm(a.nom) === norm(tag)) : undefined;
+    const who = target && target.id !== "marius" ? target : allAgents().find((a) => a.id === "marius");
     setToast(target && target.id !== "marius" ? `Mission confiée directement à ${target.nom}` : "Mission confiée à Marius — il planifie et répartit");
     if (who) setTimeout(() => getGame()?.flyToAgent(who.id), 250);
     setText("");
@@ -123,7 +124,7 @@ export function CommandBar() {
                   <Portrait agentId={a.id} size={1.25} />
                   <b>@{a.nom}</b>
                   <span className="truncate text-xs text-ink-soft">
-                    {POLE_BY_ID[a.pole]?.icone} {a.role}
+                    {poleById(a.pole)?.icone} {a.role}
                   </span>
                 </button>
               </li>

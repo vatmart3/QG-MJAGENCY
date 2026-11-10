@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion, type PanInfo } from "motion/react";
 import { useEffect, type ReactNode } from "react";
+import { useUI } from "@/store/ui";
 import { useIsMobile } from "./hooks";
 
 interface SheetProps {
@@ -119,5 +120,7 @@ export function SectionTitle({ children, right }: { children: ReactNode; right?:
 }
 
 export function DemoBadge() {
+  const conn = useUI((s) => s.conn);
+  if (conn !== "demo") return null;
   return <span className="rounded-full bg-phare/10 px-2 py-0.5 font-silk text-[9px] text-phare">DÉMO</span>;
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import { AGENTS, POLES } from "@/data/seed";
+import Link from "next/link";
+
+import { allAgents, allPoles, useCatalogVersion } from "@/data/catalog";
 import { STATE_ICON, STATE_LABEL } from "@/data/types";
 import { useWorld } from "@/store/world";
 import { ui } from "@/store/ui";
@@ -11,20 +13,26 @@ import { AgentSearch } from "../TopBar";
 import { RoutePanel } from "./RoutePanel";
 
 export function EquipePanel() {
+  useCatalogVersion();
   const agents = useWorld((s) => s.agents);
   const mobile = useIsMobile();
   const online = Object.values(agents).filter((a) => a.state !== "offline").length;
 
   return (
-    <RoutePanel title="L'équipe" kicker={`${AGENTS.length} agents · ${online} en ligne`} icon="👥" accent="#4b4bb0">
+    <RoutePanel title="L'équipe" kicker={`${allAgents().length} agents · ${online} en ligne`} icon="👥" accent="#4b4bb0">
       {mobile && (
         <div className="mb-3">
           <AgentSearch />
         </div>
       )}
+      <div className="mb-3 flex justify-end">
+        <Link href="/reglages" className="rounded-full border border-ink/15 px-3 py-1.5 text-[13px] transition hover:bg-ink/5">
+          ⚙️ Ajouter ou modifier des agents
+        </Link>
+      </div>
       <div className="space-y-4">
-        {POLES.map((p) => {
-          const members = AGENTS.filter((a) => a.pole === p.id);
+        {allPoles().map((p) => {
+          const members = allAgents().filter((a) => a.pole === p.id);
           return (
             <section key={p.id}>
               <h3 className="mb-1 flex items-center gap-2 text-sm font-bold">

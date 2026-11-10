@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AGENT_BY_ID, POLE_BY_ID } from "@/data/seed";
+import { agentById, poleById, useCatalogVersion } from "@/data/catalog";
 import { formatParis } from "@/lib/paris";
 import { useWorld, type TaskItem } from "@/store/world";
 import { ui } from "@/store/ui";
@@ -17,6 +17,7 @@ const TABS: { id: TaskItem["status"]; label: string }[] = [
 ];
 
 export function TachesPanel() {
+  useCatalogVersion();
   const tasks = useWorld((s) => s.tasks);
   const missions = useWorld((s) => s.missions);
   const [tab, setTab] = useState<TaskItem["status"]>("running");
@@ -40,7 +41,7 @@ export function TachesPanel() {
                   <ul className="mt-2 space-y-0.5 text-[13px] text-ink-soft">
                     {m.plan.map((p) => (
                       <li key={p.agentId}>
-                        ▸ <b className="text-ink">{AGENT_BY_ID[p.agentId]?.nom}</b> — {p.title}
+                        ▸ <b className="text-ink">{agentById(p.agentId)?.nom}</b> — {p.title}
                       </li>
                     ))}
                   </ul>
@@ -69,7 +70,7 @@ export function TachesPanel() {
       </div>
       <ul className="mt-1 divide-y divide-paper-edge">
         {list.slice(0, 60).map((t) => {
-          const a = AGENT_BY_ID[t.agentId];
+          const a = agentById(t.agentId);
           return (
             <li key={t.id}>
               <button
@@ -84,7 +85,7 @@ export function TachesPanel() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{t.title}</span>
                   <span className="block text-[11px] text-ink-soft">
-                    {a?.nom} · {POLE_BY_ID[a?.pole ?? ""]?.court} · {formatParis(t.updatedAt, "HH:mm")}
+                    {a?.nom} · {poleById(a?.pole ?? "")?.court} · {formatParis(t.updatedAt, "HH:mm")}
                   </span>
                 </span>
               </button>

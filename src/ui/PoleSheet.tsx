@@ -1,6 +1,6 @@
 "use client";
 
-import { POLE_BY_ID, agentsOfPole } from "@/data/seed";
+import { agentsOfPole, poleById, useCatalogVersion } from "@/data/catalog";
 import { STATE_ICON, STATE_LABEL } from "@/data/types";
 import { formatParis } from "@/lib/paris";
 import { useWorld } from "@/store/world";
@@ -10,8 +10,9 @@ import { Portrait } from "./Portrait";
 import { DemoBadge, SectionTitle, Sheet } from "./Sheet";
 
 export function PoleSheet() {
+  useCatalogVersion();
   const id = useUI((s) => s.selectedPole);
-  const pole = id ? POLE_BY_ID[id] : undefined;
+  const pole = id ? poleById(id) : undefined;
   const agents = useWorld((s) => s.agents);
   const tasks = useWorld((s) => s.tasks);
   const presence = useWorld((s) => s.presence);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AGENT_BY_ID, POLE_BY_ID } from "@/data/seed";
+import { agentById, poleById, useCatalogVersion } from "@/data/catalog";
 import { STATE_ICON, STATE_LABEL } from "@/data/types";
 import { formatParis } from "@/lib/paris";
 import { getDirector } from "@/sim/director";
@@ -19,8 +19,9 @@ const AUTONOMY = [
 ] as const;
 
 export function AgentSheet() {
+  useCatalogVersion();
   const id = useUI((s) => s.selectedAgent);
-  const agent = id ? AGENT_BY_ID[id] : undefined;
+  const agent = id ? agentById(id) : undefined;
   const rt = useWorld((s) => (id ? s.agents[id] : undefined));
   const tasks = useWorld((s) => s.tasks);
   const chat = useWorld((s) => (id ? s.chats[id] : undefined));
@@ -31,7 +32,7 @@ export function AgentSheet() {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [chat?.length]);
 
-  const pole = agent ? POLE_BY_ID[agent.pole] : undefined;
+  const pole = agent ? poleById(agent.pole) : undefined;
   const history = id ? tasks.filter((t) => t.agentId === id && t.status !== "running").slice(0, 6) : [];
 
   return (
@@ -111,7 +112,7 @@ export function AgentSheet() {
             </div>
           ) : (
             <p className="text-sm text-ink-soft">
-              {rt.state === "talking" && rt.talkWith ? `En discussion avec ${AGENT_BY_ID[rt.talkWith]?.nom}.` : rt.state === "meeting" ? "En réunion dans La Criée." : "Aucune tâche en cours."}
+              {rt.state === "talking" && rt.talkWith ? `En discussion avec ${agentById(rt.talkWith)?.nom}.` : rt.state === "meeting" ? "En réunion dans La Criée." : "Aucune tâche en cours."}
             </p>
           )}
 

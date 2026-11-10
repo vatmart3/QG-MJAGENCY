@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ui } from "@/store/ui";
+import { ui, uiStore } from "@/store/ui";
 import { getGame, setGame } from "./gameRef";
 
 /** Monte la ville PixiJS (côté client uniquement) et sa couche DOM. */
@@ -13,6 +13,7 @@ export function CityCanvas() {
 
   useEffect(() => {
     let cancelled = false;
+    uiStore.setState({ ready: false });
     let game: import("@/world/Game").Game | null = null;
     (async () => {
       const { Game } = await import("@/world/Game");
