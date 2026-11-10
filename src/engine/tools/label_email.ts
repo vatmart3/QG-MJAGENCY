@@ -17,7 +17,7 @@ const LABEL: Record<(typeof CATEGORIES)[number], string> = {
 export const labelEmail = defineTool({
   name: "label_email",
   description:
-    "Classe un mail trié : catégorie, résumé d'une ligne, urgence (0 normal, 1 important, 2 urgent), libellé « LE PORT/… » dans Gmail. action=repondre crée une tâche de réponse pour Noé ; action=transmettre confie le dossier au bon pôle (devis → Victor, facture → Bastien, site en panne → Atelier Tech) ET Noé répond quand même au client ; action=aucune pour l'info, la pub ou le spam.",
+    "Classe un mail trié : catégorie, résumé d'une ligne, urgence (0 normal, 1 important, 2 urgent), libellé « LE PORT/… » dans Gmail. action=repondre crée une tâche de réponse pour Noé ; action=transmettre confie le dossier au bon pôle (devis → Victor, facture → Bastien, site en panne → Jade, commande ou colis de la boutique → Iris) ET Noé répond quand même au client ; action=aucune pour l'info, la pub ou le spam.",
   schema: z.object({
     id: z.string().min(1).max(200),
     categorie: z.enum(CATEGORIES),
@@ -74,7 +74,8 @@ export const labelEmail = defineTool({
     }
     // un client ou un prospect confié à un autre pôle reçoit quand même une réponse de Noé (accusé de réception)
     const noe = findAgent(ctx.team, "noe");
-    if (input.action === "transmettre" && (input.categorie === "client" || input.categorie === "prospect") && noe && taskId && input.agent_id !== "noe") {
+    // (sauf si l'agent chargé du dossier répond lui-même, comme Iris pour la boutique)
+    if (input.action === "transmettre" && (input.categorie === "client" || input.categorie === "prospect") && noe && taskId && input.agent_id !== "noe" && !findAgent(ctx.team, input.agent_id ?? "")?.outils.includes("send_email")) {
       const pole = findAgent(ctx.team, input.agent_id ?? "")?.nom ?? "l'équipe";
       await ctx.db.insertTask({
         agent_id: noe.id,

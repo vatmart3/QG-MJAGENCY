@@ -181,7 +181,7 @@ function RoutineForm({ initial, isNew, onDone }: { initial: Routine; isNew: bool
 }
 
 /** routines qui attendent les outils d'une phase suivante (même liste que le moteur) */
-const PLUS_TARD: Record<string, number> = { rt_sante_sites: 8 };
+const PLUS_TARD: Record<string, number> = {};
 
 /** ▶ Lancer maintenant (le compte rendu arrive dans l'onglet Rapports). */
 function LaunchButton({ id }: { id: string }) {

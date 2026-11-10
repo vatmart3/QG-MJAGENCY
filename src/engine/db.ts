@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseCommercialDb, type CommercialDb } from "@/commercial/db";
 import { supabaseFinanceDb, type FinanceDb } from "@/finance/db";
+import { lireBoutique, type ReglagesBoutique } from "@/boutique/shopify";
+import { supabaseTechDb, type TechDb } from "@/tech/db";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentState } from "@/data/types";
 import type { TaskStep } from "@/store/world";
@@ -163,6 +165,10 @@ export interface EngineDb {
   finance: FinanceDb;
   /** prospection et pipeline commercial */
   commercial: CommercialDb;
+  /** Atelier Tech : sites clients suivis */
+  tech: TechDb;
+  /** réglages de la boutique (seuil de stock, délai d'expédition) */
+  reglagesBoutique(): Promise<ReglagesBoutique>;
   settings(): Promise<ESettings>;
   poles(): Promise<{ id: string; nom: string }[]>;
   memory(): Promise<{ cle: string; contenu: string }[]>;
@@ -268,6 +274,11 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
   return {
     finance: supabaseFinanceDb(sb),
     commercial: supabaseCommercialDb(sb),
+    tech: supabaseTechDb(sb),
+    async reglagesBoutique() {
+      const s = ok(await sb.from("settings").select("boutique").eq("id", 1).maybeSingle());
+      return lireBoutique(s?.boutique);
+    },
     async settings() {
       const s = ok(await sb.from("settings").select("*").eq("id", 1).maybeSingle());
       return s

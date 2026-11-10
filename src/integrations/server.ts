@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt, encrypt, hasEncryptionKey } from "@/lib/crypto";
 import { demoCalendar, demoMailbox } from "./demo";
+import { boutiqueDepuisEnv } from "@/boutique/shopify";
 import { demoPlaces, googlePlaces } from "./places";
 import { GoogleAuthError, GoogleClient, gmailMailbox, googleCalendar, hasGoogleOAuth } from "./google";
 import type { Calendar, Documents, Mailbox, Services } from "./types";
@@ -81,6 +82,7 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
   return {
     documents: storageDocuments(admin),
     places: async () => (process.env.GOOGLE_PLACES_API_KEY ? googlePlaces(process.env.GOOGLE_PLACES_API_KEY) : demoPlaces()),
+    boutique: async () => boutiqueDepuisEnv(),
     async mailbox(): Promise<Mailbox> {
       const c = await getClient();
       return c ? guard(gmailMailbox(c), markError) : demoMailbox();

@@ -1,6 +1,6 @@
 import { adresse } from "@/integrations/types";
 import Anthropic from "@anthropic-ai/sdk";
-import { EFFORT, LIMITS, SUPPORTS_FALLBACK } from "./config";
+import { EFFORT, LIMITS, MODELS, SUPPORTS_FALLBACK } from "./config";
 import type { Msg } from "./db";
 import type { ModelTier } from "@/data/types";
 
@@ -29,10 +29,24 @@ export interface LLMResponse {
   usage: { input: number; output: number; cacheRead: number; cacheWrite: number };
 }
 
+/** Résultat d'une recherche sur le web (outil web_search de Gabin, à la demande). */
+export interface Recherche {
+  texte: string;
+  sources: { titre: string; url: string }[];
+  recherches: number;
+  model: string;
+  usage: LLMResponse["usage"];
+}
+
 export interface LLM {
   readonly kind: "anthropic" | "mock";
   create(req: LLMRequest): Promise<LLMResponse>;
+  /** recherche web (outil serveur d'Anthropic) : réponse courte et sourcée */
+  search(question: string): Promise<Recherche>;
 }
+
+const SYSTEME_RECHERCHE =
+  "Tu fais une recherche sur le web pour une agence web de Sète (MJAGENCY). Cherche (3 recherches au plus), puis réponds en français, en 10 lignes maximum : les faits utiles, datés, avec la source entre parenthèses. Si tu ne trouves rien de fiable, dis-le.";
 
 export class AnthropicLLM implements LLM {
   readonly kind = "anthropic" as const;
@@ -64,6 +78,58 @@ export class AnthropicLLM implements LLM {
       usage: { input: u.input_tokens, output: u.output_tokens, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 },
     };
   }
+
+  search(question: string): Promise<Recherche> {
+    // le moins cher d'abord (Haiku), Sonnet si Haiku n'a pas la recherche web
+    return rechercheAnthropic(this.client, question, [MODELS.light, MODELS.worker]);
+  }
+}
+
+// ------------------------------------------------------------------ recherche web
+async function rechercheAnthropic(client: Anthropic, question: string, models: string[]): Promise<Recherche> {
+  let lastErr: unknown;
+  for (const model of models) {
+    try {
+      const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: question }];
+      const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+      let recherches = 0;
+      const blocs: Anthropic.Beta.BetaContentBlock[] = [];
+      // l'API peut suspendre un long tour de recherche (pause_turn) : on le relance au plus deux fois
+      for (let i = 0; i < 3; i++) {
+        const res = await client.beta.messages.create({
+          model,
+          max_tokens: 2000,
+          system: SYSTEME_RECHERCHE,
+          messages,
+          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3, user_location: { type: "approximate", city: "Sète", region: "Occitanie", country: "FR", timezone: "Europe/Paris" } }],
+          output_config: { effort: "low" },
+        });
+        usage.input += res.usage.input_tokens;
+        usage.output += res.usage.output_tokens;
+        usage.cacheRead += res.usage.cache_read_input_tokens ?? 0;
+        usage.cacheWrite += res.usage.cache_creation_input_tokens ?? 0;
+        recherches += res.usage.server_tool_use?.web_search_requests ?? 0;
+        blocs.push(...res.content);
+        if (res.stop_reason !== "pause_turn") break;
+        messages.push({ role: "assistant", content: res.content as unknown as Anthropic.Beta.BetaContentBlockParam[] });
+      }
+      const sources = new Map<string, string>();
+      let texte = "";
+      for (const b of blocs) {
+        if (b.type === "text") {
+          texte += b.text;
+          for (const c of b.citations ?? []) if ("url" in c && c.url) sources.set(c.url, ("title" in c && c.title) || c.url);
+        }
+        if (b.type === "web_search_tool_result" && Array.isArray(b.content)) for (const r of b.content) if (!sources.has(r.url) && sources.size < 12) sources.set(r.url, r.title);
+      }
+      return { texte: texte.trim() || "Aucun résultat exploitable.", sources: [...sources].map(([url, titre]) => ({ url, titre })).slice(0, 8), recherches, model, usage };
+    } catch (e) {
+      lastErr = e;
+      // modèle sans recherche web : on retente avec le suivant ; autre erreur : on arrête
+      if (!(e instanceof Anthropic.BadRequestError)) throw e;
+    }
+  }
+  throw lastErr;
 }
 
 // ------------------------------------------------------------------ simulation
@@ -185,6 +251,16 @@ function mockFinance(m: MockMeta, messages: Msg[]): Anthropic.Beta.BetaContentBl
 
 export class MockLLM implements LLM {
   readonly kind = "mock" as const;
+
+  async search(question: string): Promise<Recherche> {
+    return {
+      texte: `Recherche simulée sur « ${question.slice(0, 80)} » : ajoute une clé API Anthropic pour une vraie recherche sur le web.\n- Tendance (exemple) : les commerces locaux misent sur les avis Google et les fiches à jour.\n- Exemple : plusieurs agences de l'Hérault proposent des sites vitrines à partir de 900 € HT.`,
+      sources: [{ titre: "Source de démonstration", url: "https://exemple.example/veille" }],
+      recherches: 0,
+      model: "simulé",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    };
+  }
 
   async create(req: LLMRequest): Promise<LLMResponse> {
     const m = req.meta;

@@ -16,6 +16,12 @@ import { relancesDevis, trouverProspects, urlPublique } from "@/commercial/prosp
 import { tacheSacha } from "@/commercial/taches";
 import { demoPlaces } from "@/integrations/places";
 import { sha256Hex } from "@/finance/pdf";
+import { surveillerSites } from "@/tech/surveillance";
+import { analyser, auditUrl } from "@/tech/audit";
+import { demoBoutique } from "@/boutique/shopify";
+import { surveillerBoutique } from "@/boutique/surveillance";
+import { executeApprovals } from "@/engine/douane";
+import { kpis, kpisTexte } from "@/engine/kpis";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -421,6 +427,56 @@ async function scenarioCommercial() {
   check(!urlPublique("http://localhost:3000") && !urlPublique("http://10.0.0.1/admin") && !urlPublique("file:///etc/passwd") && !!urlPublique("https://mjagency.eu"), "lecture de sites : adresses internes refusées");
 }
 
+async function scenarioAtelierBoutique() {
+  console.log("\n— Atelier Tech (santé des sites, audit) et Boutique (Shopify DÉMO), sans IA");
+  await reset();
+  await pool.query("delete from public.sites_monitored; delete from public.engine_kv;");
+  const usage0 = Number((await q<{ n: string }>("select count(*) as n from public.usage"))[0]!.n);
+  for (const [nom, url] of [["Boulangerie du Port", "https://boulangerie.example/"], ["Site en panne", "https://panne.example/"], ["Certificat bientôt expiré", "https://sslfin.example/"]]) await db.tech.insertSite({ nom: nom!, url: url! });
+  const t0 = new Date("2026-11-10T09:00:00Z");
+  const p1 = await surveillerSites(db, t0);
+  let alertes = await q<{ titre: string }>("select titre from public.journal where type = 'alerte' order by cree_le");
+  check(p1.controles === 3 && alertes.length === 1 && alertes[0]!.titre.includes("Certificat SSL : expire dans"), `1er passage : 3 sites contrôlés, alerte SSL (${alertes.map((a) => a.titre).join(" | ")})`);
+  const p2 = await surveillerSites(db, new Date(t0.getTime() + 3600_000));
+  alertes = await q<{ titre: string }>("select titre from public.journal where type = 'alerte' order by cree_le");
+  check(p2.alertes === 1 && alertes.length === 2 && alertes[1]!.titre.includes("Site en panne"), "la panne n'est signalée qu'au 2e contrôle raté, l'alerte SSL n'est pas répétée");
+  await surveillerSites(db, new Date(t0.getTime() + 2 * 3600_000));
+  check((await q("select 1 from public.journal where type = 'alerte'")).length === 2, "pas de nouvelle alerte tant que rien ne change");
+  const [panne] = await q<{ ok: boolean; echecs: number; historique: unknown[]; alerte: string }>("select ok, echecs, historique, alerte from public.sites_monitored where url like 'https://panne%'");
+  check(panne?.ok === false && panne.echecs === 3 && panne.historique.length === 3 && !!panne.alerte, "historique et compteur d'échecs tenus à jour");
+  // retour à la normale
+  await pool.query("update public.sites_monitored set url = 'https://repare.example/' where url like 'https://panne%'");
+  await surveillerSites(db, new Date(t0.getTime() + 3 * 3600_000));
+  check((await q("select 1 from public.journal where titre like '✅ Site en panne%'")).length === 1, "« tout est rentré dans l'ordre » publié quand le site revient");
+  check(!!(await launchRoutine(db, demoServices, await db.agents(), (await db.routine("rt_sante_sites"))!, t0, "jeremy")), "routine rt_sante_sites lançable à la demande");
+
+  const audit = await auditUrl("boulangerie.example");
+  check(audit.demo === true && audit.note > 20 && audit.note < 80 && audit.points.some((p) => !p.ok && p.label.startsWith("Titre principal H1 (2)")), `audit (DÉMO) : ${audit.note}/100, H1 en double repéré`);
+  const bon = analyser('<!doctype html><html lang="fr"><head><title>Fleuriste à Sète — Atelier Fleuri, bouquets sur mesure</title><meta name="description" content="Atelier Fleuri, fleuriste à Sète : bouquets du jour, mariages, deuil et livraison à domicile dans tout le bassin de Thau. Commandez en ligne."><meta name="viewport" content="width=device-width"><link rel="canonical" href="https://x.fr/"><link rel="icon" href="/f.ico"><meta property="og:title" content="Atelier Fleuri"><meta property="og:image" content="/o.jpg"><script type="application/ld+json">{}</script></head><body><h1>Fleuriste à Sète</h1><img src="a.jpg" alt="Bouquet"></body></html>', { url: "https://x.fr/", https: true, ms: 400, robots: true, sitemap: true });
+  check(bon.note === 100, `page soignée : ${bon.note}/100`);
+
+  // boutique
+  const b = demoBoutique(t0);
+  const r1 = await surveillerBoutique(db, b, { seuil_stock: 3, delai_expedition_h: 48 }, t0);
+  const jb = await q<{ titre: string }>("select titre from public.journal where agent_id = 'yanis' order by cree_le");
+  check(r1.nouvelles === 0 && jb.some((j) => j.titre.startsWith("📦 #1046")) && jb.some((j) => j.titre.startsWith("⛔ Rupture de stock : Stickers")) && jb.some((j) => j.titre.startsWith("📉 Stock bas : Chevalet")), `Yanis : commande en retard, rupture et stock bas signalés (${jb.length})`);
+  await surveillerBoutique(db, b, { seuil_stock: 3, delai_expedition_h: 48 }, new Date(t0.getTime() + 2 * 3600_000));
+  check((await q("select 1 from public.journal where agent_id = 'yanis'")).length === jb.length, "aucune alerte répétée au passage suivant");
+
+  // modification de la boutique : seulement via la Douane
+  const [ap] = await q<{ id: string }>("insert into public.approvals (agent_id, type_action, titre, apercu, payload, statut, execution_statut, decide_par, decide_le) values ('yanis', 'autre', 'Stock', 'Stock 2 → 10', $1, 'approuve', 'a_faire', 'jeremy', now()) returning id", [JSON.stringify({ kind: "shopify", modif: { op: "stock", inventory_item_id: "demo-i2", quantite: 10, avant: 2, libelle: "Chevalet NFC" } })]);
+  await executeApprovals(db, demoServices, t0);
+  const [ex] = await q<{ execution_statut: string }>("select execution_statut from public.approvals where id = $1", [ap!.id]);
+  check(ex?.execution_statut === "simule", "modification Shopify validée en Douane → appliquée (simulée en DÉMO)");
+
+  const k = await kpis(db, demoServices, t0);
+  check(k.tech.sites === 3 && k.boutique?.demo === true && k.boutique.commandes7j === 4 && typeof k.finance.encaisse === "number", `KPIs de Diane : ${kpisTexte(k).split("\n").length} lignes (sites, boutique, finance, IA)`);
+  const rech = await llm.search("tarifs sites vitrines Sète");
+  check(rech.sources.length > 0 && rech.texte.includes("simulée"), "recherche web de Gabin (simulée sans clé)");
+  const usage1 = Number((await q<{ n: string }>("select count(*) as n from public.usage"))[0]!.n);
+  check(usage0 === usage1, "surveillance, audit, boutique et KPIs : aucun appel à l'IA");
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -433,6 +489,7 @@ async function scenarioCommercial() {
     await scenarioFinance();
     await scenarioNuit();
     await scenarioCommercial();
+    await scenarioAtelierBoutique();
   } catch (e) {
     console.error(e);
     failures++;

@@ -31,6 +31,9 @@ export function costEur(model: string, u: { input: number; output: number; cache
   return Math.round(usd * USD_TO_EUR * 100_000) / 100_000;
 }
 
+/** Recherche web (outil serveur d'Anthropic) : 10 $ les 1 000 recherches, en plus des jetons. */
+export const COUT_RECHERCHE_EUR = 0.01 * USD_TO_EUR;
+
 /** Modèles qui acceptent le repli côté serveur en cas de refus (`fallbacks: "default"`). */
 export const SUPPORTS_FALLBACK = (model: string): boolean => model === "claude-opus-5-5" || model === "claude-sonnet-5-5";
 

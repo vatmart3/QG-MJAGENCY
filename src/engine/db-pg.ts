@@ -2,6 +2,8 @@ import type { Pool } from "pg";
 import type { CommercialDb, Lead, Opportunity } from "@/commercial/db";
 import { lireProspection } from "@/commercial/prospection";
 import type { FinanceDb } from "@/finance/db";
+import { lireBoutique } from "@/boutique/shopify";
+import type { SiteSuivi, TechDb } from "@/tech/db";
 import { lireFinance, num, type Client, type Invoice, type Ligne, type Payment, type Quote, type Subscription } from "@/finance/types";
 import { AUTONOMIE_DEFAUT, lireAutonomie, type ERoutine, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
 
@@ -57,6 +59,11 @@ export function pgEngineDb(pool: Pool): EngineDb {
   return {
     finance: pgFinanceDb(q),
     commercial: pgCommercialDb(q),
+    tech: pgTechDb(q),
+    async reglagesBoutique() {
+      const [s] = await q<{ boutique: unknown }>("select boutique from public.settings where id = 1");
+      return lireBoutique(s?.boutique);
+    },
     async settings() {
       const [s] = await q<{ budget_jour: string; budget_mois: string; bavardage_actif: boolean; signataire: string; allowlist_emails: string[]; contraintes_agenda: { jeremy?: string; matheis?: string }; autonomie: unknown }>("select * from public.settings where id = 1");
       return s
@@ -336,6 +343,34 @@ function pgFinanceDb(q: Q): FinanceDb {
 const nL = (r: Record<string, unknown>): Lead => ({ ...(r as unknown as Lead), note_google: r.note_google === null ? null : num(r.note_google), score: num(r.score), cree_le: String(r.cree_le) });
 const nO = (r: Record<string, unknown>): Opportunity => ({ ...(r as unknown as Opportunity), montant: r.montant === null ? null : num(r.montant), cree_le: String(r.cree_le), maj_le: String(r.maj_le) });
 
+function pgTechDb(q: Q): TechDb {
+  const isUuid = (s: string) => /^[0-9a-f-]{36}$/i.test(s);
+  const iso = (v: unknown, jour = false) => (v instanceof Date ? (jour ? v.toISOString().slice(0, 10) : v.toISOString()) : (v as string | null));
+  const nS = (r: Record<string, unknown>): SiteSuivi =>
+    ({ ...r, dernier_check: iso(r.dernier_check), controle_complet_le: iso(r.controle_complet_le), ssl_expire_le: iso(r.ssl_expire_le), alerte_le: iso(r.alerte_le), audit_le: iso(r.audit_le), cree_le: iso(r.cree_le), domaine_expire_le: r.domaine_expire_le instanceof Date ? `${r.domaine_expire_le.getFullYear()}-${String(r.domaine_expire_le.getMonth() + 1).padStart(2, "0")}-${String(r.domaine_expire_le.getDate()).padStart(2, "0")}` : r.domaine_expire_le }) as SiteSuivi;
+  return {
+    async sites(actifs) {
+      return (await q(`select * from public.sites_monitored ${actifs ? "where actif" : ""} order by nom`)).map(nS);
+    },
+    async findSites(ref) {
+      return (await q(isUuid(ref) ? "select * from public.sites_monitored where id = $1" : "select * from public.sites_monitored where nom ilike $1 or url ilike $1 limit 10", [isUuid(ref) ? ref : `%${ref}%`])).map(nS);
+    },
+    async insertSite(row) {
+      const [r] = await q("insert into public.sites_monitored (nom, url, client_id) values ($1, $2, $3) on conflict (url) do nothing returning *", [row.nom, row.url, row.client_id ?? null]);
+      return r ? nS(r) : null;
+    },
+    async updateSite(id, patch) {
+      const keys = Object.keys(patch).filter((k) => (patch as Record<string, unknown>)[k] !== undefined);
+      if (!keys.length) return;
+      const vals = keys.map((k) => {
+        const v = (patch as Record<string, unknown>)[k];
+        return typeof v === "object" && v !== null ? JSON.stringify(v) : v;
+      });
+      await q(`update public.sites_monitored set ${keys.map((k, i) => `"${k}" = $${i + 1}`).join(",")} where id = $${keys.length + 1}`, [...vals, id]);
+    },
+  };
+}
+
 function pgCommercialDb(q: Q): CommercialDb {
   const isUuid = (s: string) => /^[0-9a-f-]{36}$/i.test(s);
   const upd = async (table: string, id: string, patch: Record<string, unknown>) => {
@@ -385,6 +420,12 @@ function pgCommercialDb(q: Q): CommercialDb {
     updateOpportunity: (id, patch) => upd("opportunities", id, patch as Record<string, unknown>),
     async quotesEnAttente() {
       return (await q("select * from public.quotes where statut in ('emis','envoye')")).map(pQuo);
+    },
+    async stats() {
+      const leads: Record<string, number> = {};
+      for (const r of await q<{ statut: string; n: string }>("select statut, count(*) n from public.leads group by statut")) leads[r.statut] = Number(r.n);
+      const pipeline = (await q<{ etape: Opportunity["etape"]; montant: string | null; maj_le: Date }>("select etape, montant, maj_le from public.opportunities")).map((r) => ({ etape: r.etape, n: 1, montant: Number(r.montant ?? 0), maj_le: new Date(r.maj_le).toISOString() }));
+      return { leads, pipeline };
     },
     async markQuoteRelance(id, niveau, le) {
       await q("update public.quotes set relances = relances || $2::jsonb where id = $1", [id, JSON.stringify([{ niveau, le }])]);

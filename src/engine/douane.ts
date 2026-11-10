@@ -1,4 +1,5 @@
 import type { Services } from "@/integrations/types";
+import type { ModifBoutique } from "@/boutique/shopify";
 import { archiverPdf, emettrePiece } from "@/finance/emit";
 import type { EApproval, EngineDb } from "./db";
 
@@ -79,6 +80,12 @@ async function executeOne(a: EApproval, services: Services, db: EngineDb): Promi
     const r = await cal.create({ titre: a.objet || String(p.titre ?? ""), debut: String(p.debut), fin: String(p.fin), lieu: (p.lieu as string) || undefined, description: (p.description as string) || undefined, invites: (p.invites as string[]) ?? [] });
     const demo = cal.kind === "demo";
     return { demo, execution: { id: r.id, lien: r.lien ?? null }, titre: `📅 Invitation ${demo ? "simulée (DÉMO)" : "envoyée"} : ${a.objet ?? p.titre}`, contenu: a.apercu };
+  }
+  if (p.kind === "shopify") {
+    const b = await services.boutique();
+    const fait = await b.appliquer(p.modif as ModifBoutique, a.id);
+    const demo = b.kind === "demo";
+    return { demo, execution: { resultat: fait }, titre: `🛍️ Boutique ${demo ? "(DÉMO, rien de modifié)" : "mise à jour"} : ${fait}`, contenu: a.apercu };
   }
   throw new Error("Type d'envoi inconnu.");
 }

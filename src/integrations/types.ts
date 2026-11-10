@@ -88,6 +88,8 @@ export interface Services {
   documents: Documents;
   /** Google Places (prospection) ou commerces de DÉMO */
   places(): Promise<import("./places").Places>;
+  /** Shopify (MJ E-comm) ou boutique de DÉMO */
+  boutique(): Promise<import("@/boutique/shopify").Boutique>;
 }
 
 /** Extrait l'adresse d'un en-tête « Nom <adresse> ». */

@@ -1,3 +1,4 @@
+import { demoBoutique } from "@/boutique/shopify";
 import { demoPlaces } from "./places";
 import type { CalEvent, Calendar, Documents, MailFull, Mailbox, Services } from "./types";
 
@@ -153,6 +154,7 @@ export function memoryDocuments(): Documents {
 
 export const demoServices: Services = {
   places: async () => demoPlaces(),
+  boutique: async () => demoBoutique(),
   mailbox: async () => demoMailbox(),
   calendar: async () => demoCalendar(),
   documents: memoryDocuments(),

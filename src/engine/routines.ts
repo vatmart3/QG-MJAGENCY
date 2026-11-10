@@ -5,6 +5,8 @@ import { lireRapport, rapportVersMarkdown } from "@/lib/rapport";
 import type { Services } from "@/integrations/types";
 import { alertesFiscales, clotureMois, facturerAbonnements, relancesImpayes } from "@/finance/automations";
 import { relancesDevis, trouverProspects } from "@/commercial/prospection";
+import { surveillerBoutique } from "@/boutique/surveillance";
+import { surveillerSites } from "@/tech/surveillance";
 import { relancesSansReponse, triInbox } from "./courrier";
 import type { EAgent, ERoutine, EngineDb } from "./db";
 import { portDigest } from "./digest";
@@ -17,7 +19,7 @@ import { bulle } from "./prompts";
 
 const TZ = "Europe/Paris";
 /** routines qui attendent les outils d'une phase suivante (rien n'est lancé pour ne pas inventer de travail) */
-export const ROUTINES_PLUS_TARD: Record<string, number> = { rt_sante_sites: 8 };
+export const ROUTINES_PLUS_TARD: Record<string, number> = {};
 /** comptes rendus envoyés par mail aux destinataires du récap (Réglages) */
 const PAR_MAIL: Record<string, string> = { rt_recap: "Récap quotidien", rt_rapport_hebdo: "Rapport hebdo" };
 /** routines qui reçoivent les données réelles du port dans leur consigne */
@@ -76,6 +78,12 @@ export async function launchRoutine(db: EngineDb, services: Services, team: EAge
   // commercial : recherche + notation des prospects, relances de devis (sans IA)
   if (r.id === "rt_leads") return (await trouverProspects(db, await services.places(), await db.commercial.prospection())).crees > 0;
   if (r.id === "rt_relances_devis") return (await relancesDevis(db, formatInTimeZone(now, TZ, "yyyy-MM-dd"))) > 0;
+  // Atelier Tech et boutique : contrôles et alertes, sans IA
+  if (r.id === "rt_sante_sites") return (await surveillerSites(db, now)).controles > 0;
+  if (r.id === "rt_boutique") {
+    await surveillerBoutique(db, await services.boutique(), await db.reglagesBoutique(), now);
+    return true;
+  }
   if (await db.hasOpenTask(agent.id, r.nom)) return false;
   const dateLabel = formatInTimeZone(now, TZ, "EEEE d MMMM", { locale: fr });
   const donnees = AVEC_DONNEES[r.id] ? await portDigest(db, services, team, now, AVEC_DONNEES[r.id]) : "";

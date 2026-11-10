@@ -265,7 +265,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "marius", nom: "Marius", pole: "direction", role: "DG / orchestrateur",
     personnalite: "Calme, synthétique, tutoie les fondateurs. Découpe, délègue, tranche.",
-    modele: "planner", outils: [...COMMUNS, "request_meeting", "ask_founder", "search_memory", "propose_company_memory_update"],
+    modele: "planner", outils: [...COMMUNS, "request_meeting", "ask_founder", "search_memory", "propose_company_memory_update", "get_kpis"],
     autonomie: 1, critique: false, responsable: true, sortant: false,
     routines: ["08:30 — Stand-up dans La Criée"],
     taches: ["Plan de la mission « offre NFC »", "Arbitrage des priorités de la semaine", "Synthèse pour Jérémy et Matheis", "Répartition des mails du matin"],
@@ -273,7 +273,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "clemence", nom: "Clémence", pole: "direction", role: "Cheffe de cabinet",
     personnalite: "Organisée, bienveillante mais ferme sur les délais.",
-    modele: "worker", outils: [...COMMUNS, "request_meeting", "create_founder_todo"],
+    modele: "worker", outils: [...COMMUNS, "request_meeting", "create_founder_todo", "get_kpis"],
     autonomie: 1, critique: false, sortant: false,
     routines: ["08:15 — Ordre du jour du stand-up", "Toutes les heures — tâches bloquées"],
     taches: ["Ordre du jour du stand-up", "Relance des tâches en retard", "Priorisation de la journée"],
@@ -390,7 +390,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "capucine", nom: "Capucine", pole: "juridique", role: "Contrats & CGV",
     personnalite: "Précise, traduit le juridique en français clair.",
-    modele: "worker", outils: [...COMMUNS, "fetch_url_summary"],
+    modele: "worker", outils: [...COMMUNS, "fetch_url_summary", "web_search"],
     autonomie: 1, critique: false, responsable: true, sortant: false,
     routines: [],
     taches: ["CGV des abonnements mensuels", "Mentions légales du site Arvéo", "Contrat de maintenance type"],
@@ -432,7 +432,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "axel", nom: "Axel", pole: "tech", role: "Projets & déploiements",
     personnalite: "Calme, rassurant, adore les checklists.",
-    modele: "light", outils: [...COMMUNS],
+    modele: "light", outils: [...COMMUNS, "check_site_health", "audit_url"],
     autonomie: 1, critique: false, responsable: true, sortant: false,
     routines: [],
     taches: ["Déploiement Vercel : site Arvéo", "Point d'étape des 4 projets en cours", "Domaine branché pour le Comptoir Thau"],
@@ -448,7 +448,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "oscar", nom: "Oscar", pole: "tech", role: "QA & audit",
     personnalite: "Pointilleux, aime trouver la petite bête.",
-    modele: "worker", outils: [...COMMUNS, "audit_url", "fetch_url_summary"],
+    modele: "worker", outils: [...COMMUNS, "audit_url", "fetch_url_summary", "check_site_health"],
     autonomie: 1, critique: false, sortant: false,
     routines: [],
     taches: ["Audit SEO : site du Garage", "QA mobile du site Arvéo", "Données structurées LocalBusiness"],
@@ -457,7 +457,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "chloe", nom: "Chloé", pole: "marketing", role: "Calendrier éditorial",
     personnalite: "Pétillante, toujours une idée de post.",
-    modele: "worker", outils: [...COMMUNS],
+    modele: "worker", outils: [...COMMUNS, "web_search"],
     autonomie: 1, critique: false, responsable: true, sortant: false,
     routines: ["Lundi 08:00 — plan de contenu de la semaine"],
     taches: ["Plan de contenu de la semaine", "3 idées de Reels avant/après", "Légendes du carrousel NFC"],
@@ -490,7 +490,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "rose", nom: "Rose", pole: "veille", role: "SEO local",
     personnalite: "Patiente, obsédée par les fiches Google.",
-    modele: "worker", outils: [...COMMUNS, "fetch_url_summary"],
+    modele: "worker", outils: [...COMMUNS, "fetch_url_summary", "web_search", "audit_url"],
     autonomie: 1, critique: false, sortant: false,
     routines: [],
     taches: ["Fiche Google du Bistrot du Canal", "Idées d'optimisation pour 3 clients", "Suivi des positions « site web Sète »"],
@@ -524,7 +524,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "elsa", nom: "Elsa", pole: "labo", role: "Verticales produits",
     personnalite: "Inventive, parle produit avec passion.",
-    modele: "worker", outils: [...COMMUNS],
+    modele: "worker", outils: [...COMMUNS, "web_search"],
     autonomie: 1, critique: false, responsable: true, sortant: false,
     routines: [],
     taches: ["Argumentaire cartes NFC d'avis", "Fiche produit borne sans contact", "Suivi des ventes fidélité digitale"],
@@ -532,7 +532,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "tom", nom: "Tom", pole: "labo", role: "SaaS & roadmap",
     personnalite: "Visionnaire mais pragmatique.",
-    modele: "worker", outils: [...COMMUNS],
+    modele: "worker", outils: [...COMMUNS, "web_search"],
     autonomie: 1, critique: false, sortant: false,
     routines: [],
     taches: ["Priorisation du backlog SaaS", "Idée : prise de RDV pour coiffeurs", "Specs vitrine interactive"],
@@ -541,7 +541,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "yanis", nom: "Yanis", pole: "boutique", role: "Commandes & stocks",
     personnalite: "Réactif, l'œil sur chaque colis.",
-    modele: "light", outils: [...COMMUNS],
+    modele: "light", outils: [...COMMUNS, "shopify_orders", "shopify_products", "shopify_update"],
     autonomie: 1, critique: false, responsable: true, sortant: false,
     routines: [],
     taches: ["Ventes du jour Shopify", "2 commandes en retard d'expédition", "Alerte stock bas"],
@@ -549,7 +549,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "lou", nom: "Lou", pole: "boutique", role: "Fiches produits & créas",
     personnalite: "Créative, flaire les tendances.",
-    modele: "worker", outils: [...COMMUNS, "web_search"],
+    modele: "worker", outils: [...COMMUNS, "web_search", "shopify_orders", "shopify_products", "shopify_update"],
     autonomie: 1, critique: false, sortant: false,
     routines: [],
     taches: ["Fiche produit : lampe galet", "3 angles de pub TikTok", "Veille produits tendance"],
@@ -557,7 +557,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "iris", nom: "Iris", pole: "boutique", role: "Service client e-commerce",
     personnalite: "Empathique, efficace, toujours souriante.",
-    modele: "light", outils: [...COMMUNS, "create_email_draft", "send_email"],
+    modele: "light", outils: [...COMMUNS, "create_email_draft", "send_email", "shopify_orders", "shopify_products"],
     autonomie: 0, critique: false, sortant: true,
     routines: [],
     taches: ["Réponse : où est mon colis ?", "Demande de retour #1042", "Remboursement partiel à valider"],
@@ -583,7 +583,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "diane", nom: "Diane", pole: "data", role: "Récaps & KPIs",
     personnalite: "Claire, factuelle, une phrase météo pour commencer.",
-    modele: "worker", outils: [...COMMUNS, "get_finance_summary", "send_email"],
+    modele: "worker", outils: [...COMMUNS, "get_finance_summary", "send_email", "get_kpis"],
     autonomie: 1, critique: true, responsable: true, sortant: false,
     routines: ["07:30 — récap quotidien", "18:00 — point de fin de journée", "Vendredi 17:00 — rapport hebdo"],
     taches: ["Récap quotidien du 9 novembre", "KPIs de la semaine", "Point de 18 h"],
@@ -622,7 +622,8 @@ const R = (r: Partial<Routine> & Pick<Routine, "id" | "nom" | "agentId" | "promp
 /** Routines (§8), fuseau Europe/Paris. Le tri et les relances tournent seuls ; les récaps sont lancés à la demande (économie de crédits). */
 export const ROUTINES: Routine[] = [
   R({ id: "rt_tri_mails", nom: "Tri des nouveaux mails", agentId: "lucie", mode: "intervalle", intervalleMinutes: 5, plageDebut: "07:00", plageFin: "22:00", promptTache: "Trie les nouveaux mails de la boîte officielle, résume-les et crée les tâches pour les bons pôles." }),
-  R({ id: "rt_sante_sites", nom: "Santé des sites clients", agentId: "jade", heure: "07:00", promptTache: "Vérifie que chaque site client répond (HTTP, temps de réponse, SSL, expiration du domaine) et alerte en cas de souci." }),
+  R({ id: "rt_sante_sites", nom: "Santé des sites clients", agentId: "jade", mode: "intervalle", intervalleMinutes: 60, plageDebut: "06:00", plageFin: "23:00", promptTache: "Contrôle les sites clients (HTTP, temps de réponse, certificat SSL, expiration du domaine) et alerte en cas de souci. Sans IA." }),
+  R({ id: "rt_boutique", nom: "Surveillance de la boutique", agentId: "yanis", mode: "intervalle", intervalleMinutes: 120, plageDebut: "08:00", plageFin: "21:00", promptTache: "Nouvelles commandes, commandes en retard d'expédition, stocks bas : alertes dans le Journal. Sans IA." }),
   R({ id: "rt_echues", nom: "Factures échues → relances", agentId: "remi", heure: "07:15", promptTache: "Repère les factures échues et prépare les relances graduées (J+3, J+10, J+30 à valider)." }),
   R({ id: "rt_recap", nom: "Récap quotidien", agentId: "diane", heure: "07:30", promptTache: "Rédige et envoie le récap quotidien aux destinataires définis dans Réglages, puis archive-le dans le Journal." , actif: false }),
   R({ id: "rt_standup", nom: "Stand-up dans La Criée", agentId: "clemence", heure: "08:30", promptTache: "Réunis les responsables de pôle dans La Criée, fais le point et publie le compte-rendu." , actif: false }),

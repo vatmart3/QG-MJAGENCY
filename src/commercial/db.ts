@@ -62,6 +62,8 @@ export interface CommercialDb {
   updateOpportunity(id: string, patch: Partial<Opportunity>): Promise<void>;
   quotesEnAttente(): Promise<Quote[]>;
   markQuoteRelance(id: string, niveau: number, le: string): Promise<void>;
+  /** chiffres pour les KPIs de Diane : prospects par statut, pipeline par étape */
+  stats(): Promise<{ leads: Record<string, number>; pipeline: { etape: Etape; n: number; montant: number; maj_le: string }[] }>;
 }
 
 const nLead = (r: Record<string, unknown>): Lead => ({ ...(r as unknown as Lead), note_google: r.note_google === null || r.note_google === undefined ? null : num(r.note_google), score: num(r.score) });
@@ -129,6 +131,12 @@ export function supabaseCommercialDb(sb: SupabaseClient): CommercialDb {
     async markQuoteRelance(id, niveau, le) {
       const q = ok(await sb.from("quotes").select("relances").eq("id", id).maybeSingle());
       ok(await sb.from("quotes").update({ relances: [...((q?.relances as unknown[]) ?? []), { niveau, le }] }).eq("id", id));
+    },
+    async stats() {
+      const [l, o] = await Promise.all([sb.from("leads").select("statut").limit(5000), sb.from("opportunities").select("etape, montant, maj_le").limit(5000)]);
+      const leads: Record<string, number> = {};
+      for (const r of (ok(l) ?? []) as { statut: string }[]) leads[r.statut] = (leads[r.statut] ?? 0) + 1;
+      return { leads, pipeline: ((ok(o) ?? []) as { etape: Etape; montant: unknown; maj_le: string }[]).map((r) => ({ etape: r.etape, n: 1, montant: r.montant === null ? 0 : num(r.montant), maj_le: r.maj_le })) };
     },
   };
 }
