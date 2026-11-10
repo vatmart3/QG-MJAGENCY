@@ -86,6 +86,8 @@ export interface Services {
   mailbox(): Promise<Mailbox>;
   calendar(): Promise<Calendar>;
   documents: Documents;
+  /** Google Places (prospection) ou commerces de DÉMO */
+  places(): Promise<import("./places").Places>;
 }
 
 /** Extrait l'adresse d'un en-tête « Nom <adresse> ». */

@@ -4,7 +4,7 @@ Une petite île-port sétoise en pixel art isométrique, vivante, où chaque pô
 et chaque agent IA un petit bonhomme qui travaille, va au café, rejoint La Criée et parle avec les autres.
 Ce qu'on voit dans la ville est le reflet de l'état réel des agents.
 
-> **État : Phase 6 terminée — LE PORT est l'outil de facturation de MJAGENCY (factures conformes, devis, avoirs, paiements, exports, prévisionnel, fiscal).**
+> **État : Phase 7 terminée — prospection (Google Places, scoring), messages de Sacha, pipeline commercial en kanban, devis de Victor, fiches RDV de Théo.**
 > Sans variables Supabase, tout tourne en **mode démo** (local), exactement comme en Phase 1.
 > 📄 Compte rendu à télécharger : [`docs/compte-rendu.pdf`](docs/compte-rendu.pdf) (source : `docs/compte-rendu.html`, mis à jour à chaque phase).
 
@@ -119,6 +119,23 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 ```
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
+
+## Prospection & commercial (Phase 7)
+
+- **Hugo + Inès, sans IA** (routine `rt_leads`, 10 h en semaine, ou « Trouver des prospects ») : recherche Google Places
+  (API New, `GOOGLE_PLACES_API_KEY` ; sans clé : commerces DÉMO), métiers × zones de Réglages en tournant d'un jour à
+  l'autre, doublons ignorés (`place_id`). Le site est lu (https, mobile, générateur, lenteur, e-mail et Instagram trouvés
+  sur la page) puis le commerce est **noté sur 100** avec un **angle d'attaque** et un diagnostic (`src/commercial/prospection.ts`).
+- **Sacha, à la demande** (case à cocher + « Faire écrire Sacha ») : le **DM Instagram** (à copier et envoyer à la main,
+  jamais d'envoi automatique) et le **mail de prospection** (Douane : adresse jamais vue) ; une seule tâche pour tout le lot.
+- **Pipeline kanban** (nouveau → contacté → RDV → devis envoyé → signé / perdu) : la carte suit le devis lié par
+  déclencheur (envoyé → devis, accepté → signé, refusé/expiré → perdu). **Victor** prépare le devis (brouillon émis,
+  relu avant envoi), **Théo** la fiche RDV (questions, objections, offre). **Margaux** relance les devis sans réponse à
+  J+7 et J+15 (modèles, PDF joint, Douane, sans IA ; routine `rt_relances_devis`).
+- Outils : `places_search`, `create_lead`, `update_lead`, `search_leads`, `fetch_url_summary` (pages publiques uniquement,
+  adresses internes refusées), `create_opportunity`, `update_opportunity_stage`. Migration `…1100`.
+- **La nuit au port** (routine `rt_nuit`, 20 h → 8 h, réglable) : les agents sans tâche rentrent par le ponton, Lucie et
+  Jade restent de garde ; une tâche réveille l'agent concerné.
 
 ## Finance (Phase 6)
 
@@ -273,5 +290,5 @@ Toutes les variables sont listées dans `.env.example`. `MOCK_MODE=true` : tout 
 - [x] Phase 4 — La Douane + Gmail + Agenda
 - [x] Phase 5 — Pilote automatique + routines + récaps (à la demande)
 - [x] Phase 6 — Finance
-- [ ] Phase 7 — Prospection & Commercial
+- [x] Phase 7 — Prospection & Commercial
 - [ ] Phase 8 — Les autres pôles + finitions

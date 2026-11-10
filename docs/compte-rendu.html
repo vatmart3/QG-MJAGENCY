@@ -40,7 +40,7 @@
 <div class="cover">
   <h1>⚓ LE PORT</h1>
   <p class="sub">Quartier général IA de MJAGENCY · Compte rendu d'avancement</p>
-  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 6 terminées</b> · prochaine étape : Phase 7 (Prospection & commercial)</p>
+  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 7 terminées</b> · prochaine étape : Phase 8 (autres pôles et finitions)</p>
   <div class="grid">
     <div class="box"><b>Site en ligne</b>https://qg-mjagency.vercel.app</div>
     <div class="box"><b>Code</b>GitHub · vatmart3/QG-MJAGENCY<br>branche <code>claude/practical-goodall-xeybyi</code></div>
@@ -58,8 +58,8 @@
   <tr><td>4</td><td>Douane + Gmail + Agenda</td><td><span class="tag ok">✓ Terminée · Google à connecter</span></td><td>Lucie trie la boîte, Noé répond, Firmin relance, les mails partent après votre clic, Céleste gère l'agenda</td></tr>
   <tr><td>5</td><td>Pilote automatique + routines</td><td><span class="tag ok">✓ Terminée</span></td><td>Les agents travaillent LE PORT fermé ; récaps à la demande ; crédits réduits</td></tr>
   <tr><td>6</td><td>Finance</td><td><span class="tag ok">✓ Terminée</span></td><td>Devis, factures, impayés</td></tr>
-  <tr><td>7</td><td>Prospection & commercial</td><td><span class="tag next">→ Prochaine</span></td><td>Recherche de prospects (Google Places), suivi des leads</td></tr>
-  <tr><td>8</td><td>Autres pôles + finitions</td><td><span class="tag no">À venir</span></td><td>Shopify, derniers pôles, polish</td></tr>
+  <tr><td>7</td><td>Prospection & commercial</td><td><span class="tag ok">✓ Terminée · clé Places à ajouter</span></td><td>Recherche de prospects (Google Places), suivi des leads</td></tr>
+  <tr><td>8</td><td>Autres pôles + finitions</td><td><span class="tag next">→ Prochaine</span></td><td>Shopify, derniers pôles, polish</td></tr>
 </table>
 
 <h2>2. Ce qui a été construit</h2>
@@ -91,6 +91,14 @@
   <li><b>Budget suivi en euros</b> : alerte à 80 %. À 100 %, seuls les agents critiques (Lucie, Diane, Rémi) continuent.</li>
   <li><b>Sécurité</b> : un mail ou une page lus ne sont que des données. Un agent qui y trouve des ordres les signale au lieu d'obéir.</li>
   <li><b>Mode simulé</b> sans clé API : le même circuit tourne, sans aucune dépense.</li>
+</ul>
+
+<h3>Phase 7 — Prospection & commercial</h3>
+<ul>
+  <li><b>Hugo et Inès, sans IA</b> : chaque matin de semaine (ou sur bouton), commerces trouvés sur Google Maps, site analysé, e-mail et Instagram repérés, note sur 100 et angle d'attaque.</li>
+  <li><b>Sacha, à la demande</b> : tu coches les commerces, il écrit le DM Instagram (à copier, envoyé à la main) et le mail de prospection (en Douane).</li>
+  <li><b>Pipeline en kanban</b> qui suit les devis tout seul ; <b>Victor</b> fait le devis, <b>Théo</b> la fiche RDV, <b>Margaux</b> relance les devis à J+7 et J+15 (sans IA).</li>
+  <li><b>La nuit au port</b> : de 20 h à 8 h, les agents sans tâche rentrent chez eux, Lucie et Jade restent de garde.</li>
 </ul>
 
 <h3>Phase 6 — Finance (LE PORT devient l'outil de facturation)</h3>
@@ -145,6 +153,7 @@
   <tr><td>Client Google (Gmail + Agenda API, écran de consentement publié, URI de retour)</td><td><span class="tag ok">✓ Fait</span></td><td>console.cloud.google.com avec mjagency.officiel@gmail.com</td></tr>
   <tr><td><code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>ENCRYPTION_KEY</code> puis Redeploy</td><td><span class="tag ok">✓ Fait</span></td><td>Vercel → Environment Variables</td></tr>
   <tr><td>Connecter Google avec mjagency.officiel@gmail.com</td><td><span class="tag ok">✓ Fait</span></td><td>LE PORT → Réglages → Connexions & règles</td></tr>
+  <tr><td>Clé Google Places (« Places API (New) ») → Vercel <code>GOOGLE_PLACES_API_KEY</code> → Redeploy</td><td><span class="tag todo">À faire</span></td><td>Google Cloud, projet LE PORT (voir Commercial → Réglages)</td></tr>
   <tr><td>Supprimer les anciennes tables LE PORT du projet « MJAGENCY » (ancien compte)</td><td><span class="tag no">Optionnel</span></td><td>Uniquement sur votre accord</td></tr>
 </table>
 
@@ -174,6 +183,8 @@
   <tr><td>Parler à un agent précis</td><td><code>@Bastien relance les impayés</code>, ou clic sur l'agent → chat dans sa fiche</td></tr>
   <tr><td>Faire une facture ou un devis</td><td>Finances → Factures / Devis → « + Nouvelle », ou « @Bastien fais la facture de… »</td></tr>
   <tr><td>Reprendre mes anciennes factures</td><td>Finances → Exports &amp; import → Reprise de l'existant (CSV)</td></tr>
+  <tr><td>Trouver et contacter des prospects</td><td>Commercial → Prospects → « Trouver des prospects », coche, « Faire écrire Sacha », copie le DM</td></tr>
+  <tr><td>Suivre une affaire</td><td>Commercial → Pipeline (Fiche RDV par Théo, Devis par Victor)</td></tr>
   <tr><td>Donner la compta à l'expert-comptable</td><td>Finances → Exports &amp; import → Paquet ZIP du mois</td></tr>
   <tr><td>Valider ce que les agents proposent</td><td>Onglet <b>Douane</b> : Envoyer / Modifier / Refuser / Toujours autoriser</td></tr>
   <tr><td>Voir ce qui s'est passé</td><td>Onglet <b>Journal</b></td></tr>
@@ -199,11 +210,12 @@
   <tr><td>Les agents ne bougent plus</td><td>Le budget du jour est peut-être atteint (voir la jauge) : l'augmenter ou attendre le lendemain</td></tr>
 </table>
 
-<h2>6. Prochaine étape — Phase 7 (Prospection & commercial)</h2>
+<h2>6. Prochaine étape — Phase 8 (autres pôles et finitions)</h2>
 <ul>
-  <li>Google Places : Hugo trouve les commerces locaux, Inès les note, Sacha prépare les mails de prospection (Douane) et le DM Instagram à copier.</li>
-  <li>Pipeline de Margaux en kanban, devis de Victor branchés sur la facturation, fiches RDV de Théo.</li>
-  <li>À préparer : une clé Google Places API (même projet Google Cloud « LE PORT »).</li>
+  <li>Atelier Tech (santé des sites clients), Studio, Marketing, Veille (recherche web), Succès client, Labo, Data.</li>
+  <li>Boutique MJ E-comm branchée sur Shopify (commandes, stocks, SAV d'Iris), toute modification via la Douane.</li>
+  <li>Finitions : célébrations, sons discrets désactivables, application installable sur téléphone, notifications de la Douane.</li>
+  <li>À préparer : domaine Shopify + jeton Admin API (application personnalisée).</li>
 </ul>
 
 </body>

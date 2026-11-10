@@ -323,7 +323,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "sacha", nom: "Sacha", pole: "prospection", role: "Copywriter prospection",
     personnalite: "Accrocheur, local, jamais lourd.",
-    modele: "worker", outils: [...COMMUNS, "create_email_draft", "send_email", "search_leads"],
+    modele: "worker", outils: [...COMMUNS, "create_email_draft", "send_email", "search_leads", "update_lead"],
     autonomie: 0, critique: false, sortant: true,
     routines: [],
     taches: ["Mail de prospection : Le Comptoir Thau", "DM Instagram pour la Fromagerie Saint-Clair", "3 mails personnalisés pour les coiffeurs"],
@@ -332,7 +332,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "victor", nom: "Victor", pole: "commercial", role: "Devis & propositions",
     personnalite: "Carré, chiffré, transparent sur les prix.",
-    modele: "worker", outils: [...COMMUNS, "create_quote", "render_pdf", "get_client", "send_document"],
+    modele: "worker", outils: [...COMMUNS, "create_quote", "render_pdf", "get_client", "send_document", "search_leads", "update_opportunity_stage"],
     autonomie: 0, critique: false, responsable: true, sortant: true,
     routines: [],
     taches: ["Devis D-2026-0042 site vitrine", "Proposition commerciale cartes NFC", "Devis maintenance mensuelle"],
@@ -340,7 +340,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "margaux", nom: "Margaux", pole: "commercial", role: "Pipeline",
     personnalite: "Méthodique, aime les tableaux bien rangés.",
-    modele: "light", outils: [...COMMUNS, "create_opportunity", "update_opportunity_stage", "create_email_draft"],
+    modele: "light", outils: [...COMMUNS, "create_opportunity", "update_opportunity_stage", "create_email_draft", "search_leads"],
     autonomie: 0, critique: false, sortant: true,
     routines: ["14:00 — relance des devis en attente"],
     taches: ["Mise à jour du pipeline", "Relance du devis de l'Atelier Mistral", "3 opportunités passées en RDV"],
@@ -626,7 +626,7 @@ export const ROUTINES: Routine[] = [
   R({ id: "rt_echues", nom: "Factures échues → relances", agentId: "remi", heure: "07:15", promptTache: "Repère les factures échues et prépare les relances graduées (J+3, J+10, J+30 à valider)." }),
   R({ id: "rt_recap", nom: "Récap quotidien", agentId: "diane", heure: "07:30", promptTache: "Rédige et envoie le récap quotidien aux destinataires définis dans Réglages, puis archive-le dans le Journal." , actif: false }),
   R({ id: "rt_standup", nom: "Stand-up dans La Criée", agentId: "clemence", heure: "08:30", promptTache: "Réunis les responsables de pôle dans La Criée, fais le point et publie le compte-rendu." , actif: false }),
-  R({ id: "rt_leads", nom: "10 leads qualifiés + mails en brouillon", agentId: "hugo", heure: "10:00", jours: [1, 2, 3, 4, 5], promptTache: "Trouve 10 nouveaux commerces locaux, transmets-les à Inès pour scoring puis à Sacha pour les mails de prospection." }),
+  R({ id: "rt_leads", nom: "10 leads qualifiés + mails en brouillon", agentId: "hugo", heure: "10:00", jours: [1, 2, 3, 4, 5], promptTache: "Trouve de nouveaux commerces locaux (Google Places), analyse leur site et leur fiche, note-les et propose l'angle d'attaque. Sans IA : les messages sont écrits par Sacha à la demande." }),
   R({ id: "rt_relances_mails", nom: "Relances des mails sans réponse", agentId: "firmin", heure: "14:00", promptTache: "Repère les mails envoyés restés sans réponse et prépare une relance." }),
   R({ id: "rt_relances_devis", nom: "Relances des devis en attente", agentId: "margaux", heure: "14:00", promptTache: "Relance les devis en attente de réponse." }),
   R({ id: "rt_point_18h", nom: "Point de fin de journée", agentId: "diane", heure: "18:00", promptTache: "Fais un point court : ce qui est fait, ce qui attend une validation." , actif: false }),

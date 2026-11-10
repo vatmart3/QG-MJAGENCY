@@ -151,6 +151,16 @@ function mockCourrier(m: MockMeta, messages: Msg[]): Anthropic.Beta.BetaContentB
   return null;
 }
 
+function mockProspection(m: MockMeta, messages: Msg[]): Anthropic.Beta.BetaContentBlock[] | null {
+  if (m.agentId !== "sacha" || !m.taskTitle.startsWith("Messages de prospection")) return null;
+  if (usedTool(messages, "update_lead")) return [toolUse("finish_task", { titre: m.taskTitle, resume: "Messages prêts : DM Instagram enregistrés, mails déposés en Douane. (Simulé.)", sections: [{ titre: "Détail", contenu: lastToolResults(messages) || "Fait." }] })];
+  const items = [...(m.taskDescription ?? "").matchAll(/- id ([0-9a-f-]{36}) · ([^·]+) ·.*?e-mail : (\S+)/g)];
+  return items.flatMap(([, id, nom, email]) => [
+    toolUse("update_lead", { prospect: id, dm_instagram: `Bonjour ! On adore ce que vous faites chez ${nom!.trim()} 🙌 On aide les commerces du coin à se faire trouver sur Google. Ça vous dirait qu'on en parle 10 minutes ? (DM simulé)`, statut: "a_contacter" }),
+    ...(email && email !== "aucun" ? [toolUse("send_email", { a: email, objet: `${nom!.trim()} : une idée pour vos avis Google`, corps: "Bonjour,\n\nEn passant devant votre commerce, une idée nous est venue… (mail simulé)\n\nSeriez-vous disponible pour un appel de 15 minutes cette semaine ?" })] : []),
+  ]);
+}
+
 function mockFinance(m: MockMeta, messages: Msg[]): Anthropic.Beta.BetaContentBlock[] | null {
   if (m.agentId !== "bastien" || !/factur/i.test(m.taskTitle)) return null;
   if (!usedTool(messages, "create_invoice"))
@@ -236,6 +246,10 @@ export class MockLLM implements LLM {
         ],
       };
     }
+
+    // prospection (Phase 7) : Sacha écrit les DM et les mails des prospects choisis
+    const prospection = mockProspection(m, req.messages);
+    if (prospection) return { ...base, content: prospection };
 
     // finance (Phase 6) : Bastien prépare, émet et dépose la facture en Douane
     const finance = mockFinance(m, req.messages);

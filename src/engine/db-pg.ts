@@ -1,4 +1,6 @@
 import type { Pool } from "pg";
+import type { CommercialDb, Lead, Opportunity } from "@/commercial/db";
+import { lireProspection } from "@/commercial/prospection";
 import type { FinanceDb } from "@/finance/db";
 import { lireFinance, num, type Client, type Invoice, type Ligne, type Payment, type Quote, type Subscription } from "@/finance/types";
 import { AUTONOMIE_DEFAUT, lireAutonomie, type ERoutine, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
@@ -54,6 +56,7 @@ export function pgEngineDb(pool: Pool): EngineDb {
 
   return {
     finance: pgFinanceDb(q),
+    commercial: pgCommercialDb(q),
     async settings() {
       const [s] = await q<{ budget_jour: string; budget_mois: string; bavardage_actif: boolean; signataire: string; allowlist_emails: string[]; contraintes_agenda: { jeremy?: string; matheis?: string }; autonomie: unknown }>("select * from public.settings where id = 1");
       return s
@@ -325,6 +328,66 @@ function pgFinanceDb(q: Q): FinanceDb {
     },
     async markSubscription(id, mois) {
       return (await q("update public.subscriptions set dernier_mois = $2 where id = $1 and (dernier_mois is null or dernier_mois < $2) returning id", [id, mois])).length > 0;
+    },
+  };
+}
+
+// ------------------------------------------------------------------ commercial (tests)
+const nL = (r: Record<string, unknown>): Lead => ({ ...(r as unknown as Lead), note_google: r.note_google === null ? null : num(r.note_google), score: num(r.score), cree_le: String(r.cree_le) });
+const nO = (r: Record<string, unknown>): Opportunity => ({ ...(r as unknown as Opportunity), montant: r.montant === null ? null : num(r.montant), cree_le: String(r.cree_le), maj_le: String(r.maj_le) });
+
+function pgCommercialDb(q: Q): CommercialDb {
+  const isUuid = (s: string) => /^[0-9a-f-]{36}$/i.test(s);
+  const upd = async (table: string, id: string, patch: Record<string, unknown>) => {
+    const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
+    if (!keys.length) return;
+    const vals = keys.map((k) => (typeof patch[k] === "object" && patch[k] !== null ? JSON.stringify(patch[k]) : patch[k]));
+    await q(`update public.${table} set ${keys.map((k, i) => `"${k}" = $${i + 1}`).join(",")} where id = $${keys.length + 1}`, [...vals, id]);
+  };
+  return {
+    async prospection() {
+      const [s] = await q<{ prospection: unknown }>("select prospection from public.settings where id = 1");
+      return lireProspection(s?.prospection);
+    },
+    async knownPlaces(ids) {
+      if (!ids.length) return [];
+      return (await q<{ place_id: string }>("select place_id from public.leads where place_id = any($1)", [ids])).map((r) => r.place_id);
+    },
+    async insertLead(row) {
+      const keys = Object.keys(row).filter((k) => (row as Record<string, unknown>)[k] !== undefined);
+      const r = await q(`insert into public.leads (${keys.map((k) => `"${k}"`).join(",")}) values (${keys.map((_, i) => `$${i + 1}`).join(",")}) on conflict (place_id) do nothing returning id`, keys.map((k) => (row as Record<string, unknown>)[k]));
+      return r.length > 0;
+    },
+    async lead(id) {
+      const [r] = await q("select * from public.leads where id = $1", [id]);
+      return r ? nL(r) : null;
+    },
+    async findLeads(ref) {
+      return (await q(isUuid(ref) ? "select * from public.leads where id = $1" : "select * from public.leads where nom ilike $1 limit 10", [isUuid(ref) ? ref : `%${ref}%`])).map(nL);
+    },
+    async searchLeads(o) {
+      return (
+        await q(
+          `select * from public.leads where ${o.statut ? "statut = $1" : "statut <> 'ecarte' and $1::text is null"} and score >= $2 and ($3::text is null or nom ilike $3 or metier ilike $3 or ville ilike $3) order by score desc limit $4`,
+          [o.statut ?? null, o.scoreMin ?? 0, o.recherche ? `%${o.recherche}%` : null, o.max],
+        )
+      ).map(nL);
+    },
+    updateLead: (id, patch) => upd("leads", id, patch as Record<string, unknown>),
+    async insertOpportunity(row) {
+      const keys = Object.keys(row).filter((k) => (row as Record<string, unknown>)[k] !== undefined);
+      const [r] = await q(`insert into public.opportunities (${keys.map((k) => `"${k}"`).join(",")}) values (${keys.map((_, i) => `$${i + 1}`).join(",")}) returning *`, keys.map((k) => (row as Record<string, unknown>)[k]));
+      return nO(r!);
+    },
+    async findOpportunities(ref) {
+      return (await q(isUuid(ref) ? "select * from public.opportunities where id = $1" : "select * from public.opportunities where titre ilike $1 limit 10", [isUuid(ref) ? ref : `%${ref}%`])).map(nO);
+    },
+    updateOpportunity: (id, patch) => upd("opportunities", id, patch as Record<string, unknown>),
+    async quotesEnAttente() {
+      return (await q("select * from public.quotes where statut in ('emis','envoye')")).map(pQuo);
+    },
+    async markQuoteRelance(id, niveau, le) {
+      await q("update public.quotes set relances = relances || $2::jsonb where id = $1", [id, JSON.stringify([{ niveau, le }])]);
     },
   };
 }

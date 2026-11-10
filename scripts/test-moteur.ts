@@ -12,6 +12,9 @@ import { SENSIBLE_RE } from "@/engine/tools/autonomie";
 import { launchRoutine } from "@/engine/routines";
 import { estAutomatique } from "@/engine/courrier";
 import { resumeFinance } from "@/finance/calc";
+import { relancesDevis, trouverProspects, urlPublique } from "@/commercial/prospection";
+import { tacheSacha } from "@/commercial/taches";
+import { demoPlaces } from "@/integrations/places";
 import { sha256Hex } from "@/finance/pdf";
 type ERoutineRow = Record<string, unknown>;
 
@@ -368,6 +371,56 @@ async function scenarioNuit() {
   check(reste.length === 0, "8 h 30 : tout le monde est revenu");
 }
 
+async function scenarioCommercial() {
+  console.log("\n— Commercial : prospects (sans IA), messages de Sacha, pipeline lié au devis, relances de Margaux");
+  await reset();
+  await pool.query("set session_replication_role = replica; delete from public.opportunities; delete from public.leads; delete from public.engine_kv; set session_replication_role = origin;");
+  const usage0 = Number((await q<{ n: string }>("select count(*) as n from public.usage"))[0]!.n);
+  const cfg = await db.commercial.prospection();
+  const r1 = await trouverProspects(db, demoPlaces(), cfg, 10);
+  const leads = await q<{ id: string; nom: string; score: number; angle: string; site: string | null; email: string | null; diagnostic: string }>("select * from public.leads order by score desc");
+  const r2 = await trouverProspects(db, demoPlaces(), cfg, 10);
+  const usage1 = Number((await q<{ n: string }>("select count(*) as n from public.usage"))[0]!.n);
+  check(r1.crees >= 4 && leads.length === r1.crees && r2.crees === 0, `Hugo trouve ${r1.crees} commerces (DÉMO), aucun doublon ensuite`);
+  check(leads.every((l) => l.score > 0 && !!l.angle && !!l.diagnostic) && usage0 === usage1, "Inès note chaque prospect (score, angle, diagnostic) sans aucun appel à l'IA");
+  const sansSite = leads.find((l) => !l.site);
+  check(!!sansSite && sansSite.angle.startsWith("Site vitrine"), `sans site → angle « ${sansSite?.angle} »`);
+
+  // Sacha : DM Instagram + mails (Douane) pour les 3 meilleurs
+  const top = leads.slice(0, 3);
+  await tacheSacha(db, top.map((l) => l.id), "jeremy");
+  for (let i = 0; i < 4; i++) await tick(db, llm, { now: () => new Date("2026-11-10T10:00:00Z"), services: demoServices });
+  const apres = await q<{ dm_instagram: string | null; statut: string; email: string | null }>("select dm_instagram, statut, email from public.leads where id = any($1)", [top.map((l) => l.id)]);
+  const mails = await q<{ execution_statut: string; statut: string }>("select execution_statut, statut from public.approvals where type_action = 'email'");
+  const avecEmail = apres.filter((l) => l.email).length;
+  check(apres.every((l) => !!l.dm_instagram && l.statut === "a_contacter"), "Sacha prépare le DM Instagram de chaque prospect (à envoyer à la main)");
+  check(mails.length === avecEmail && mails.every((m) => m.statut === "en_attente" && m.execution_statut === "a_faire"), `${mails.length} mails de prospection en Douane (adresses jamais vues : jamais automatiques)`);
+
+  // pipeline lié au devis
+  const cl = await db.finance.insertClient({ nom: "La Marée (test pipeline)", email: "bonjour@lamaree-sete.example", type: "pro" });
+  const devis = await db.finance.insertQuote({ client_id: cl.id, objet: "Pack NFC", lignes: [{ designation: "Pack NFC", quantite: 1, prix_unitaire: 349 }] });
+  await db.finance.emettre("devis", devis.id);
+  const opp = await db.commercial.insertOpportunity({ titre: "La Marée — NFC", lead_id: top[0]!.id, etape: "rdv", quote_id: devis.id });
+  await q("update public.quotes set statut = 'envoye' where id = $1", [devis.id]);
+  const [e1] = await q<{ etape: string; montant: string }>("select etape, montant from public.opportunities where id = $1", [opp.id]);
+  await q("update public.quotes set statut = 'accepte' where id = $1", [devis.id]);
+  const [e2] = await q<{ etape: string }>("select etape from public.opportunities where id = $1", [opp.id]);
+  check(e1?.etape === "devis" && Number(e1.montant) === 349 && e2?.etape === "signe", "le pipeline suit le devis : envoyé → « devis », accepté → « signé »");
+
+  // Margaux : relances de devis sans réponse (J+7, J+15), sans IA
+  const d2 = await db.finance.insertQuote({ client_id: cl.id, objet: "Site vitrine", lignes: [{ designation: "Site", quantite: 1, prix_unitaire: 1290 }] });
+  await db.finance.emettre("devis", d2.id);
+  const base = (await q<{ emis_le: Date }>("select emis_le from public.quotes where id = $1", [d2.id]))[0]!.emis_le;
+  const plus = (j: number) => new Date(base.getTime() + j * 86400_000 + 12 * 3600_000).toISOString().slice(0, 10);
+  const a = await relancesDevis(db, plus(8));
+  const b = await relancesDevis(db, plus(9));
+  const c = await relancesDevis(db, plus(16));
+  const rel = await q<{ payload: { kind: string; doc: string } }>("select payload from public.approvals where type_action = 'relance'");
+  check(a === 1 && b === 0 && c === 1 && rel.every((r) => r.payload.kind === "document" && r.payload.doc === "devis"), "Margaux relance le devis à J+8 puis J+16 (PDF joint, en Douane), une fois par niveau");
+
+  check(!urlPublique("http://localhost:3000") && !urlPublique("http://10.0.0.1/admin") && !urlPublique("file:///etc/passwd") && !!urlPublique("https://mjagency.eu"), "lecture de sites : adresses internes refusées");
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -379,6 +432,7 @@ async function scenarioNuit() {
     await scenarioRoutines();
     await scenarioFinance();
     await scenarioNuit();
+    await scenarioCommercial();
   } catch (e) {
     console.error(e);
     failures++;
