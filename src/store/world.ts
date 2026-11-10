@@ -1,6 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
-import { AGENTS } from "@/data/seed";
+import { allAgents } from "@/data/catalog";
 import type { AgentState } from "@/data/types";
 
 /**
@@ -68,7 +68,7 @@ export interface Meeting {
   arrived: string[];
 }
 
-export type ApprovalType = "email" | "facture" | "devis" | "relance" | "rdv" | "question";
+export type ApprovalType = "email" | "facture" | "devis" | "relance" | "rdv" | "question" | "memoire" | "autre";
 
 export interface Approval {
   id: string;
@@ -88,7 +88,7 @@ export interface JournalEntry {
   at: number;
   agentId?: string;
   poleId?: string;
-  type: "action" | "echange" | "decision" | "mission" | "alerte" | "validation";
+  type: "action" | "echange" | "decision" | "mission" | "alerte" | "validation" | "recap";
   title: string;
   detail?: string;
 }
@@ -97,7 +97,7 @@ export interface TaskItem {
   id: string;
   agentId: string;
   title: string;
-  status: "queued" | "running" | "waiting_approval" | "done" | "failed";
+  status: "queued" | "running" | "waiting_tool" | "waiting_approval" | "waiting_founder" | "done" | "failed" | "cancelled";
   createdAt: number;
   updatedAt: number;
   missionId?: string;
@@ -108,7 +108,7 @@ export interface Mission {
   text: string;
   target: string;
   plan: { agentId: string; title: string }[];
-  status: "planification" | "en_cours" | "terminee";
+  status: "nouvelle" | "planification" | "en_cours" | "terminee" | "annulee";
   createdAt: number;
   synthese?: string;
 }
@@ -143,7 +143,7 @@ export const uid = (prefix: string): string => `${prefix}_${Date.now().toString(
 
 export const worldStore = createStore<WorldState>(() => ({
   agents: Object.fromEntries(
-    AGENTS.map((a) => [a.id, { id: a.id, state: "idle", task: null, talkWith: null, offlineReason: null, approvalId: null, since: Date.now() } satisfies AgentRuntime]),
+    allAgents().map((a) => [a.id, { id: a.id, state: "idle", task: null, talkWith: null, offlineReason: null, approvalId: null, since: Date.now() } satisfies AgentRuntime]),
   ),
   bubbles: {},
   conversations: {},
@@ -249,6 +249,17 @@ export const world = {
   meetingArrived(id: string, agentId: string): void {
     const m = get().meetings[id];
     if (m && !m.arrived.includes(agentId)) set((s) => ({ meetings: { ...s.meetings, [id]: { ...m, arrived: [...m.arrived, agentId] } } }));
+  },
+  /** aligne les agents « runtime » sur le catalogue (ajouts / suppressions d'agents) */
+  syncAgents(ids: string[]): void {
+    const cur = get().agents;
+    const next: Record<string, AgentRuntime> = {};
+    for (const id of ids) next[id] = cur[id] ?? { id, state: "idle", task: null, talkWith: null, offlineReason: null, approvalId: null, since: Date.now() };
+    set({ agents: next });
+  },
+  /** remplace en bloc (chargement initial depuis la base) */
+  hydrate(patch: Partial<Pick<WorldState, "agents" | "approvals" | "journal" | "tasks" | "missions">>): void {
+    set(patch);
   },
   setPresence(p: Record<string, number>): void {
     const cur = get().presence;

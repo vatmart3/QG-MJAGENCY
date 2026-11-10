@@ -1,11 +1,13 @@
-import type { AgentDef, Pole } from "./types";
+import type { AgentDef, MemoryEntry, Pole, Routine, Settings, WallStyleName } from "./types";
 
 /**
  * Seed local de la Phase 1. En Phase 2, ce contenu est inséré dans Supabase
  * (supabase/seed.sql) et devient éditable depuis Réglages.
  */
 
-export const POLES: Pole[] = [
+type RawPole = Omit<Pole, "position" | "style" | "actif" | "ordre">;
+
+const RAW_POLES: RawPole[] = [
   {
     id: "direction",
     nom: "Direction générale",
@@ -174,7 +176,7 @@ export const POLES: Pole[] = [
 ];
 
 /** Lieux communs : ils ont une zone sur la carte mais pas d'agents attitrés. */
-export const LIEUX: Pole[] = [
+const RAW_LIEUX: RawPole[] = [
   {
     id: "criee",
     nom: "La Criée",
@@ -232,7 +234,29 @@ export const LIEUX: Pole[] = [
   },
 ];
 
-const A = (a: AgentDef): AgentDef => a;
+/** Emplacements sur la carte (cf. src/world/slots.ts) */
+const POSITION: Record<string, string> = {
+  planning: "c2r1", accueil: "c3r1", data: "c4r1",
+  juridique: "c1r2", prospection: "c2r2", direction: "c3r2", criee: "c4r2", finance: "c5r2",
+  commercial: "c1r3", quai: "c2r3", douane: "c3r3", archives: "c4r3",
+  studio: "c1r4", tech: "c2r4", marketing: "c3r4", veille: "c4r4", succes: "c5r4",
+  labo: "c1r5", boutique: "c2r5", detente: "c3r5",
+};
+const STYLE: Record<string, WallStyleName> = { direction: "verre", criee: "verre", douane: "douane", quai: "back", detente: "back" };
+
+const withMap = (p: RawPole, i: number): Pole => ({ ...p, position: POSITION[p.id] ?? "c1r1", style: STYLE[p.id] ?? "muret", actif: true, ordre: i });
+
+export const POLES: Pole[] = RAW_POLES.map(withMap);
+export const LIEUX: Pole[] = RAW_LIEUX.map((p, i) => withMap(p, 100 + i));
+
+let ordre = 0;
+const A = (a: Omit<AgentDef, "promptSysteme" | "apparenceSeed" | "actif" | "ordre">): AgentDef => ({
+  ...a,
+  promptSysteme: "",
+  apparenceSeed: a.id,
+  actif: true,
+  ordre: ordre++,
+});
 
 const COMMUNS = ["ask_agent", "delegate_task", "post_to_journal", "finish_task", "read_company_memory", "write_agent_note"];
 
@@ -566,10 +590,60 @@ export const AGENTS: AgentDef[] = [
   }),
 ];
 
-export const AGENT_BY_ID: Record<string, AgentDef> = Object.fromEntries(AGENTS.map((a) => [a.id, a]));
-export const POLE_BY_ID: Record<string, Pole> = Object.fromEntries([...POLES, ...LIEUX].map((p) => [p.id, p]));
+/** Mémoire d'entreprise (§10), éditable dans Réglages. */
+export const MEMORY: MemoryEntry[] = [
+  ["entreprise", "MJAGENCY — agence web & marketing digital pour commerçants et indépendants."],
+  ["fondateurs", "Jérémy Vatuone & Matheis Farrieux."],
+  ["zone", "Sète, Frontignan, Balaruc, Bassin de Thau, Montpellier, Hérault."],
+  ["coordonnees_legales", "54 rue Marceau, 34200 Sète — SIRET 992 328 120 00017 — jeremyvatuonepro@gmail.com — 06 11 71 83 68 — TVA non applicable, art. 293 B du CGI."],
+  ["boite_mail", "Boîte mail officielle de l'agence (envois et réception) : mjagency.officiel@gmail.com"],
+  ["site", "mjagency.eu"],
+  ["autre_activite", "MJ E-comm (dropshipping Shopify), gérée à part de l'agence."],
+  ["offres", "Sites web (grille actuelle 490 € à 1 900 €+, montée en gamme vers le premium), gestion des réseaux sociaux, agents IA, logiciels sur mesure, cartes NFC d'avis Google, fidélité digitale sans appli, borne tactile sans contact, vitrine interactive."],
+  ["formules", "Paiement direct, abonnement mensuel, ou mixte — jamais abusif pour le client."],
+  ["objectif", "3 000 €/mois de rémunération chacun."],
+  ["regles_creation", "Jamais de rendu « template IA », casser les codes UX/UI, animations + 3D, leviers psychologiques de conversion, SEO local poussé, responsive soigné."],
+  ["chaine_production", "Charte → références → Claude Code → GitHub → Vercel → domaine."],
+  ["ton", "Direct, chaleureux, local, professionnel, tutoiement entre nous, vouvoiement des clients."],
+].map(([cle, contenu]) => ({ id: `mem_${cle}`, cle: cle!, contenu: contenu! }));
 
-export const agentsOfPole = (poleId: string): AgentDef[] => AGENTS.filter((a) => a.pole === poleId);
+const R = (r: Partial<Routine> & Pick<Routine, "id" | "nom" | "agentId" | "promptTache">): Routine => ({
+  mode: "fixe",
+  heure: "08:00",
+  intervalleMinutes: 15,
+  plageDebut: "08:00",
+  plageFin: "20:00",
+  jours: [],
+  jourDuMois: null,
+  actif: true,
+  ...r,
+});
+
+/** Routines automatiques (§8), fuseau Europe/Paris. Exécutées à partir de la Phase 5. */
+export const ROUTINES: Routine[] = [
+  R({ id: "rt_tri_mails", nom: "Tri des nouveaux mails", agentId: "lucie", mode: "intervalle", intervalleMinutes: 15, plageDebut: "08:00", plageFin: "20:00", promptTache: "Trie les nouveaux mails de la boîte officielle, résume-les et crée les tâches pour les bons pôles." }),
+  R({ id: "rt_sante_sites", nom: "Santé des sites clients", agentId: "jade", heure: "07:00", promptTache: "Vérifie que chaque site client répond (HTTP, temps de réponse, SSL, expiration du domaine) et alerte en cas de souci." }),
+  R({ id: "rt_echues", nom: "Factures échues → relances", agentId: "remi", heure: "07:15", promptTache: "Repère les factures échues et prépare les relances graduées (J+3, J+10, J+30 à valider)." }),
+  R({ id: "rt_recap", nom: "Récap quotidien", agentId: "diane", heure: "07:30", promptTache: "Rédige et envoie le récap quotidien aux destinataires définis dans Réglages, puis archive-le dans le Journal." }),
+  R({ id: "rt_standup", nom: "Stand-up dans La Criée", agentId: "clemence", heure: "08:30", promptTache: "Réunis les responsables de pôle dans La Criée, fais le point et publie le compte-rendu." }),
+  R({ id: "rt_leads", nom: "10 leads qualifiés + mails en brouillon", agentId: "hugo", heure: "10:00", jours: [1, 2, 3, 4, 5], promptTache: "Trouve 10 nouveaux commerces locaux, transmets-les à Inès pour scoring puis à Sacha pour les mails de prospection." }),
+  R({ id: "rt_relances_mails", nom: "Relances des mails sans réponse", agentId: "firmin", heure: "14:00", promptTache: "Repère les mails envoyés restés sans réponse et prépare une relance." }),
+  R({ id: "rt_relances_devis", nom: "Relances des devis en attente", agentId: "margaux", heure: "14:00", promptTache: "Relance les devis en attente de réponse." }),
+  R({ id: "rt_point_18h", nom: "Point de fin de journée", agentId: "diane", heure: "18:00", promptTache: "Fais un point court : ce qui est fait, ce qui attend une validation." }),
+  R({ id: "rt_plan_contenu", nom: "Plan de contenu de la semaine", agentId: "chloe", heure: "08:00", jours: [1], promptTache: "Prépare le plan de contenu Instagram / TikTok de la semaine." }),
+  R({ id: "rt_rapport_hebdo", nom: "Rapport hebdo", agentId: "diane", heure: "17:00", jours: [5], promptTache: "Rédige le rapport hebdo (KPIs, finances avec Héloïse, pipeline, veille avec Gabin)." }),
+  R({ id: "rt_cloture", nom: "Clôture du mois", agentId: "heloise", heure: "09:00", jourDuMois: 1, promptTache: "Clôture le mois : CA, encaissements, cotisations estimées (avec Agathe), prévisionnel." }),
+];
+
+export const DEFAULT_SETTINGS: Settings = {
+  budgetJour: 3,
+  budgetMois: 60,
+  allowlistEmails: ["jeremyvatuonepro@gmail.com", "mjagency.officiel@gmail.com"],
+  recapDestinataires: ["mjagency.officiel@gmail.com", "jeremyvatuonepro@gmail.com"],
+  signataire: "L'équipe MJAGENCY",
+  bavardageActif: true,
+  contraintesAgenda: { jeremy: "", matheis: "" },
+};
 
 /** Agents qui restent « de garde » la nuit. */
 export const ON_CALL = ["lucie", "jade"];

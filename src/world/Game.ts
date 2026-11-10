@@ -1,6 +1,6 @@
 import { Application, CanvasSource, Container, Rectangle, Sprite, Texture, TextureSource, type FederatedPointerEvent } from "pixi.js";
 import { Viewport } from "pixi-viewport";
-import { AGENTS, AGENT_BY_ID } from "@/data/seed";
+import { agentById, allAgents } from "@/data/catalog";
 import { parisHour } from "@/lib/paris";
 import { ui, uiStore } from "@/store/ui";
 import { world } from "@/store/world";
@@ -109,7 +109,7 @@ export class Game {
 
     // ---- textures procédurales
     const L = this.layout;
-    const atlas = buildAtlas([...propDefs(L.props), ...slabDefs(L.slabs, L.zones), ...miscDefs(), ...characterAtlasDefs(AGENTS.map((a) => a.id))]);
+    const atlas = buildAtlas([...propDefs(L.props), ...slabDefs(L.slabs, L.zones), ...miscDefs(), ...characterAtlasDefs(allAgents().map((a) => a.id))]);
     this.atlasSource = new CanvasSource({ resource: atlas.canvas, scaleMode: "nearest" });
     const frameData = new Map<string, AtlasFrame>();
     for (const [key, f] of atlas.frames) {
@@ -271,7 +271,7 @@ export class Game {
       z: this.frames("fx:z"),
       ring: this.frames("fx:ring"),
     };
-    for (const a of AGENTS) {
+    for (const a of allAgents()) {
       const v = new AgentView(a.id, svc, tex);
       this.agents.set(a.id, v);
       this.objects.addChild(v.container);
@@ -548,7 +548,7 @@ export class Game {
         if (a.isHidden) continue;
         const z = zoneAt(a.cellX, a.cellY);
         if (!z) continue;
-        const def = AGENT_BY_ID[a.id];
+        const def = agentById(a.id);
         if (z.walls === "back" || z.id === "criee" || z.id === "douane" || z.id === "archives" || def?.pole === z.id) presence[z.id] = (presence[z.id] ?? 0) + 1;
       }
       world.setPresence(presence);

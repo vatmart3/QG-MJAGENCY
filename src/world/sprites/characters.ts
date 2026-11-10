@@ -1,4 +1,4 @@
-import { AGENT_BY_ID, POLE_BY_ID } from "@/data/seed";
+import { agentById, poleById } from "@/data/catalog";
 import { hashString, mulberry32, pick } from "@/lib/rng";
 import { PixelCanvas, rgb, shade, mix, type Pen, type RGBA } from "./pixel";
 import type { AtlasEntryDef } from "./atlas";
@@ -41,11 +41,19 @@ export interface Appearance {
 }
 
 export function appearanceOf(agentId: string): Appearance {
-  const r = mulberry32(hashString(agentId) ^ 0x9e3779b9);
-  const agent = AGENT_BY_ID[agentId];
-  const pole = agent ? POLE_BY_ID[agent.pole] : undefined;
-  const base = rgb(pole?.couleur ?? "#888888");
-  // légère variation de teinte autour de la couleur du pôle
+  const agent = agentById(agentId);
+  return appearanceFromSeed(agent?.apparenceSeed || agentId, agent?.pole);
+}
+
+/** Apparence à partir d'une graine et d'un pôle (aperçu dans Réglages avant enregistrement). */
+export function appearanceFromSeed(seed: string, poleId?: string): Appearance {
+  const r = mulberry32(hashString(seed) ^ 0x9e3779b9);
+  const pole = poleById(poleId);
+  return appearanceBody(r, pole?.couleur);
+}
+
+function appearanceBody(r: () => number, couleur: string | undefined): Appearance {
+  const base = rgb(couleur ?? "#888888");
   const v = r();
   const shirt = v < 0.33 ? base : v < 0.66 ? shade(base, 0.15) : shade(base, -0.12);
   return {
@@ -345,10 +353,10 @@ export function characterAtlasDefs(agentIds: string[]): AtlasEntryDef[] {
 }
 
 /** Portrait agrandi pour les fiches (canvas 16×24, à agrandir en CSS « pixelated »). */
-export function renderPortrait(agentId: string, frame: FrameName = "F_walk0"): HTMLCanvasElement {
+export function renderPortrait(agentId: string, frame: FrameName = "F_walk0", override?: { seed?: string; pole?: string }): HTMLCanvasElement {
   const pc = new PixelCanvas(CHAR_W, CHAR_H);
   const p = pc.region(0, 0, CHAR_W, CHAR_H);
-  drawCharacter(p, appearanceOf(agentId), frame);
+  drawCharacter(p, override ? appearanceFromSeed(override.seed ?? agentId, override.pole) : appearanceOf(agentId), frame);
   p.outline(OUTLINE);
   return pc.toCanvas();
 }

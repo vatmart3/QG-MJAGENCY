@@ -1,5 +1,5 @@
 import { Container, Sprite, type Texture } from "pixi.js";
-import { AGENT_BY_ID } from "@/data/seed";
+import { agentById } from "@/data/catalog";
 import { CAFE_LINES } from "@/data/mockContent";
 import { world, type AgentRuntime } from "@/store/world";
 import { GW, cellCenter, idx, iso, type Facing, type Layout, type Spot } from "../layout";
@@ -547,5 +547,5 @@ function faceToward(x: number, y: number, tx: number, ty: number, cur: Facing): 
   return dy > 0 ? "y+" : "y-";
 }
 
-export const agentName = (id: string): string => AGENT_BY_ID[id]?.nom ?? id;
+export const agentName = (id: string): string => agentById(id)?.nom ?? id;
 export { cellCenter };

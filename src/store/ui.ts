@@ -10,6 +10,9 @@ export interface UIState {
   /** la ville est prête (textures générées) */
   ready: boolean;
   fps: number;
+  /** démo locale, ou état de la connexion temps réel à Supabase */
+  conn: "demo" | "connexion" | "direct" | "hors_ligne";
+  userEmail: string | null;
 }
 
 export const uiStore = createStore<UIState>(() => ({
@@ -19,6 +22,8 @@ export const uiStore = createStore<UIState>(() => ({
   zoom: 1,
   ready: false,
   fps: 0,
+  conn: "demo",
+  userEmail: null,
 }));
 
 export const useUI = <T>(selector: (s: UIState) => T): T => useStore(uiStore, selector);

@@ -1,4 +1,5 @@
-import { AGENTS, POLES, LIEUX } from "@/data/seed";
+import { agentsOfPole, allLieux, allPoles, catalogStore } from "@/data/catalog";
+import { slotById } from "./slots";
 import { hash2, mulberry32 } from "@/lib/rng";
 
 /**
@@ -128,9 +129,6 @@ export interface Layout {
 export const idx = (x: number, y: number): number => y * GW + x;
 export const inGrid = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < GW && y < GH;
 
-// Colonnes et rangées des pôles (zones 7×6, allées de 2 cases)
-const C = [5, 14, 23, 32, 41] as const;
-const R = { r1: 5, r2: 13, r3: 21, r4: 33, r5: 41 } as const;
 const ZW = 7;
 const ZH = 6;
 
@@ -142,30 +140,19 @@ interface ZonePlan {
   doorSide: Side;
 }
 
-const ZONE_PLAN: ZonePlan[] = [
-  // Rive nord
-  { id: "planning", x: C[1], y: R.r1, walls: "muret", doorSide: "y+" },
-  { id: "accueil", x: C[2], y: R.r1, walls: "muret", doorSide: "y+" },
-  { id: "data", x: C[3], y: R.r1, walls: "muret", doorSide: "y+" },
-  { id: "juridique", x: C[0], y: R.r2, walls: "muret", doorSide: "y+" },
-  { id: "prospection", x: C[1], y: R.r2, walls: "muret", doorSide: "y+" },
-  { id: "direction", x: C[2], y: R.r2, walls: "verre", doorSide: "y+" },
-  { id: "criee", x: C[3], y: R.r2, walls: "verre", doorSide: "y+" },
-  { id: "finance", x: C[4], y: R.r2, walls: "muret", doorSide: "y+" },
-  { id: "commercial", x: C[0], y: R.r3, walls: "muret", doorSide: "y+" },
-  { id: "quai", x: C[1], y: R.r3, walls: "back", doorSide: "y+" },
-  { id: "douane", x: C[2], y: R.r3, walls: "douane", doorSide: "x-" },
-  { id: "archives", x: C[3], y: R.r3, walls: "muret", doorSide: "y+" },
-  // Rive sud
-  { id: "studio", x: C[0], y: R.r4, walls: "muret", doorSide: "y-" },
-  { id: "tech", x: C[1], y: R.r4, walls: "muret", doorSide: "y-" },
-  { id: "marketing", x: C[2], y: R.r4, walls: "muret", doorSide: "y-" },
-  { id: "veille", x: C[3], y: R.r4, walls: "muret", doorSide: "y-" },
-  { id: "succes", x: C[4], y: R.r4, walls: "muret", doorSide: "y-" },
-  { id: "labo", x: C[0], y: R.r5, walls: "muret", doorSide: "y-" },
-  { id: "boutique", x: C[1], y: R.r5, walls: "muret", doorSide: "y-" },
-  { id: "detente", x: C[2], y: R.r5, walls: "back", doorSide: "y-" },
-];
+/** Plan des zones à partir du catalogue (pôles + lieux actifs, chacun sur son emplacement). */
+function zonePlan(): ZonePlan[] {
+  const used = new Set<string>();
+  const out: ZonePlan[] = [];
+  for (const p of [...allPoles(), ...allLieux()]) {
+    const slot = slotById(p.position);
+    if (!slot || used.has(slot.id)) continue;
+    used.add(slot.id);
+    const doorSide: Side = p.id === "douane" ? "x-" : slot.rive === "nord" ? "y+" : "y-";
+    out.push({ id: p.id, x: slot.x, y: slot.y, walls: p.style, doorSide });
+  }
+  return out;
+}
 
 const CANAL_Y = [29, 30];
 const QUAY_N = [27, 28];
@@ -176,12 +163,14 @@ const V_PATHS = [12, 13, 21, 22, 30, 31, 39, 40];
 export const PHARE = { x: 52, y: 6 };
 const HOME_ROW = 47;
 
-let cached: Layout | null = null;
+let cached: { key: string; layout: Layout } | null = null;
 
+/** Plan de l'île, recalculé quand la structure du catalogue change (pôle ajouté, agent déplacé…). */
 export function getLayout(): Layout {
-  if (cached) return cached;
-  cached = buildLayout();
-  return cached;
+  const key = catalogStore.getState().structure;
+  if (cached && cached.key === key) return cached.layout;
+  cached = { key, layout: buildLayout() };
+  return cached.layout;
 }
 
 function buildLayout(): Layout {
@@ -193,6 +182,7 @@ function buildLayout(): Layout {
   const spots: Spot[] = [];
   const deskOf: Record<string, Spot> = {};
   const rng = mulberry32(20260911);
+  const ZONE_PLAN = zonePlan();
 
   // ---- 1. Forme de l'île : superellipse + emprise des zones + éperon du phare
   const cx = GW / 2;
@@ -248,7 +238,7 @@ function buildLayout(): Layout {
   // ---- 3. Zones (pôles + lieux)
   const zones: Zone[] = [];
   const zoneIndex: Record<string, number> = {};
-  const poleInfo = Object.fromEntries([...POLES, ...LIEUX].map((p) => [p.id, p]));
+  const poleInfo = Object.fromEntries([...allPoles(), ...allLieux()].map((p) => [p.id, p]));
   for (const zp of ZONE_PLAN) {
     const info = poleInfo[zp.id];
     if (!info) throw new Error(`Zone sans pôle : ${zp.id}`);
@@ -300,13 +290,13 @@ function buildLayout(): Layout {
 
   for (const z of zones) {
     const { x: x0, y: y0 } = z;
-    const members = AGENTS.filter((a) => a.pole === z.id);
+    const members = agentsOfPole(z.id);
     switch (z.id) {
       case "direction": {
         // verrière : deux grands bureaux + salon + écran
         const desks = [x0 + 2, x0 + 4];
-        members.forEach((a, i) => {
-          const dx = desks[i] ?? x0 + 1 + i;
+        members.slice(0, desks.length).forEach((a, i) => {
+          const dx = desks[i]!;
           add({ kind: "desk", x: dx, y: y0 + 2, blocks: true, zone: z.id, variant: 1 });
           add({ kind: "chair", x: dx, y: y0 + 1, blocks: false, zone: z.id, facing: "y+", zBias: -2 });
           const s: Spot = { x: dx, y: y0 + 1, facing: "y+", pose: "sit", kind: "desk" };

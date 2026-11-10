@@ -1,4 +1,5 @@
-import { AGENTS, AGENT_BY_ID, ON_CALL } from "@/data/seed";
+import { agentById, allAgents } from "@/data/catalog";
+import { ON_CALL } from "@/data/seed";
 import { APPROVALS, CHATTER, MISSION_ROUTES, STANDUP_LINES, TALKS, type ScriptedTalk } from "@/data/mockContent";
 import { parisHour } from "@/lib/paris";
 import { mulberry32 } from "@/lib/rng";
@@ -22,6 +23,14 @@ interface Timer {
   fn: () => void;
 }
 
+/** Écritures réelles en base (mode « direct ») — implémenté par src/sync/live.ts. */
+export interface LiveAdapter {
+  email: string;
+  insertMission(texte: string, cible: string): Promise<void>;
+  decideApproval(id: string, decision: { statut: "approuve" | "modifie" | "refuse"; motif?: string; apercu?: string; regle?: { agentId: string; type: string } }): Promise<void>;
+  log(entry: { type: string; titre: string; contenu?: string; agentId?: string; poleId?: string }): Promise<void>;
+}
+
 class Director {
   private timer: ReturnType<typeof setInterval> | null = null;
   private timers: Timer[] = [];
@@ -31,15 +40,29 @@ class Director {
   private lastStandupDay = -1;
   private lastLineAt: Record<string, number> = {};
   private started = false;
+  /** demo = moteur simulé dans le navigateur ; live = la base fait foi, on ne joue que les bulles */
+  private mode: "demo" | "live" = "demo";
+  private live: LiveAdapter | null = null;
+  private convActivity: Record<string, number> = {};
+  private bootstrapped = false;
 
   hour(): number {
     return world.get().clockOverride ?? parisHour();
   }
 
-  start(): void {
+  get isLive(): boolean {
+    return this.mode === "live";
+  }
+
+  start(mode: "demo" | "live" = "demo", live?: LiveAdapter): void {
     if (this.started) return;
     this.started = true;
-    this.bootstrap();
+    this.mode = mode;
+    this.live = live ?? null;
+    if (mode === "demo" && !this.bootstrapped) {
+      this.bootstrapped = true;
+      this.bootstrap();
+    }
     this.timer = setInterval(() => this.tick(), 1000);
   }
 
@@ -70,13 +93,13 @@ class Director {
       [-1.1, "victor", "Devis D-2026-0041 préparé pour la Fromagerie Saint-Clair"],
     ];
     for (const [dh, agentId, title] of past) {
-      world.log({ at: now + dh * 3600_000, agentId, poleId: AGENT_BY_ID[agentId]?.pole, type: "action", title });
+      world.log({ at: now + dh * 3600_000, agentId, poleId: agentById(agentId)?.pole, type: "action", title });
     }
     // éléments déjà en Douane
     for (const t of APPROVALS.slice(0, 4)) {
       world.addApproval({ agentId: t.agentId, type: t.type, title: t.title, to: t.to, subject: t.subject, preview: t.preview, delivered: true });
     }
-    for (const a of AGENTS) {
+    for (const a of allAgents()) {
       if (!working && !ON_CALL.includes(a.id)) {
         world.patchAgent(a.id, { state: "offline", offlineReason: "nuit" });
         continue;
@@ -100,8 +123,14 @@ class Director {
     this.timers = this.timers.filter((t) => t.at > now);
     for (const t of due) t.fn();
 
+    if (this.mode === "live") {
+      this.runConversations(now);
+      this.runMeetings(now);
+      return;
+    }
+
     // nuit / jour
-    for (const a of AGENTS) {
+    for (const a of allAgents()) {
       const rt = s.agents[a.id];
       if (!rt) continue;
       const onCall = ON_CALL.includes(a.id);
@@ -116,7 +145,7 @@ class Director {
     }
 
     // tâches
-    for (const a of AGENTS) {
+    for (const a of allAgents()) {
       const rt = world.get().agents[a.id];
       if (!rt) continue;
       if (rt.state === "working" && rt.task) {
@@ -150,7 +179,7 @@ class Director {
       this.lastStandupDay = day;
       this.startMeeting(
         "Stand-up du matin",
-        AGENTS.filter((a) => a.responsable || a.id === "clemence").map((a) => a.id).slice(0, 10),
+        allAgents().filter((a) => a.responsable || a.id === "clemence").map((a) => a.id).slice(0, 10),
         STANDUP_LINES.map(([from, text]) => ({ from, text })),
       );
     }
@@ -171,9 +200,9 @@ class Director {
 
   // ---------------------------------------------------------------- tâches
   startTask(agentId: string, initial = false, title?: string, opts?: { missionId?: string; important?: boolean; durationMs?: number }): void {
-    const a = AGENT_BY_ID[agentId];
+    const a = agentById(agentId);
     if (!a) return;
-    const t = title ?? pickOne(a.taches);
+    const t = title ?? (a.taches.length ? pickOne(a.taches) : `${a.role || "Travail"} — dossier du jour`);
     const now = Date.now();
     const dur = opts?.durationMs ?? 35_000 + rand() * 70_000;
     const startedAt = initial ? now - rand() * dur * 0.6 : now;
@@ -193,7 +222,7 @@ class Director {
 
   private finishTask(agentId: string): void {
     const rt = world.get().agents[agentId];
-    const a = AGENT_BY_ID[agentId];
+    const a = agentById(agentId);
     if (!rt || !rt.task || !a) return;
     const task = rt.task;
     const pendingCount = world.get().approvals.length;
@@ -247,7 +276,7 @@ class Director {
     world.setConversation({ id, a: t.a, b: t.b, lines, phase: "gathering", idx: 0, startedAt: Date.now(), ready: false });
     world.patchAgent(t.a, { state: "talking", talkWith: t.b });
     world.patchAgent(t.b, { state: "talking", talkWith: t.a });
-    this.later(1, () => world.log({ agentId: t.a, poleId: AGENT_BY_ID[t.a]?.pole, type: "echange", title: t.journal, detail: t.lines.map(([w, x]) => `${AGENT_BY_ID[w]?.nom} : ${x}`).join("\n") }));
+    this.later(1, () => world.log({ agentId: t.a, poleId: agentById(t.a)?.pole, type: "echange", title: t.journal, detail: t.lines.map(([w, x]) => `${agentById(w)?.nom} : ${x}`).join("\n") }));
   }
 
   private runConversations(now: number): void {
@@ -261,12 +290,18 @@ class Director {
         if (now - (this.lastLineAt[c.id] ?? 0) < LINE_MS) continue;
         const line = c.lines[c.idx];
         if (!line) {
+          if (this.mode === "live") {
+            // on attend d'éventuelles répliques encore en route
+            if (now - (this.convActivity[c.id] ?? 0) > 9000) world.dropConversation(c.id);
+            continue;
+          }
           world.dropConversation(c.id);
           for (const id of [c.a, c.b]) this.resume(id);
           continue;
         }
         world.say(line.from, line.text, LINE_MS - 150);
         this.lastLineAt[c.id] = now;
+        this.convActivity[c.id] = now;
         world.setConversation({ ...c, idx: c.idx + 1 });
       }
     }
@@ -279,6 +314,22 @@ class Director {
     else world.patchAgent(id, { state: "idle", talkWith: null, task: null });
   }
 
+  /** Mode direct : un message entre agents (table agent_messages) devient une bulle dans la ville. */
+  playMessage(m: { conversationId: string | null; from: string | null; to: string | null; text: string }): void {
+    if (!m.from || !m.text) return;
+    if (!m.to) {
+      world.say(m.from, m.text, 3800);
+      return;
+    }
+    const pairKey = [m.from, m.to].sort().join("+");
+    const id = m.conversationId ?? `pair_${pairKey}`;
+    const cur = world.get().conversations[id];
+    const line = { from: m.from, text: m.text };
+    this.convActivity[id] = Date.now();
+    if (cur) world.setConversation({ ...cur, lines: [...cur.lines, line] });
+    else world.setConversation({ id, a: m.from, b: m.to, lines: [line], phase: "playing", idx: 0, startedAt: Date.now(), ready: true });
+  }
+
   // ---------------------------------------------------------------- réunions
   startMeeting(title: string, participants: string[], lines: Line[], onDone?: () => void): string {
     const id = uid("m");
@@ -286,7 +337,7 @@ class Director {
     const m: Meeting = { id, title, participants: present, lines, phase: "gathering", idx: 0, startedAt: Date.now(), arrived: [] };
     world.setMeeting(m);
     for (const p of present) world.patchAgent(p, { state: "meeting", talkWith: null });
-    world.log({ type: "decision", poleId: "criee", title: `Réunion dans La Criée : ${title}`, detail: present.map((p) => AGENT_BY_ID[p]?.nom).join(", ") });
+    world.log({ type: "decision", poleId: "criee", title: `Réunion dans La Criée : ${title}`, detail: present.map((p) => agentById(p)?.nom).join(", ") });
     if (onDone) this.meetingDone[id] = onDone;
     return id;
   }
@@ -327,9 +378,19 @@ class Director {
     const clean = text.trim();
     if (!clean) return;
     const mention = clean.match(/@([\p{L}]+)/u);
-    const tagged = mention ? AGENTS.find((a) => norm(a.nom) === norm(mention[1]!)) : undefined;
+    const tagged = mention ? allAgents().find((a) => norm(a.nom) === norm(mention[1]!)) : undefined;
     const missionId = uid("mi");
     const short = shorten(clean.replace(/@[\p{L}]+\s*/u, ""), 48);
+
+    if (this.mode === "live" && this.live) {
+      const target = tagged ?? agentById("marius");
+      const cible = target?.id ?? "marius";
+      void this.live.insertMission(clean, cible).then(
+        () => world.say(cible, cible === "marius" ? "Reçu. Mission enregistrée, je la planifie dès que le moteur est branché." : "Bien reçu, c'est noté !", 4200),
+        (e: unknown) => world.say(cible, `Oups, la mission n'a pas été enregistrée (${e instanceof Error ? e.message : "erreur"}).`, 5000),
+      );
+      return;
+    }
 
     if (tagged && tagged.id !== "marius") {
       world.addMission({ id: missionId, text: clean, target: tagged.id, plan: [{ agentId: tagged.id, title: short }], status: "en_cours", createdAt: Date.now() });
@@ -360,7 +421,7 @@ class Director {
       world.patchMission(missionId, { plan, status: "en_cours" });
       world.log({
         agentId: "marius", poleId: "direction", type: "decision", title: `Plan de Marius : ${plan.length} sous-tâches`,
-        detail: plan.map((p) => `• ${AGENT_BY_ID[p.agentId]?.nom} — ${p.title}`).join("\n"),
+        detail: plan.map((p) => `• ${agentById(p.agentId)?.nom} — ${p.title}`).join("\n"),
       });
       for (const m of members) if (world.get().agents[m]?.state === "offline") world.patchAgent(m, { state: "idle", offlineReason: null });
       const lines: Line[] = [
@@ -371,7 +432,7 @@ class Director {
       this.missionPending[missionId] = new Set(members);
       world.patchAgent("marius", { task: null });
       this.startMeeting(`Mission — ${short}`, ["marius", ...members], lines, () => {
-        world.patchAgent("marius", { state: "working", task: { id: uid("t"), title: `Suivi : ${short}`, startedAt: Date.now(), steps: plan.map((p) => ({ label: `${AGENT_BY_ID[p.agentId]?.nom} — ${p.title}`, done: false })), missionId } });
+        world.patchAgent("marius", { state: "working", task: { id: uid("t"), title: `Suivi : ${short}`, startedAt: Date.now(), steps: plan.map((p) => ({ label: `${agentById(p.agentId)?.nom} — ${p.title}`, done: false })), missionId } });
         this.taskEnd.marius = Date.now() + 10 * 60_000;
         for (const p of plan) {
           this.later(600 + rand() * 1200, () => this.startTask(p.agentId, false, p.title, { missionId, important: true, durationMs: 26_000 + rand() * 22_000 }));
@@ -397,7 +458,7 @@ class Director {
     if (pending.size === 0) {
       delete this.missionPending[missionId];
       const synth = mission
-        ? `Mission « ${shorten(mission.text, 60)} » terminée. ${mission.plan.map((p) => `${AGENT_BY_ID[p.agentId]?.nom} : ${p.title}`).join(" · ") || "Tâche réalisée."}`
+        ? `Mission « ${shorten(mission.text, 60)} » terminée. ${mission.plan.map((p) => `${agentById(p.agentId)?.nom} : ${p.title}`).join(" · ") || "Tâche réalisée."}`
         : "Mission terminée.";
       world.patchMission(missionId, { status: "terminee", synthese: synth });
       world.log({ agentId: mission?.target ?? "marius", poleId: "direction", type: "mission", title: "Synthèse livrée aux fondateurs", detail: synth });
@@ -412,10 +473,24 @@ class Director {
   }
 
   // ---------------------------------------------------------------- Douane
-  approve(id: string, mode: "envoye" | "modifie" | "regle" = "envoye"): void {
+  approve(id: string, mode: "envoye" | "modifie" | "regle" = "envoye", apercu?: string): void {
+    if (this.mode === "live" && this.live) {
+      const ap = world.get().approvals.find((a) => a.id === id);
+      if (!ap) return;
+      world.removeApproval(id);
+      void this.live
+        .decideApproval(id, {
+          statut: mode === "modifie" ? "modifie" : "approuve",
+          apercu: mode === "modifie" ? apercu : undefined,
+          regle: mode === "regle" ? { agentId: ap.agentId, type: ap.type } : undefined,
+        })
+        .catch(() => world.hydrate({ approvals: [...world.get().approvals, ap] }));
+      if (ap.agentId) world.say(ap.agentId, ap.type === "question" ? "Merci, je m'adapte !" : "Validé ✅ (envoi réel en Phase 4)", 3200);
+      return;
+    }
     const ap = world.removeApproval(id);
     if (!ap) return;
-    const a = AGENT_BY_ID[ap.agentId];
+    const a = agentById(ap.agentId);
     const verb = ap.type === "question" ? "Réponse transmise" : mode === "modifie" ? "Modifié puis envoyé" : "Validé et envoyé";
     world.log({ agentId: ap.agentId, poleId: a?.pole, type: "validation", title: `${verb} : ${ap.title}` });
     if (mode === "regle" && a) world.log({ agentId: ap.agentId, poleId: a.pole, type: "decision", title: `Règle d'autonomie ajoutée : toujours autoriser « ${typeLabel(ap.type)} » de ${a.nom}` });
@@ -425,9 +500,17 @@ class Director {
   }
 
   refuse(id: string, motif: string): void {
+    if (this.mode === "live" && this.live) {
+      const ap = world.get().approvals.find((a) => a.id === id);
+      if (!ap) return;
+      world.removeApproval(id);
+      void this.live.decideApproval(id, { statut: "refuse", motif }).catch(() => world.hydrate({ approvals: [...world.get().approvals, ap] }));
+      if (ap.agentId) world.say(ap.agentId, "Compris, je corrige.", 3000);
+      return;
+    }
     const ap = world.removeApproval(id);
     if (!ap) return;
-    const a = AGENT_BY_ID[ap.agentId];
+    const a = agentById(ap.agentId);
     world.log({ agentId: ap.agentId, poleId: a?.pole, type: "validation", title: `Refusé : ${ap.title}`, detail: motif ? `Motif : ${motif}` : undefined });
     const rt = world.get().agents[ap.agentId];
     if (rt && rt.state !== "offline") world.say(ap.agentId, "Compris, je corrige.", 3000);
@@ -436,9 +519,15 @@ class Director {
 
   // ---------------------------------------------------------------- chat direct
   chat(agentId: string, text: string): void {
-    const a = AGENT_BY_ID[agentId];
+    const a = agentById(agentId);
     if (!a || !text.trim()) return;
     world.pushChat(agentId, { from: "fondateur", text: text.trim(), at: Date.now() });
+    if (this.mode === "live") {
+      this.later(900, () =>
+        world.pushChat(agentId, { from: "agent", text: "Message bien reçu. Je pourrai te répondre pour de vrai quand le moteur d'agents sera branché (Phase 3).", at: Date.now() }),
+      );
+      return;
+    }
     const rt = world.get().agents[agentId];
     if (rt && rt.state !== "offline") world.say(agentId, "Je regarde ça…", 1800);
     this.later(1300 + rand() * 900, () => {
@@ -466,7 +555,7 @@ function shorten(s: string, n: number): string {
 }
 
 function subtaskTitle(agentId: string, short: string): string {
-  const a = AGENT_BY_ID[agentId];
+  const a = agentById(agentId);
   const role = a?.role ?? "Contribution";
   const map: Record<string, string> = {
     elsa: "Argumentaire produit", mila: "Accroches et textes", victor: "Grille tarifaire et devis type", margaux: "Mise à jour du pipeline",
@@ -481,7 +570,7 @@ function subtaskTitle(agentId: string, short: string): string {
 }
 
 function stepsFor(agentId: string, title: string): TaskRef["steps"] {
-  const a = AGENT_BY_ID[agentId];
+  const a = agentById(agentId);
   const base = a?.sortant
     ? ["Lire le contexte", "Rédiger le brouillon", "Relire le ton MJAGENCY", "Préparer pour la Douane"]
     : ["Lire le contexte", "Rassembler les données", "Analyser", "Rédiger la synthèse"];

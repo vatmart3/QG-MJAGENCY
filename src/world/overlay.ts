@@ -1,4 +1,4 @@
-import { AGENT_BY_ID, POLE_BY_ID, agentsOfPole } from "@/data/seed";
+import { agentById, agentsOfPole, poleById } from "@/data/catalog";
 import { STATE_ICON, STATE_LABEL } from "@/data/types";
 import type { AgentRuntime, Bubble } from "@/store/world";
 import { iso, type Layout } from "./layout";
@@ -40,7 +40,7 @@ export class Overlay {
     host.appendChild(root);
     this.root = root;
     for (const z of layout.zones) {
-      const pole = POLE_BY_ID[z.id];
+      const pole = poleById(z.id);
       if (!pole) continue;
       const el = document.createElement("button");
       el.type = "button";
@@ -109,7 +109,7 @@ export class Overlay {
       if (l.zone === "phare") text = pending > 0 ? `${pending} en attente` : "calme";
       else if (l.zone === "douane") text = `${pending} à valider`;
       else {
-        const pole = POLE_BY_ID[l.zone];
+        const pole = poleById(l.zone);
         if (pole?.kind === "pole") text = `${presence[l.zone] ?? 0}/${agentsOfPole(l.zone).length} au poste`;
         else text = `${presence[l.zone] ?? 0} présent${(presence[l.zone] ?? 0) > 1 ? "s" : ""}`;
       }
@@ -132,9 +132,9 @@ export class Overlay {
         be?.el.remove();
         const el = document.createElement("div");
         el.className = "speech";
-        el.innerHTML = `<b>${AGENT_BY_ID[agentId]?.nom ?? ""}</b><span></span>`;
+        el.innerHTML = `<b>${agentById(agentId)?.nom ?? ""}</b><span></span>`;
         (el.querySelector("span") as HTMLSpanElement).textContent = b.text;
-        el.style.setProperty("--pole", POLE_BY_ID[AGENT_BY_ID[agentId]?.pole ?? ""]?.couleur ?? "#888");
+        el.style.setProperty("--pole", poleById(agentById(agentId)?.pole ?? "")?.couleur ?? "#888");
         this.root.appendChild(el);
         be = { el, id: b.id };
         this.bubbles.set(agentId, be);
@@ -154,7 +154,7 @@ export class Overlay {
     if (hover) {
       const head = heads.get(hover);
       const rt = agents[hover];
-      const a = AGENT_BY_ID[hover];
+      const a = agentById(hover);
       if (head && rt && a && !head.hidden) {
         const key = `${hover}|${rt.state}|${rt.task?.title ?? ""}`;
         if (key !== this.lastTooltip) {
