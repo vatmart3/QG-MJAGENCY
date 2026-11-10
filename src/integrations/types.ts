@@ -94,6 +94,8 @@ export interface Services {
   notifier?(n: { titre: string; corps: string; url: string; tag?: string }): Promise<number>;
   /** message WhatsApp à un fondateur (absent si WhatsApp n'est pas configuré) */
   whatsapp?(a: string, texte: string): Promise<void>;
+  /** message Telegram (HTML simple) à un chat relié ; `silencieux` : sans sonnerie */
+  telegram?(chat: string, texteHtml: string, silencieux: boolean): Promise<void>;
 }
 
 /** Extrait l'adresse d'un en-tête « Nom <adresse> ». */

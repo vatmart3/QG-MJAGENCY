@@ -3,6 +3,7 @@ import { supabaseCommercialDb, type CommercialDb } from "@/commercial/db";
 import { supabaseFinanceDb, type FinanceDb } from "@/finance/db";
 import { lireBoutique, type ReglagesBoutique } from "@/boutique/shopify";
 import { supabaseTechDb, type TechDb } from "@/tech/db";
+import { lireTelegram, type ChatTelegram } from "@/integrations/telegram";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentState } from "@/data/types";
 import type { TaskStep } from "@/store/world";
@@ -88,6 +89,9 @@ export interface EMission {
   /** numéro WhatsApp du fondateur si la mission est venue de WhatsApp */
   whatsapp?: string | null;
   whatsapp_envoye_le?: string | null;
+  /** chat Telegram du fondateur si la mission est venue de Telegram */
+  telegram?: string | null;
+  telegram_envoye_le?: string | null;
 }
 
 export interface EApproval {
@@ -186,8 +190,12 @@ export interface EngineDb {
   newMissions(): Promise<EMission[]>;
   mission(id: string): Promise<EMission | null>;
   updateMission(id: string, patch: Partial<EMission>): Promise<void>;
-  /** missions venues de WhatsApp, terminées ou annulées, dont le résultat n'est pas encore renvoyé */
-  missionsWhatsApp(): Promise<EMission[]>;
+  /** missions venues de WhatsApp ou Telegram, terminées ou annulées, dont le résultat n'est pas encore renvoyé */
+  missionsARenvoyer(): Promise<EMission[]>;
+  /** chats Telegram reliés et niveau des notifications push */
+  canaux(): Promise<{ telegram: Record<string, ChatTelegram>; niveau: "tout" | "important" }>;
+  /** toutes les entrées du Journal depuis une date (ordre chronologique) */
+  journalDepuis(iso: string, limit: number): Promise<{ type: string; titre: string; contenu: string | null; agent_id: string | null; pole_id: string | null; cree_le: string }[]>;
 
   insertTask(row: Partial<ETask> & { titre: string }): Promise<ETask>;
   updateTask(id: string, patch: Partial<ETask>): Promise<void>;
@@ -313,8 +321,22 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     async agentsToRelax(before) {
       return rows(await sb.from("agents").select("*").in("etat", ["done", "talking", "meeting"]).lt("maj_le", before));
     },
-    async missionsWhatsApp() {
-      return rows(await sb.from("missions").select("*").not("whatsapp", "is", null).is("whatsapp_envoye_le", null).in("statut", ["terminee", "annulee"]).limit(10));
+    async missionsARenvoyer() {
+      return rows(
+        await sb
+          .from("missions")
+          .select("*")
+          .in("statut", ["terminee", "annulee"])
+          .or("and(whatsapp.not.is.null,whatsapp_envoye_le.is.null),and(telegram.not.is.null,telegram_envoye_le.is.null)")
+          .limit(10),
+      );
+    },
+    async canaux() {
+      const s = ok(await sb.from("settings").select("telegram, notifications").eq("id", 1).maybeSingle());
+      return { telegram: lireTelegram(s?.telegram).chats, niveau: (s?.notifications as { niveau?: string } | null)?.niveau === "important" ? "important" : "tout" };
+    },
+    async journalDepuis(iso, limit) {
+      return rows(await sb.from("journal").select("type, titre, contenu, agent_id, pole_id, cree_le").gt("cree_le", iso).order("cree_le").limit(limit));
     },
     async newMissions() {
       return rows(await sb.from("missions").select("*").eq("statut", "nouvelle").order("cree_le"));

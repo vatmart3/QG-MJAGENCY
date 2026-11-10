@@ -19,6 +19,7 @@ export const pushConfigure = () => !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
 /** Envoie à tous les appareils abonnés ; retire ceux qui n'existent plus. Renvoie le nombre d'envois réussis. */
 export async function envoyerPush(admin: SupabaseClient, n: Notif, email?: string): Promise<number> {
   if (!pushConfigure()) return 0;
+  // (le niveau « tout » / « important » est appliqué par le moteur avant l'envoi)
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:mjagency.officiel@gmail.com", process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY!);
   let q = admin.from("push_subscriptions").select("endpoint, p256dh, auth");
   if (email) q = q.eq("email", email);

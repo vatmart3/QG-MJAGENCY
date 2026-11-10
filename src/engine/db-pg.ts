@@ -3,6 +3,7 @@ import type { CommercialDb, Lead, Opportunity } from "@/commercial/db";
 import { lireProspection } from "@/commercial/prospection";
 import type { FinanceDb } from "@/finance/db";
 import { lireBoutique } from "@/boutique/shopify";
+import { lireTelegram } from "@/integrations/telegram";
 import type { SiteSuivi, TechDb } from "@/tech/db";
 import { lireFinance, num, type Client, type Invoice, type Ligne, type Payment, type Quote, type Subscription } from "@/finance/types";
 import { AUTONOMIE_DEFAUT, lireAutonomie, type ERoutine, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
@@ -86,8 +87,15 @@ export function pgEngineDb(pool: Pool): EngineDb {
     async agentsToRelax(before) {
       return (await q("select * from public.agents where etat in ('done','talking','meeting') and maj_le < $1", [before])).map(normAgent);
     },
-    async missionsWhatsApp() {
-      return (await q("select * from public.missions where whatsapp is not null and whatsapp_envoye_le is null and statut in ('terminee', 'annulee') limit 10")) as unknown as EMission[];
+    async missionsARenvoyer() {
+      return (await q("select * from public.missions where statut in ('terminee', 'annulee') and ((whatsapp is not null and whatsapp_envoye_le is null) or (telegram is not null and telegram_envoye_le is null)) limit 10")) as unknown as EMission[];
+    },
+    async canaux() {
+      const [s] = await q<{ telegram: unknown; notifications: { niveau?: string } | null }>("select telegram, notifications from public.settings where id = 1");
+      return { telegram: lireTelegram(s?.telegram).chats, niveau: s?.notifications?.niveau === "important" ? "important" : "tout" };
+    },
+    async journalDepuis(iso, limit) {
+      return (await q<{ type: string; titre: string; contenu: string | null; agent_id: string | null; pole_id: string | null; cree_le: Date }>("select type, titre, contenu, agent_id, pole_id, cree_le from public.journal where cree_le > $1 order by cree_le limit $2", [iso, limit])).map((r) => ({ ...r, cree_le: new Date(r.cree_le).toISOString() }));
     },
     async newMissions() {
       return (await q("select * from public.missions where statut = 'nouvelle' order by cree_le")) as unknown as EMission[];

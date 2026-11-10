@@ -93,6 +93,8 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
       attente: [],
       resultats_en_suspens: [],
     });
+    // le début de la tâche apparaît au Journal (et dans les notifications « quel agent fait quoi »)
+    await db.insertJournal({ type: "action", titre: `▶️ ${agent.nom} commence : ${task.titre}`.slice(0, 300), agent_id: agent.id, pole_id: agent.pole_id });
   }
   if (run.iterations >= LIMITS.maxIterations) return fail(db, task, agent, `Plus de ${LIMITS.maxIterations} itérations d'outils sans terminer.`);
 

@@ -25,6 +25,7 @@ import { kpis, kpisTexte } from "@/engine/kpis";
 import { notifierFondateurs } from "@/engine/notifications";
 import { createHmac } from "node:crypto";
 import { interpreter, messagesEntrants, normNumero, signatureValide } from "@/integrations/whatsapp";
+import { messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -479,17 +480,25 @@ async function scenarioAtelierBoutique() {
   const usage1 = Number((await q<{ n: string }>("select count(*) as n from public.usage"))[0]!.n);
   check(usage0 === usage1, "surveillance, audit, boutique et KPIs : aucun appel à l'IA");
 
-  // notifications push : nouvelles demandes en Douane et alertes depuis le dernier passage, une seule fois
-  const recues: { titre: string; url: string }[] = [];
-  const avecPush = { ...demoServices, notifier: async (n: { titre: string; url: string }) => (recues.push(n), 1) };
-  const n0 = new Date();
-  await notifierFondateurs(db, avecPush, n0);
+  // notifications : « quel agent fait quoi » (Telegram, push), groupées, une seule fois
+  await pool.query("delete from public.engine_kv where cle = 'push.dernier'");
+  await pool.query(`update public.settings set telegram = '{"chats": {"111": {"email": "jeremyvatuonepro@gmail.com", "niveau": "tout"}, "222": {"email": "matheis@example.com", "niveau": "important"}}, "appairages": {}}', notifications = '{"niveau": "important"}' where id = 1`);
+  const recues: { titre: string; corps: string; url: string }[] = [];
+  const tg: { chat: string; t: string; silencieux: boolean }[] = [];
+  const avecPush = { ...demoServices, notifier: async (n: { titre: string; corps: string; url: string }) => (recues.push(n), 1), telegram: async (chat: string, t: string, silencieux: boolean) => void tg.push({ chat, t, silencieux }) };
+  await notifierFondateurs(db, avecPush, new Date());
+  await new Promise((r) => setTimeout(r, 20));
+  await db.insertJournal({ type: "action", titre: "▶️ Noé commence : Répondre : Devis site La Marée", agent_id: "noe", pole_id: "accueil" });
+  await notifierFondateurs(db, avecPush, new Date());
+  check(tg.length === 1 && tg[0]!.chat === "111" && tg[0]!.silencieux && tg[0]!.t.includes("<b>Noé</b>") && tg[0]!.t.includes("commence : Répondre") && !tg[0]!.t.includes("Noé commence") && recues.length === 0, `Telegram « tout » : nom de l'agent + ce qu'il fait, sans sonnerie (${tg[0]?.t})`);
   await new Promise((r) => setTimeout(r, 20));
   await pool.query("insert into public.approvals (agent_id, type_action, titre, apercu, statut) values ('noe', 'email', 'Réponse à La Marée', 'Bonjour…', 'en_attente')");
   await db.insertJournal({ type: "alerte", titre: "🚨 Site test : en panne", agent_id: "jade" });
   await notifierFondateurs(db, avecPush, new Date());
   await notifierFondateurs(db, avecPush, new Date(Date.now() + 1000));
-  check(recues.length === 2 && recues[0]!.url === "/douane" && recues[1]!.titre.includes("Site test"), `notifications : Douane + alerte, une seule fois (${recues.map((r) => r.titre).join(" | ")})`);
+  const sonnent = tg.slice(1);
+  check(sonnent.length === 2 && sonnent.every((x) => !x.silencieux) && sonnent.some((x) => x.chat === "222") && recues.length === 1 && recues[0]!.url === "/douane" && recues[0]!.corps.includes("Jade"), `Douane + alerte : sonnerie pour les deux comptes, une notification push groupée, une seule fois (${recues.map((r) => r.titre).join(" | ")})`);
+  await pool.query(`update public.settings set telegram = '{"chats": {}, "appairages": {}}', notifications = '{"niveau": "tout"}' where id = 1`);
 }
 
 async function scenarioWhatsApp() {
@@ -517,7 +526,9 @@ async function scenarioWhatsApp() {
   }
   check(doublon, "un message reçu deux fois ne crée qu'une mission");
   const envois: { a: string; t: string }[] = [];
-  const wa = { ...demoServices, whatsapp: async (a: string, t: string) => void envois.push({ a, t }) };
+  const tgEnvois: { chat: string; t: string }[] = [];
+  await q("insert into public.missions (demandeur, texte, cible, telegram, telegram_msg_id) values ('jeremyvatuonepro@gmail.com', 'Fais le point sur la trésorerie', 'diane', '111', '111:5')");
+  const wa = { ...demoServices, whatsapp: async (a: string, t: string) => void envois.push({ a, t }), telegram: async (chat: string, t: string) => void tgEnvois.push({ chat, t }) };
   for (let i = 0; i < 14; i++) {
     await tick(db, llm, { services: wa });
     if (envois.some((e) => e.t.includes("Mission terminée"))) break;
@@ -525,6 +536,11 @@ async function scenarioWhatsApp() {
   await tick(db, llm, { services: wa });
   const fins = envois.filter((e) => e.t.includes("Mission terminée"));
   check(fins.length === 1 && fins[0]!.a === "33612345678" && fins[0]!.t.length > 60, `résultat renvoyé sur WhatsApp, une seule fois (${envois.length} message(s))`);
+  for (let i = 0; i < 8 && !tgEnvois.some((e) => e.t.includes("Mission terminée")); i++) await tick(db, llm, { services: wa });
+  await tick(db, llm, { services: wa });
+  check(tgEnvois.filter((e) => e.t.includes("Mission terminée")).length === 1 && tgEnvois[0]!.chat === "111", "mission Telegram : résultat renvoyé dans la conversation, une seule fois");
+  const corpsTg = JSON.stringify({ message: { message_id: 7, chat: { id: 111, type: "private" }, from: { first_name: "Jérémy" }, text: "/point" } });
+  check(secretValide(secretWebhook("123:ABC"), "123:ABC") && !secretValide("faux", "123:ABC") && messageTelegram(JSON.parse(corpsTg))?.texte === "/point" && messageTelegram({ message: { message_id: 1, chat: { id: -5, type: "group" }, text: "x" } }) === null, "Telegram : secret du webhook vérifié, groupes ignorés");
   const [nuit] = await q<{ actif: boolean }>("select actif from public.routines where id = 'rt_nuit'");
   check(nuit !== undefined, "routine de nuit présente (coupée en production)");
 }

@@ -120,6 +120,17 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
 
+## Telegram (gratuit) : missions et « quel agent fait quoi » sur le téléphone
+
+- Une seule variable, `TELEGRAM_BOT_TOKEN` (bot créé avec @BotFather). Réglages → Connexions → Telegram :
+  « Brancher le bot » (webhook `/api/telegram`, secret dérivé du jeton, vérifié à chaque message) puis
+  « Relier mon téléphone » (lien d'appairage valable 10 min, un compte par fondateur).
+- **Notifications** : chaque action des agents, groupée par passage (« **Noé** (Accueil) — ▶️ commence : Répondre… »,
+  « **Bastien** — 🧾 facture préparée… »), sans sonnerie ; Douane, alertes et missions terminées avec sonnerie.
+  `/tout` ou `/calme` (seulement l'important) dans le bot. Même contenu en notification push (réglage général).
+- **Missions** : on écrit au bot (« @victor … » pour un agent précis), `/point`, `/douane`, `/aide` ; résultat et
+  questions des agents renvoyés dans la conversation. Migration `…1400`.
+
 ## Missions par WhatsApp, port ouvert 24 h/24
 
 - **WhatsApp Business (API Cloud de Meta)** : un fondateur écrit une mission au numéro du port → Marius (ou « @victor … »,

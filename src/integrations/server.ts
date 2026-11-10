@@ -4,6 +4,7 @@ import { decrypt, encrypt, hasEncryptionKey } from "@/lib/crypto";
 import { demoCalendar, demoMailbox } from "./demo";
 import { boutiqueDepuisEnv } from "@/boutique/shopify";
 import { envoyerPush } from "@/lib/push";
+import { envoyerTelegram, tgConfigure } from "./telegram";
 import { envoyerWhatsApp, waConfigure } from "./whatsapp";
 import { demoPlaces, googlePlaces } from "./places";
 import { GoogleAuthError, GoogleClient, gmailMailbox, googleCalendar, hasGoogleOAuth } from "./google";
@@ -87,6 +88,7 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
     boutique: async () => boutiqueDepuisEnv(),
     notifier: (n) => envoyerPush(admin, n),
     ...(waConfigure() ? { whatsapp: (a: string, t: string) => envoyerWhatsApp(a, t) } : {}),
+    ...(tgConfigure() ? { telegram: (c: string, t: string, s: boolean) => envoyerTelegram(c, t, s) } : {}),
     async mailbox(): Promise<Mailbox> {
       const c = await getClient();
       return c ? guard(gmailMailbox(c), markError) : demoMailbox();

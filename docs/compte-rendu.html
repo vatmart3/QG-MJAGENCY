@@ -93,6 +93,12 @@
   <li><b>Mode simulé</b> sans clé API : le même circuit tourne, sans aucune dépense.</li>
 </ul>
 
+<h3>En plus — Telegram : le port dans ta poche (gratuit)</h3>
+<ul>
+  <li>Sur ton téléphone, <b>chaque action des agents</b> : « <b>Noé</b> (Accueil) — commence : Répondre à La Marée », « <b>Bastien</b> — facture préparée »… (sans sonnerie), et la Douane, les alertes et les missions terminées avec sonnerie. <code>/calme</code> pour ne garder que l'important.</li>
+  <li>Tu envoies une <b>mission en écrivant au bot</b> ; le résultat revient dans la conversation. Aussi : /point, /douane.</li>
+</ul>
+
 <h3>En plus — Missions par WhatsApp et port ouvert la nuit</h3>
 <ul>
   <li>Tu écris une mission au numéro WhatsApp du port : Marius l'organise et <b>le résultat revient dans la conversation</b>. Aussi : « point », « douane », « aide », « @victor … » pour un agent précis.</li>
@@ -172,7 +178,8 @@
   <tr><td>Appliquer la migration de la phase 8 (<code>…1200_le_port_atelier_boutique</code>) dans Supabase</td><td><span class="tag ok">✓ Fait</span></td><td>Appliquée le 10 novembre 2026</td></tr>
   <tr><td>Shopify : application « LE PORT » dans le Dev Dashboard, installée sur la boutique → Vercel <code>SHOPIFY_STORE_DOMAIN</code>, <code>SHOPIFY_CLIENT_ID</code>, <code>SHOPIFY_CLIENT_SECRET</code> → Redeploy</td><td><span class="tag todo">À faire</span></td><td>Étapes détaillées dans Atelier → Boutique</td></tr>
   <tr><td>Notifications : créer les clés (Réglages → Connexions → Téléphone) → Vercel <code>NEXT_PUBLIC_VAPID_PUBLIC_KEY</code>, <code>VAPID_PRIVATE_KEY</code> → Redeploy, puis « Activer sur cet appareil »</td><td><span class="tag todo">À faire</span></td><td>Sur chaque téléphone (iPhone : installer d'abord l'appli)</td></tr>
-  <tr><td>WhatsApp : application Meta + numéro du port → Vercel <code>WHATSAPP_TOKEN</code>, <code>WHATSAPP_PHONE_NUMBER_ID</code>, <code>WHATSAPP_APP_SECRET</code>, <code>WHATSAPP_VERIFY_TOKEN</code> → webhook → autoriser vos numéros</td><td><span class="tag todo">À faire</span></td><td>Réglages → Connexions → Missions par WhatsApp</td></tr>
+  <tr><td>Telegram : @BotFather → /newbot → jeton dans Vercel <code>TELEGRAM_BOT_TOKEN</code> → Redeploy → « Brancher le bot » → « Relier mon téléphone »</td><td><span class="tag todo">À faire</span></td><td>Réglages → Connexions → Telegram (2 minutes, gratuit)</td></tr>
+  <tr><td>WhatsApp (optionnel) : application Meta + numéro du port → Vercel <code>WHATSAPP_TOKEN</code>, <code>WHATSAPP_PHONE_NUMBER_ID</code>, <code>WHATSAPP_APP_SECRET</code>, <code>WHATSAPP_VERIFY_TOKEN</code> → webhook → autoriser vos numéros</td><td><span class="tag todo">À faire</span></td><td>Réglages → Connexions → Missions par WhatsApp</td></tr>
   <tr><td>Ajouter les sites des clients à surveiller</td><td><span class="tag todo">À faire</span></td><td>LE PORT → Atelier → Sites clients</td></tr>
   <tr><td>Supprimer les anciennes tables LE PORT du projet « MJAGENCY » (ancien compte)</td><td><span class="tag no">Optionnel</span></td><td>Uniquement sur votre accord</td></tr>
 </table>

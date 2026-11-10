@@ -7,6 +7,7 @@ import { formatParis } from "@/lib/paris";
 import { browserSupabase } from "@/lib/supabase/client";
 import { useUI } from "@/store/ui";
 import { Portrait } from "../../Portrait";
+import { TelegramCard } from "./TelegramCard";
 import { TelephoneCard } from "./TelephoneCard";
 import { WhatsAppCard } from "./WhatsAppCard";
 
@@ -37,6 +38,7 @@ export function ConnexionsTab() {
     return <p className="text-sm text-ink-soft">Mode démo : branche Supabase pour connecter Google. Les agents utilisent une boîte mail et un agenda de démonstration.</p>;
   return (
     <div className="space-y-4">
+      <TelegramCard />
       <AutonomeCard />
       <GoogleCard />
       <RulesCard />
