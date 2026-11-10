@@ -290,7 +290,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "noe", nom: "Noé", pole: "accueil", role: "Réponses aux mails",
     personnalite: "Chaleureux, clair, vouvoie toujours les clients.",
-    modele: "worker", outils: [...COMMUNS, "read_email", "create_email_draft", "send_email"],
+    modele: "worker", outils: [...COMMUNS, "read_email", "search_emails", "create_email_draft", "send_email"],
     autonomie: 0, critique: false, sortant: true,
     routines: [],
     taches: ["Réponse à la boulangerie Marceau", "Brouillon : demande de devis vitrine", "Réponse au fournisseur NFC"],
@@ -298,7 +298,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "firmin", nom: "Firmin", pole: "accueil", role: "Suivi des relances",
     personnalite: "Patient, poli, tenace.",
-    modele: "light", outils: [...COMMUNS, "search_emails", "create_email_draft", "send_email"],
+    modele: "light", outils: [...COMMUNS, "search_emails", "read_email", "create_email_draft", "send_email"],
     autonomie: 0, critique: false, sortant: true,
     routines: ["14:00 — relances des mails sans réponse"],
     taches: ["Relance : 4 mails sans réponse depuis 5 j", "Relance douce au Domaine de la Plagette"],

@@ -1,5 +1,6 @@
 import type { z } from "zod";
-import type { EAgent, ERun, ETask, EngineDb } from "../db";
+import type { Services } from "@/integrations/types";
+import type { EAgent, ERun, ESettings, ETask, EngineDb } from "../db";
 import type { Rapport } from "@/lib/rapport";
 import type { LLM } from "../llm";
 
@@ -13,6 +14,9 @@ export interface ToolCtx {
   poles: Map<string, string>;
   memory: { cle: string; contenu: string }[];
   now: Date;
+  settings: ESettings;
+  /** boîte mail et agenda (Google, ou DÉMO) */
+  services: Services;
 }
 
 export interface ToolOutcome {

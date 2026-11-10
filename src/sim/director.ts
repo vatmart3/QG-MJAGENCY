@@ -66,7 +66,7 @@ interface Timer {
 export interface LiveAdapter {
   email: string;
   insertMission(texte: string, cible: string): Promise<void>;
-  decideApproval(id: string, decision: { statut: "approuve" | "modifie" | "refuse"; motif?: string; apercu?: string; regle?: { agentId: string; type: string } }): Promise<void>;
+  decideApproval(id: string, decision: { statut: "approuve" | "modifie" | "refuse"; motif?: string; apercu?: string; objet?: string; regle?: { agentId: string; type: string } }): Promise<void>;
   log(entry: { type: string; titre: string; contenu?: string; agentId?: string; poleId?: string }): Promise<void>;
   chat(agentId: string, text: string): Promise<void>;
 }
@@ -539,7 +539,7 @@ class Director {
   }
 
   // ---------------------------------------------------------------- Douane
-  approve(id: string, mode: "envoye" | "modifie" | "regle" = "envoye", apercu?: string): void {
+  approve(id: string, mode: "envoye" | "modifie" | "regle" = "envoye", apercu?: string, objet?: string): void {
     if (this.mode === "live" && this.live) {
       const ap = world.get().approvals.find((a) => a.id === id);
       if (!ap) return;
@@ -548,14 +548,17 @@ class Director {
         .decideApproval(id, {
           statut: mode === "modifie" ? "modifie" : "approuve",
           apercu: mode === "modifie" ? apercu : undefined,
+          objet: mode === "modifie" && objet !== undefined && objet !== ap.subject ? objet : undefined,
           regle: mode === "regle" ? { agentId: ap.agentId, type: ap.type } : undefined,
         })
         .catch(() => world.hydrate({ approvals: [...world.get().approvals, ap] }));
-      if (ap.agentId) world.say(ap.agentId, ap.type === "question" ? "Merci, je m'adapte !" : "Validé ✅ (envoi réel en Phase 4)", 3200);
+      if (ap.agentId) world.say(ap.agentId, ap.type === "question" ? "Merci, je m'adapte !" : "Validé ✅ ça part !", 3200);
       return;
     }
     const ap = world.removeApproval(id);
     if (!ap) return;
+    const sendable = ap.type !== "question" && ap.type !== "memoire" && ap.type !== "autre";
+    world.upsertDouane([{ id: ap.id, agentId: ap.agentId, type: ap.type, title: ap.title, to: ap.to, subject: ap.subject, statut: mode === "modifie" ? "modifie" : "approuve", execution: sendable ? "simule" : null, decidedAt: Date.now() }]);
     const a = agentById(ap.agentId);
     const verb = ap.type === "question" ? "Réponse transmise" : mode === "modifie" ? "Modifié puis envoyé" : "Validé et envoyé";
     world.log({ agentId: ap.agentId, poleId: a?.pole, type: "validation", title: `${verb} : ${ap.title}` });
@@ -576,6 +579,7 @@ class Director {
     }
     const ap = world.removeApproval(id);
     if (!ap) return;
+    world.upsertDouane([{ id: ap.id, agentId: ap.agentId, type: ap.type, title: ap.title, to: ap.to, subject: ap.subject, statut: "refuse", execution: null, decidedAt: Date.now() }]);
     const a = agentById(ap.agentId);
     world.log({ agentId: ap.agentId, poleId: a?.pole, type: "validation", title: `Refusé : ${ap.title}`, detail: motif ? `Motif : ${motif}` : undefined });
     const rt = world.get().agents[ap.agentId];

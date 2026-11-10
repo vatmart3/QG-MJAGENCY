@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { pgEngineDb } from "@/engine/db-pg";
 import { MockLLM } from "@/engine/llm";
 import { tick } from "@/engine/tick";
+import { demoServices } from "@/integrations/demo";
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
 const pool = new Pool({ connectionString: url });
@@ -21,6 +22,8 @@ const q = async <T = Record<string, unknown>>(sql: string, p: unknown[] = []) =>
 
 async function reset() {
   await q("delete from public.agent_chats; delete from public.usage; delete from public.agent_messages; delete from public.approvals; delete from public.task_runs; update public.agents set tache_courante_id = null, etat = 'idle', offline_raison = null, interlocuteur = null; delete from public.tasks; delete from public.missions; delete from public.journal;");
+  // le courrier planifié (tri, relances) ne tourne que dans son propre scénario
+  await q("update public.routines set actif = false where id in ('rt_tri_mails', 'rt_relances_mails')");
 }
 
 async function scenarioMission() {
@@ -119,12 +122,69 @@ async function scenarioConcurrence() {
   check(total === 6 && runs.length === 6 && runs.every((r) => r.iterations === 1), `6 tâches, chacune exécutée une seule fois (${total} pas, itérations ${runs.map((r) => r.iterations).join(",")})`);
 }
 
+async function scenarioCourrier() {
+  console.log("\n— Courrier : tri de Lucie, réponses de Noé, Douane, relances de Firmin (boîte DÉMO)");
+  await reset();
+  await q("delete from public.emails; delete from public.engine_kv; delete from public.agent_notes; delete from public.autonomy_rules;");
+  await q("update public.routines set actif = true where id in ('rt_tri_mails', 'rt_relances_mails')");
+  const run = async (iso: string, n = 6) => {
+    for (let i = 0; i < n; i++) await tick(db, llm, { now: () => new Date(iso), services: demoServices });
+  };
+  // mardi 10 novembre 2026, 10 h à Paris
+  await run("2026-11-10T09:00:00Z");
+  const emails = await q<{ id: string; categorie: string | null; statut: string; urgence: number; task_id: string | null }>("select id, categorie, statut, urgence, task_id from public.emails order by id");
+  check(emails.length === 4 && emails.every((e) => e.statut !== "a_trier"), `Lucie a trié les 4 mails (${emails.map((e) => `${e.id.slice(-1)}:${e.categorie}`).join(", ")})`);
+  check(emails.some((e) => e.categorie === "spam" && !e.task_id), "le mail piégé est classé spam, sans suite");
+  check(emails.some((e) => e.urgence === 2), "le mail urgent est repéré");
+  const noe = await q<{ titre: string; statut: string }>("select titre, statut from public.tasks where agent_id = 'noe'");
+  check(noe.length === 2 && noe.every((t) => t.statut === "done"), `2 réponses confiées à Noé (${noe.map((t) => t.titre).join(" | ")})`);
+  const aps = await q<{ id: string; type_action: string; destinataire: string; apercu: string; execution_statut: string; payload: { demo?: boolean; threadId?: string } }>("select * from public.approvals where type_action = 'email' order by cree_le");
+  check(aps.length === 2 && aps.every((a) => a.execution_statut === "a_faire"), "2 mails attendent en Douane (rien n'est parti)");
+  check(aps.every((a) => a.apercu.includes("MJAGENCY") && !a.apercu.includes("Noé")), "signature MJAGENCY, jamais le nom de l'agent");
+  check(aps.every((a) => a.payload.demo === true && !!a.payload.threadId), "réponse dans le fil d'origine (DÉMO)");
+  const journal1 = await q<{ titre: string }>("select titre from public.journal");
+  check(journal1.some((j) => j.titre.startsWith("📬 Mail urgent")), "alerte « mail urgent » dans le Journal");
+
+  // un fondateur valide le premier, refuse le second
+  await q("update public.approvals set statut = 'approuve', decide_par = 'test', decide_le = now() where id = $1", [aps[0]!.id]);
+  await q("update public.approvals set statut = 'refuse', motif = 'Trop familier', decide_par = 'test', decide_le = now() where id = $1", [aps[1]!.id]);
+  await run("2026-11-10T09:05:00Z", 1);
+  const [a1] = await q<{ execution_statut: string }>("select execution_statut from public.approvals where id = $1", [aps[0]!.id]);
+  const [a2] = await q<{ execution_statut: string }>("select execution_statut from public.approvals where id = $1", [aps[1]!.id]);
+  check(a1?.execution_statut === "simule" && a2?.execution_statut === "annule", `validé → envoyé (simulé), refusé → annulé (${a1?.execution_statut} / ${a2?.execution_statut})`);
+  const notes = await q<{ contenu: string }>("select contenu from public.agent_notes where agent_id = 'noe'");
+  check(notes.some((n) => n.contenu.includes("Trop familier")), "Noé garde le motif du refus en note");
+  await run("2026-11-10T09:06:00Z", 1);
+  const [again] = await q<{ n: string }>("select count(*) as n from public.journal where titre like '✉️%'");
+  check(Number(again?.n) === 1, "un mail validé n'est envoyé qu'une fois");
+
+  // 20 min plus tard : rien de nouveau dans la boîte → pas de nouveau tri
+  await run("2026-11-10T09:20:00Z", 1);
+  const tri = await q("select 1 from public.tasks where agent_id = 'lucie'");
+  check(tri.length === 1, "pas de nouveau tri quand il n'y a pas de nouveau mail");
+
+  // règle d'autonomie : « toujours autoriser » les mails de Noé → envoi direct vers une adresse connue
+  await q("insert into public.autonomy_rules (agent_id, type_action, cree_par) values ('noe', 'email', 'test')");
+  await q("delete from public.emails where id = 'demo-mail-1'");
+  await run("2026-11-10T09:40:00Z");
+  const auto = await q<{ statut: string; decide_par: string; execution_statut: string }>("select statut, decide_par, execution_statut from public.approvals where decide_par = 'règle d''autonomie'");
+  check(auto.length === 1 && auto[0]!.execution_statut === "simule", "avec la règle, Noé envoie directement (adresse déjà connue)");
+
+  // 14 h 30 : Firmin relance les mails sans réponse
+  await run("2026-11-10T13:30:00Z");
+  const rel = await q<{ execution_statut: string; destinataire: string }>("select execution_statut, destinataire from public.approvals where type_action = 'relance'");
+  check(rel.length === 1 && rel[0]!.execution_statut === "a_faire", `Firmin dépose une relance en Douane (${rel.map((r) => r.destinataire).join(", ")})`);
+  const rapportsFirmin = await q<{ resultat: { rapport?: unknown } }>("select resultat from public.tasks where agent_id = 'firmin' and statut = 'done'");
+  check(rapportsFirmin.length === 1 && !!lireRapport(rapportsFirmin[0]!.resultat?.rapport), "Firmin rend son compte rendu");
+}
+
 (async () => {
   try {
     await scenarioMission();
     await scenarioQuestionFondateur();
     await scenarioBudget();
     await scenarioConcurrence();
+    await scenarioCourrier();
   } catch (e) {
     console.error(e);
     failures++;

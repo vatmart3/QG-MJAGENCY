@@ -7,6 +7,7 @@ import type { AgentState } from "@/data/types";
 import {
   agentFromRow,
   approvalFromRow,
+  douaneFromRow,
   fluxFromMessage,
   rapportFromRow,
   journalFromRow,
@@ -86,7 +87,7 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
 
   const since = new Date(Date.now() - 36 * 3600_000).toISOString();
   liveSb = sb;
-  const [poles, agents, settings, memory, routines, tasks, running, approvals, journal, missions, doneTasks, messages] = await Promise.all([
+  const [poles, agents, settings, memory, routines, tasks, running, approvals, journal, missions, doneTasks, messages, decided] = await Promise.all([
     sb.from("poles").select("*").order("ordre"),
     sb.from("agents").select("*").order("ordre"),
     sb.from("settings").select("*").eq("id", 1).maybeSingle(),
@@ -99,6 +100,7 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
     sb.from("missions").select("*").order("cree_le", { ascending: false }).limit(30),
     sb.from("tasks").select("*").eq("statut", "done").order("maj_le", { ascending: false }).limit(80),
     sb.from("agent_messages").select("*").neq("type", "bavardage").order("cree_le", { ascending: false }).limit(300),
+    sb.from("approvals").select("*").neq("statut", "en_attente").gte("cree_le", new Date(Date.now() - 4 * 86400_000).toISOString()).order("cree_le", { ascending: false }).limit(40),
   ]);
   const firstErr = [poles, agents, settings, memory, routines, tasks, running, approvals, journal, missions, doneTasks].find((r) => r.error)?.error;
   if (firstErr) return { ok: false, reason: "erreur", message: traduireErreur(firstErr.message) };
@@ -144,6 +146,7 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
     missions: ((missions.data ?? []) as MissionRow[]).map(missionFromRow),
     rapports,
   });
+  world.upsertDouane(((decided.data ?? []) as ApprovalRow[]).flatMap((a) => douaneFromRow(a) ?? []));
   // flux : missions, échanges entre agents, passages en Douane (la migration « livrables » peut manquer : on ignore l'erreur)
   world.addFlux([
     ...((missions.data ?? []) as MissionRow[]).map(fluxFromMission),
@@ -166,12 +169,15 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
       const patch: Record<string, unknown> = { statut: d.statut, decide_par: email, decide_le: new Date().toISOString() };
       if (d.motif) patch.motif = d.motif;
       if (d.apercu !== undefined) patch.apercu = d.apercu;
+      if (d.objet !== undefined) patch.objet = d.objet;
       const { data, error } = await sb.from("approvals").update(patch).eq("id", id).select("titre, agent_id").maybeSingle();
       if (error) throw new Error(traduireErreur(error.message));
       if (d.regle) await sb.from("autonomy_rules").insert({ agent_id: d.regle.agentId, type_action: d.regle.type, cree_par: email });
       const verbe = d.statut === "refuse" ? "Refusé" : d.statut === "modifie" ? "Modifié et validé" : "Validé";
       await adapter.log({ type: "validation", titre: `${verbe} : ${data?.titre ?? "élément de la Douane"}`, contenu: d.motif ? `Motif : ${d.motif}` : undefined, agentId: data?.agent_id ?? undefined });
       if (d.regle) await adapter.log({ type: "decision", titre: `Règle d'autonomie ajoutée : « ${d.regle.type} » pour ${d.regle.agentId}`, agentId: d.regle.agentId });
+      // l'envoi validé part au prochain passage du moteur : on le lance tout de suite
+      if (d.statut !== "refuse") void kickEngine();
     },
     chat: (agentId, text) => sendChat(agentId, text),
     async log(e) {
@@ -181,12 +187,22 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
   getDirector().start("live", adapter);
 
   // le moteur avance tant qu'il y a du travail (en attendant pg_cron, Phase 5)
+  let lastKick = Date.now();
   const pinger = setInterval(() => {
     const w = world.get();
+    // même sans travail en cours, un passage toutes les 5 min (tri des mails, relances, envois validés)
+    if (Date.now() - lastKick > 5 * 60_000) {
+      lastKick = Date.now();
+      void kickEngine();
+      return;
+    }
     const busy =
       w.tasks.some((t) => ["queued", "running", "waiting_tool", "waiting_founder"].includes(t.status)) ||
       w.missions.some((m) => m.status === "nouvelle" || m.status === "planification" || m.status === "en_cours");
-    if (busy) void kickEngine();
+    if (busy) {
+      lastKick = Date.now();
+      void kickEngine();
+    }
   }, 20_000);
 
   // ---- temps réel
@@ -246,6 +262,8 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
       const exists = world.get().approvals.some((x) => x.id === a.id);
       if (a.statut === "en_attente" && !exists) world.hydrate({ approvals: [...world.get().approvals, approvalFromRow(a)] });
       if (a.statut !== "en_attente" && exists) world.removeApproval(a.id);
+      const done = douaneFromRow(a);
+      if (done) world.upsertDouane([done]);
     })
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "journal" }, (p) => {
       const e = journalFromRow(p.new as JournalRow);

@@ -1,6 +1,10 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { LIMITS } from "./config";
+import { demoServices } from "@/integrations/demo";
+import type { Services } from "@/integrations/types";
+import { scheduleCourrier } from "./courrier";
 import type { EngineDb } from "./db";
+import { executeApprovals } from "./douane";
 import type { LLM } from "./llm";
 import { isCritical, resumeWaiting, runStep, type Shared, type StepResult } from "./loop";
 
@@ -15,19 +19,24 @@ export interface TickReport {
   moteur: "anthropic" | "mock";
   missions: number;
   reprises: number;
+  envois: number;
+  courrier: { tri: number; relances: number };
   pas: Record<StepResult, number>;
   budget: { depense: number; jour: number; depasse: boolean };
   erreurs: string[];
   dureeMs: number;
 }
 
-export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; maxSteps?: number; budgetMs?: number } = {}): Promise<TickReport> {
+export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; maxSteps?: number; budgetMs?: number; services?: Services } = {}): Promise<TickReport> {
+  const services = opts.services ?? demoServices;
   const clock = opts.now ?? (() => new Date());
   const start = Date.now();
   const report: TickReport = {
     moteur: llm.kind,
     missions: 0,
     reprises: 0,
+    envois: 0,
+    courrier: { tri: 0, relances: 0 },
     pas: { done: 0, continue: 0, wait: 0, failed: 0, deferred: 0, retry: 0 },
     budget: { depense: 0, jour: 0, depasse: false },
     erreurs: [],
@@ -107,6 +116,15 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
     }
   });
 
+  // 4 bis. envois validés en Douane (mails, invitations), puis courrier à trier / relancer
+  await safe("douane", async () => {
+    const r = await executeApprovals(db, services);
+    report.envois = r.faits;
+  });
+  await safe("courrier", async () => {
+    report.courrier = await scheduleCourrier(db, services, team, now);
+  });
+
   // 5. tâches de plus de 24 h
   await safe("expirations", async () => {
     const before = new Date(now.getTime() - LIMITS.taskTimeoutMs).toISOString();
@@ -128,7 +146,7 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
   });
 
   // 7. pas d'agents
-  const shared: Shared = { team, poles, memory, budgetOver: over, now };
+  const shared: Shared = { team, poles, memory, budgetOver: over, now, settings, services };
   const maxSteps = opts.maxSteps ?? LIMITS.stepsPerTick;
   const budgetMs = opts.budgetMs ?? LIMITS.tickBudgetMs;
   let steps = 0;

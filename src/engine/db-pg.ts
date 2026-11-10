@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { EAgent, EApproval, EMission, ERun, ETask, EngineDb } from "./db";
+import type { EAgent, EApproval, EEmail, EMission, ERun, ETask, EngineDb } from "./db";
 
 /**
  * Implémentation Postgres directe du moteur (tests d'intégration en local,
@@ -52,8 +52,10 @@ export function pgEngineDb(pool: Pool): EngineDb {
 
   return {
     async settings() {
-      const [s] = await q<{ budget_jour: string; budget_mois: string; bavardage_actif: boolean; signataire: string }>("select * from public.settings where id = 1");
-      return s ? { budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), bavardage_actif: s.bavardage_actif, signataire: s.signataire } : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY" };
+      const [s] = await q<{ budget_jour: string; budget_mois: string; bavardage_actif: boolean; signataire: string; allowlist_emails: string[]; contraintes_agenda: { jeremy?: string; matheis?: string } }>("select * from public.settings where id = 1");
+      return s
+        ? { budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), bavardage_actif: s.bavardage_actif, signataire: s.signataire, allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {} }
+        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {} };
     },
     poles: () => q("select id, nom from public.poles"),
     memory: () => q("select cle, contenu from public.company_memory order by cle"),
@@ -134,6 +136,42 @@ export function pgEngineDb(pool: Pool): EngineDb {
       return (await q("select * from public.approvals where type_action = 'memoire' and statut in ('approuve','modifie') and not coalesce((payload->>'applique')::boolean, false)")) as unknown as EApproval[];
     },
     markApprovalApplied: (id, payload) => update("approvals", "id = $1", [id], { payload: { ...payload, applique: true } }),
+    async approvalsToExecute() {
+      return (await q("select * from public.approvals where execution_statut = 'a_faire' and statut <> 'en_attente' order by decide_le nulls first limit 20")) as unknown as EApproval[];
+    },
+    async claimApprovalExecution(id) {
+      return (await q("update public.approvals set execution_statut = 'en_cours' where id = $1 and execution_statut = 'a_faire' returning id", [id])).length > 0;
+    },
+    finishApprovalExecution: (id, statut, execution) => update("approvals", "id = $1", [id], { execution_statut: statut, execution, execute_le: new Date().toISOString() }),
+    async hasAutonomyRule(agentId, type) {
+      return (await q("select 1 from public.autonomy_rules where agent_id = $1 and type_action = $2 and actif limit 1", [agentId, type])).length > 0;
+    },
+    async kvGet(cle) {
+      const [r] = await q<{ valeur: unknown }>("select valeur from public.engine_kv where cle = $1", [cle]);
+      return (r?.valeur ?? null) as never;
+    },
+    async kvSet(cle, valeur) {
+      await q("insert into public.engine_kv (cle, valeur, maj_le) values ($1, $2, now()) on conflict (cle) do update set valeur = excluded.valeur, maj_le = now()", [cle, JSON.stringify(valeur)]);
+    },
+    async routineActive(id) {
+      const [r] = await q<{ actif: boolean }>("select actif from public.routines where id = $1", [id]);
+      return r ? r.actif : true;
+    },
+    async hasOpenTask(agentId, titrePrefix) {
+      return (await q("select 1 from public.tasks where agent_id = $1 and starts_with(titre, $2) and statut in ('queued','running','waiting_tool','waiting_approval','waiting_founder') limit 1", [agentId, titrePrefix])).length > 0;
+    },
+    async knownEmailIds(ids) {
+      if (!ids.length) return [];
+      return (await q<{ id: string }>("select id from public.emails where id = any($1)", [ids])).map((r) => r.id);
+    },
+    async insertEmails(list) {
+      for (const e of list) await q("insert into public.emails (id, thread_id, compte, de, a, objet, extrait, recu_le, demo) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict (id) do nothing", [e.id, e.thread_id, e.compte, e.de, e.a, e.objet, e.extrait, e.recu_le, e.demo]);
+    },
+    async email(id) {
+      const [r] = await q("select * from public.emails where id = $1", [id]);
+      return (r as unknown as EEmail) ?? null;
+    },
+    updateEmail: (id, patch) => update("emails", "id = $1", [id], { ...patch, maj_le: new Date().toISOString() }),
     async upsertMemory(cle, contenu) {
       await q("insert into public.company_memory (id, cle, contenu) values ($1, $2, $3) on conflict (cle) do update set contenu = excluded.contenu", [`mem_${cle}`, cle, contenu]);
     },

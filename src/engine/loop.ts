@@ -5,7 +5,8 @@ import { fr } from "date-fns/locale";
 import { MISSION_ROUTES } from "@/data/mockContent";
 import type { TaskStep } from "@/store/world";
 import { CRITICAL_FALLBACK, LIMITS, MODELS, costEur } from "./config";
-import type { EAgent, EMission, ERun, ETask, EngineDb, Msg, ToolResultBlock } from "./db";
+import type { Services } from "@/integrations/types";
+import type { EAgent, EMission, ERun, ESettings, ETask, EngineDb, Msg, ToolResultBlock } from "./db";
 import type { LLM, MockMeta } from "./llm";
 import { bulle, systemFor, taskBrief } from "./prompts";
 import { apiTools, toolByName, toolsFor } from "./tools";
@@ -22,6 +23,8 @@ export interface Shared {
   memory: { cle: string; contenu: string }[];
   budgetOver: boolean;
   now: Date;
+  settings: ESettings;
+  services: Services;
 }
 
 export type StepResult = "done" | "continue" | "wait" | "failed" | "deferred" | "retry";
@@ -47,7 +50,7 @@ async function fail(db: EngineDb, task: ETask, agent: EAgent | undefined, raison
 
 /** Données pour la simulation (sans clé API) : équipe proposée et collègue à consulter. */
 async function mockMeta(db: EngineDb, task: ETask, agent: EAgent, mission: EMission | null, team: EAgent[]): Promise<MockMeta> {
-  const meta: MockMeta = { agentId: agent.id, agentNom: agent.nom, role: agent.role, planner: agent.modele === "planner", taskTitle: task.titre };
+  const meta: MockMeta = { agentId: agent.id, agentNom: agent.nom, role: agent.role, planner: agent.modele === "planner", taskTitle: task.titre, taskDescription: task.description };
   if (meta.planner && mission) {
     const n = mission.texte.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
     // simulation : la première règle qui correspond désigne l'équipe (le vrai Marius choisit lui-même)
@@ -124,7 +127,7 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
 
   const messages: Msg[] = [...run.messages, { role: "assistant", content: res.content as unknown as Anthropic.Beta.BetaContentBlockParam[] }];
   const uses = res.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-  const ctx: ToolCtx = { db, llm, task, agent, run, team, poles: shared.poles, memory: shared.memory, now };
+  const ctx: ToolCtx = { db, llm, task, agent, run, team, poles: shared.poles, memory: shared.memory, now, settings: shared.settings, services: shared.services };
 
   // réponse sans outil : le texte devient le livrable
   if (!uses.length) {

@@ -82,6 +82,27 @@ export interface Approval {
   createdAt: number;
   /** l'enveloppe a été déposée sur la pile de La Douane (animation) */
   delivered: boolean;
+  /** boîte de démonstration (Google non connecté) */
+  demo?: boolean;
+  /** destinataires jamais vus dans la boîte : validation obligatoire */
+  jamaisVue?: string[];
+}
+
+export type ExecutionStatut = "a_faire" | "en_cours" | "fait" | "echec" | "simule" | "annule";
+
+/** Élément déjà décidé en Douane, avec le suivi de son envoi. */
+export interface DouaneItem {
+  id: string;
+  agentId: string;
+  type: ApprovalType;
+  title: string;
+  to?: string;
+  subject?: string;
+  statut: "approuve" | "modifie" | "refuse";
+  execution: ExecutionStatut | null;
+  erreur?: string;
+  decidedAt: number;
+  par?: string;
 }
 
 export interface JournalEntry {
@@ -169,6 +190,7 @@ export interface WorldState {
   missions: Mission[];
   chats: Record<string, ChatMessage[]>;
   flux: FluxEvent[];
+  douaneHistorique: DouaneItem[];
   links: FlowLink[];
   rapports: Record<string, RapportItem>;
   /** agents présents dans la zone de leur pôle (calculé par la ville) */
@@ -196,6 +218,7 @@ export const worldStore = createStore<WorldState>(() => ({
   missions: [],
   chats: {},
   flux: [],
+  douaneHistorique: [],
   links: [],
   rapports: {},
   presence: {},
@@ -320,6 +343,12 @@ export const world = {
         ].slice(-24)
       : get().links;
     set({ flux, links });
+  },
+  upsertDouane(items: DouaneItem[]): void {
+    if (!items.length) return;
+    const map = new Map(get().douaneHistorique.map((d) => [d.id, d]));
+    for (const d of items) map.set(d.id, d);
+    set({ douaneHistorique: [...map.values()].sort((a, b) => b.decidedAt - a.decidedAt).slice(0, 60) });
   },
   upsertRapport(r: RapportItem): void {
     set((s) => ({ rapports: { ...s.rapports, [r.taskId]: r } }));

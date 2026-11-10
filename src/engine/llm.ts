@@ -1,3 +1,4 @@
+import { adresse } from "@/integrations/types";
 import Anthropic from "@anthropic-ai/sdk";
 import { EFFORT, LIMITS, SUPPORTS_FALLBACK } from "./config";
 import type { Msg } from "./db";
@@ -76,6 +77,7 @@ export interface MockMeta {
   /** collègue à qui poser une question pendant la tâche */
   colleague?: { id: string; nom: string } | null;
   taskTitle: string;
+  taskDescription?: string;
   /** mini-boucle « ask_agent » : on répond à une question, sans outils */
   answering?: boolean;
   chat?: boolean;
@@ -96,6 +98,57 @@ function lastToolResults(messages: Msg[]): string {
 
 function usedTool(messages: Msg[], name: string): boolean {
   return messages.some((m) => m.role === "assistant" && typeof m.content !== "string" && m.content.some((b) => b.type === "tool_use" && b.name === name));
+}
+
+const finish = (titre: string, resume: string, contenu: string) =>
+  toolUse("finish_task", { titre: titre.slice(0, 160), resume, sections: [{ titre: "Détail", contenu }], prochaines_etapes: [{ action: "Valider les envois en Douane", qui: "Fondateurs" }] });
+
+/** Scénarios simulés du courrier : mêmes outils que les vrais agents. */
+function mockCourrier(m: MockMeta, messages: Msg[]): Anthropic.Beta.BetaContentBlock[] | null {
+  const desc = m.taskDescription ?? "";
+  if (m.taskTitle.startsWith("Tri des mails")) {
+    if (usedTool(messages, "label_email")) {
+      return [finish(m.taskTitle, "Les nouveaux mails sont triés, les réponses confiées à Noé. (Tri simulé.)", lastToolResults(messages) || "Tri effectué.")];
+    }
+    const items = [...desc.matchAll(/id=(\S+) · De : (.+?) · Objet : (.+)/g)];
+    return items.map(([, id, , objet], i) => {
+      const o = (objet ?? "").toLowerCase();
+      const spam = /vérifiez votre compte|verif|gagn|cadeau/.test(o);
+      const urgent = /urgent/.test(o);
+      const fournisseur = /devis|facture/.test(o) && !/site/.test(o);
+      return toolUse(
+        "label_email",
+        spam
+          ? { id, categorie: "spam", resume: "Mail piégé qui demande d'envoyer des données : ignoré.", urgence: 0, action: "aucune" }
+          : fournisseur
+            ? { id, categorie: "fournisseur", resume: `Proposition fournisseur : ${objet}`, urgence: 0, action: "aucune" }
+            : { id, categorie: urgent ? "client" : "prospect", resume: `${urgent ? "Problème urgent signalé" : "Demande d'information"} : ${objet}`, urgence: urgent ? 2 : 1, action: "repondre", agent_id: "noe", consigne: i === 0 ? "Réponds avec nos tarifs indicatifs et propose un appel." : undefined },
+      );
+    });
+  }
+  if (m.taskTitle.startsWith("Répondre :")) {
+    if (usedTool(messages, "send_email")) return [finish(m.taskTitle, "Réponse préparée et déposée en Douane. (Simulé.)", lastToolResults(messages))];
+    const hit = desc.match(/Mail id=(\S+) de (.+)\.\n/);
+    if (!hit) return null;
+    const objet = m.taskTitle.replace(/^Répondre : /, "");
+    return [
+      toolUse("send_email", {
+        a: adresse(hit[2]!),
+        objet: /^re\s*:/i.test(objet) ? objet : `Re: ${objet}`,
+        corps: "Bonjour,\n\nMerci pour votre message. Nous revenons vers vous très vite avec une proposition adaptée ; seriez-vous disponible pour un court appel cette semaine ?\n\nBien cordialement,\n\n(Réponse simulée : ajoute une clé API Anthropic pour une vraie réponse.)",
+        repondre_a: hit[1],
+      }),
+    ];
+  }
+  if (m.taskTitle.startsWith("Relances :")) {
+    if (usedTool(messages, "send_email")) return [finish(m.taskTitle, "Relances préparées et déposées en Douane. (Simulé.)", lastToolResults(messages))];
+    const items = [...desc.matchAll(/id=(\S+) · À : (.+?) · Objet : (.+?) · envoyé/g)];
+    if (!items.length) return null;
+    return items.map(([, id, a, objet]) =>
+      toolUse("send_email", { a: adresse(a!), objet: `Re: ${objet}`, corps: "Bonjour,\n\nJe me permets de revenir vers vous au sujet de notre proposition. Avez-vous eu le temps d'y jeter un œil ?\n\nBelle journée,\n\n(Relance simulée.)", repondre_a: id, type: "relance" }),
+    );
+  }
+  return null;
 }
 
 export class MockLLM implements LLM {
@@ -161,6 +214,10 @@ export class MockLLM implements LLM {
         ],
       };
     }
+
+    // courrier (Phase 4) : tri de Lucie, réponses de Noé, relances de Firmin
+    const courrier = mockCourrier(m, req.messages);
+    if (courrier) return { ...base, content: courrier };
 
     // agent « travailleur » : une question à un collègue, puis le livrable
     if (m.colleague && !usedTool(req.messages, "ask_agent")) {

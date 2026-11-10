@@ -1,6 +1,6 @@
 import type { AgentDef, AgentState, MemoryEntry, ModelTier, Pole, Routine, Settings, WallStyleName } from "@/data/types";
 import { lireRapport, rapportDepuisTexte } from "@/lib/rapport";
-import type { AgentRuntime, Approval, ApprovalType, FluxEvent, FluxType, JournalEntry, Mission, RapportItem, TaskItem, TaskRef, TaskStep } from "@/store/world";
+import type { AgentRuntime, Approval, ApprovalType, DouaneItem, ExecutionStatut, FluxEvent, FluxType, JournalEntry, Mission, RapportItem, TaskItem, TaskRef, TaskStep } from "@/store/world";
 
 /** Lignes des tables Supabase (noms de colonnes en snake_case sans accents) et conversions. */
 
@@ -70,6 +70,11 @@ export interface ApprovalRow {
   apercu: string;
   statut: "en_attente" | "approuve" | "modifie" | "refuse";
   cree_le: string;
+  payload?: Record<string, unknown> | null;
+  execution_statut?: ExecutionStatut | null;
+  execution?: { erreur?: string } | null;
+  decide_le?: string | null;
+  decide_par?: string | null;
 }
 
 export interface JournalRow {
@@ -233,7 +238,26 @@ export const approvalFromRow = (r: ApprovalRow): Approval => ({
   preview: r.apercu,
   createdAt: ms(r.cree_le),
   delivered: true,
+  demo: r.payload?.demo === true,
+  jamaisVue: Array.isArray(r.payload?.jamais_vue) && (r.payload.jamais_vue as string[]).length ? (r.payload.jamais_vue as string[]) : undefined,
 });
+
+export const douaneFromRow = (r: ApprovalRow): DouaneItem | null =>
+  r.statut === "en_attente"
+    ? null
+    : {
+        id: r.id,
+        agentId: r.agent_id ?? "",
+        type: r.type_action,
+        title: r.titre,
+        to: r.destinataire ?? undefined,
+        subject: r.objet ?? undefined,
+        statut: r.statut,
+        execution: r.execution_statut ?? null,
+        erreur: r.execution?.erreur,
+        decidedAt: ms(r.decide_le ?? r.cree_le),
+        par: r.decide_par ?? undefined,
+      };
 
 export const journalFromRow = (r: JournalRow): JournalEntry => ({
   id: r.id,

@@ -5,7 +5,8 @@ import { useState } from "react";
 import { agentById, useCatalogVersion } from "@/data/catalog";
 import { formatParis } from "@/lib/paris";
 import { getDirector } from "@/sim/director";
-import { useWorld, type Approval } from "@/store/world";
+import Link from "next/link";
+import { useWorld, type Approval, type DouaneItem } from "@/store/world";
 import { Portrait } from "../Portrait";
 import { DemoBadge } from "../Sheet";
 import { RoutePanel } from "./RoutePanel";
@@ -44,6 +45,14 @@ export function DouanePanel() {
           <p className="mt-2 font-hand text-2xl">Tout est validé. Le phare peut se reposer.</p>
         </div>
       )}
+      <Historique />
+      <p className="mt-4 text-[12px] text-ink-soft">
+        Les règles « Toujours autoriser » se gèrent dans{" "}
+        <Link href="/reglages?onglet=connexions" className="text-sea underline underline-offset-2">
+          Réglages → Connexions & règles
+        </Link>
+        . Jamais automatique : paiements, factures, mise en demeure, adresse jamais vue.
+      </p>
     </RoutePanel>
   );
 }
@@ -52,6 +61,7 @@ function ApprovalCard({ ap }: { ap: Approval }) {
   const agent = agentById(ap.agentId);
   const [mode, setMode] = useState<"view" | "edit" | "refuse">("view");
   const [draft, setDraft] = useState(ap.preview);
+  const [objet, setObjet] = useState(ap.subject ?? "");
   const [motif, setMotif] = useState("");
   const d = getDirector();
   const neverAuto = ap.type === "facture" || ap.type === "question";
@@ -75,12 +85,21 @@ function ApprovalCard({ ap }: { ap: Approval }) {
         </div>
       </header>
 
-      {ap.subject && (
-        <div className="mt-2.5 text-sm">
-          <span className="text-ink-soft">Objet : </span>
-          <b>{ap.subject}</b>
+      {(ap.demo || ap.jamaisVue) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {ap.demo && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">DÉMO · Google non connecté, rien ne partira vraiment</span>}
+          {ap.jamaisVue && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">⚠️ Adresse jamais vue : {ap.jamaisVue.join(", ")}</span>}
         </div>
       )}
+      {ap.subject &&
+        (mode === "edit" && (ap.type === "email" || ap.type === "relance") ? (
+          <input value={objet} onChange={(e) => setObjet(e.target.value)} className="mt-2.5 w-full rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-semibold outline-none focus:border-ink/40" aria-label="Objet du mail" />
+        ) : (
+          <div className="mt-2.5 text-sm">
+            <span className="text-ink-soft">Objet : </span>
+            <b>{ap.subject}</b>
+          </div>
+        ))}
       {mode === "edit" ? (
         <textarea
           value={draft}
@@ -124,7 +143,7 @@ function ApprovalCard({ ap }: { ap: Approval }) {
         )}
         {mode === "edit" && (
           <>
-            <button type="button" onClick={() => d.approve(ap.id, "modifie", draft)} className="rounded-full bg-ink px-3.5 py-1.5 text-[13px] font-medium text-white">
+            <button type="button" onClick={() => d.approve(ap.id, "modifie", draft, objet)} className="rounded-full bg-ink px-3.5 py-1.5 text-[13px] font-medium text-white">
               Envoyer la version modifiée
             </button>
             <button type="button" onClick={() => setMode("view")} className="rounded-full px-3 py-1.5 text-[13px] text-ink-soft">
@@ -147,5 +166,45 @@ function ApprovalCard({ ap }: { ap: Approval }) {
         <p className="mt-2 text-[11px] text-ink-soft">Les factures ne sont jamais envoyées automatiquement.</p>
       )}
     </article>
+  );
+}
+
+const EXEC: Record<NonNullable<DouaneItem["execution"]>, { label: string; cls: string }> = {
+  a_faire: { label: "⏳ Envoi en cours…", cls: "bg-sky-100 text-sky-700" },
+  en_cours: { label: "⏳ Envoi en cours…", cls: "bg-sky-100 text-sky-700" },
+  fait: { label: "✓ Envoyé", cls: "bg-moss/15 text-moss" },
+  simule: { label: "✓ Simulé (DÉMO)", cls: "bg-amber-100 text-amber-800" },
+  echec: { label: "⚠️ Échec", cls: "bg-phare/10 text-phare" },
+  annule: { label: "Refusé", cls: "bg-ink/8 text-ink-soft" },
+};
+
+/** Ce qui a été décidé récemment, et si c'est bien parti. */
+function Historique() {
+  const items = useWorld((s) => s.douaneHistorique);
+  if (!items.length) return null;
+  return (
+    <section className="mt-6">
+      <h4 className="mb-1.5 font-silk text-[10px] tracking-wider text-ink-soft uppercase">Décidé récemment</h4>
+      <ul className="divide-y divide-paper-edge rounded-2xl border border-paper-edge bg-white/60">
+        {items.slice(0, 20).map((d) => {
+          const st = d.statut === "refuse" ? { label: "Refusé", cls: "bg-ink/8 text-ink-soft" } : d.execution ? EXEC[d.execution] : { label: "✓ Validé", cls: "bg-moss/15 text-moss" };
+          return (
+            <li key={d.id} className="flex items-center gap-2.5 px-3 py-2">
+              <Portrait agentId={d.agentId} size={1} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium">{d.subject ?? d.title}</span>
+                <span className="block truncate text-[11px] text-ink-soft">
+                  {d.to ? `→ ${d.to} · ` : ""}
+                  {formatParis(d.decidedAt, "d MMM HH:mm")}
+                  {d.par === "règle d'autonomie" ? " · règle d'autonomie" : ""}
+                </span>
+                {d.erreur && <span className="block text-[11px] text-phare">{d.erreur}</span>}
+              </span>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

@@ -40,7 +40,7 @@
 <div class="cover">
   <h1>⚓ LE PORT</h1>
   <p class="sub">Quartier général IA de MJAGENCY · Compte rendu d'avancement</p>
-  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 3 terminées</b> · prochaine étape : Phase 4</p>
+  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 4 terminées</b> · prochaine étape : Phase 5</p>
   <div class="grid">
     <div class="box"><b>Site en ligne</b>https://qg-mjagency.vercel.app</div>
     <div class="box"><b>Code</b>GitHub · vatmart3/QG-MJAGENCY<br>branche <code>claude/practical-goodall-xeybyi</code></div>
@@ -55,8 +55,8 @@
   <tr><td>1</td><td>La ville vivante (pixel art)</td><td><span class="tag ok">✓ Terminée</span></td><td>L'île, les 15 pôles, les 39 agents qui bougent selon leur état</td></tr>
   <tr><td>2</td><td>Supabase, connexion, temps réel</td><td><span class="tag ok">✓ Terminée</span></td><td>Données sauvegardées, accès réservé, tout est modifiable dans Réglages</td></tr>
   <tr><td>3</td><td>Le moteur d'agents (Claude)</td><td><span class="tag ok">✓ Terminée · testée en ligne</span></td><td>Les agents réfléchissent, se parlent et livrent pour de vrai</td></tr>
-  <tr><td>4</td><td>Douane + Gmail + Agenda</td><td><span class="tag next">→ Prochaine</span></td><td>Vrais mails envoyés après votre validation, agenda partagé</td></tr>
-  <tr><td>5</td><td>Routines + récap quotidien</td><td><span class="tag no">À venir</span></td><td>Le moteur tourne seul, récap de 07:30 par mail</td></tr>
+  <tr><td>4</td><td>Douane + Gmail + Agenda</td><td><span class="tag ok">✓ Terminée · Google à connecter</span></td><td>Lucie trie la boîte, Noé répond, Firmin relance, les mails partent après votre clic, Céleste gère l'agenda</td></tr>
+  <tr><td>5</td><td>Routines + récap quotidien</td><td><span class="tag next">→ Prochaine</span></td><td>Le moteur tourne seul, récap de 07:30 par mail</td></tr>
   <tr><td>6</td><td>Finance</td><td><span class="tag no">À venir</span></td><td>Devis, factures, impayés</td></tr>
   <tr><td>7</td><td>Prospection & commercial</td><td><span class="tag no">À venir</span></td><td>Recherche de prospects (Google Places), suivi des leads</td></tr>
   <tr><td>8</td><td>Autres pôles + finitions</td><td><span class="tag no">À venir</span></td><td>Shopify, derniers pôles, polish</td></tr>
@@ -93,6 +93,17 @@
   <li><b>Mode simulé</b> sans clé API : le même circuit tourne, sans aucune dépense.</li>
 </ul>
 
+<h3>Phase 4 — Douane, Gmail et Agenda</h3>
+<ul>
+  <li><b>Connexion Google</b> depuis Réglages → Connexions & règles. L'accès est chiffré en base, révocable en un clic.</li>
+  <li><b>Lucie</b> trie les nouveaux mails toutes les 15 min (8 h–20 h) : catégorie, résumé, urgence, libellé « LE PORT/… » dans Gmail, tâche pour le bon agent. Mail piégé → spam, signalé.</li>
+  <li><b>Noé</b> prépare les réponses, dans le fil d'origine. <b>Firmin</b> prépare les relances à 14 h en semaine.</li>
+  <li><b>La Douane envoie pour de vrai</b> : Envoyer / Modifier (texte et objet) / Refuser (le motif est retenu par l'agent). Suivi « Décidé récemment » : envoyé, simulé, échec.</li>
+  <li><b>Règles d'autonomie</b> listées et révocables ; jamais d'envoi automatique vers une adresse jamais vue.</li>
+  <li><b>Céleste</b> lit l'agenda, propose des créneaux (contraintes fixes de Réglages), crée les RDV ; invitation extérieure → Douane.</li>
+  <li>Sans Google : boîte et agenda de <b>démonstration</b>, marqués DÉMO, rien ne part.</li>
+</ul>
+
 <h3>Ajouts du 10 novembre</h3>
 <ul>
   <li><b>Connexion par mot de passe</b> (en plus du lien par e-mail), modifiable dans Réglages → Accès & budget.</li>
@@ -115,6 +126,9 @@
   <tr><td>Adresse de Matheis dans l'allowlist</td><td><span class="tag todo">À vérifier</span></td><td>LE PORT → Réglages → Accès & budget</td></tr>
   <tr><td>Site URL = <code>https://qg-mjagency.vercel.app</code> et Redirect URL = <code>…/auth/callback</code></td><td><span class="tag todo">À vérifier</span></td><td>Supabase → Authentication → URL Configuration</td></tr>
   <tr><td>Désactiver « Allow new users to sign up »</td><td><span class="tag todo">Conseillé</span></td><td>Supabase → Authentication → Sign In / Providers</td></tr>
+  <tr><td>Client Google (Gmail + Agenda API, écran de consentement publié, URI de retour)</td><td><span class="tag todo">À faire</span></td><td>console.cloud.google.com avec mjagency.officiel@gmail.com</td></tr>
+  <tr><td><code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>ENCRYPTION_KEY</code> puis Redeploy</td><td><span class="tag todo">À faire</span></td><td>Vercel → Environment Variables</td></tr>
+  <tr><td>Connecter Google avec mjagency.officiel@gmail.com</td><td><span class="tag todo">À faire</span></td><td>LE PORT → Réglages → Connexions & règles</td></tr>
   <tr><td>Supprimer les anciennes tables LE PORT du projet « MJAGENCY » (ancien compte)</td><td><span class="tag no">Optionnel</span></td><td>Uniquement sur votre accord</td></tr>
 </table>
 
@@ -130,8 +144,8 @@
   <tr><td><code>APP_URL</code></td><td>2</td><td><code>https://qg-mjagency.vercel.app</code></td></tr>
   <tr><td><code>ANTHROPIC_API_KEY</code></td><td>3</td><td>Cerveau des agents, <b>secrète</b>. Sans elle, mode simulé</td></tr>
   <tr><td><code>CRON_SECRET</code></td><td>3</td><td>Mot de passe du réveil automatique du moteur, <b>secret</b></td></tr>
-  <tr><td><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code></td><td>4</td><td>Gmail + Agenda (à fournir pour la Phase 4)</td></tr>
-  <tr><td><code>ENCRYPTION_KEY</code></td><td>4</td><td>Chiffre les jetons Google en base</td></tr>
+  <tr><td><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code></td><td>4</td><td>Gmail + Agenda (client OAuth Google)</td></tr>
+  <tr><td><code>ENCRYPTION_KEY</code></td><td>4</td><td>Chiffre l'accès Google en base (bouton « Générer » dans Réglages)</td></tr>
   <tr><td><code>GOOGLE_PLACES_API_KEY</code></td><td>7</td><td>Prospection</td></tr>
   <tr><td><code>SHOPIFY_STORE_DOMAIN</code> / <code>SHOPIFY_ADMIN_TOKEN</code></td><td>8</td><td>Boutique</td></tr>
   <tr><td><code>MOCK_MODE</code></td><td>—</td><td><code>true</code> = force le mode simulé (tests sans dépense)</td></tr>
@@ -160,16 +174,16 @@
   <tr><td>Le lien par e-mail n'arrive pas</td><td>Regarder les spams (expéditeur <code>noreply@mail.app.supabase.io</code>), sinon utiliser le mot de passe</td></tr>
   <tr><td>« Accès refusé » après connexion</td><td>L'adresse doit être dans l'allowlist (Réglages → Accès & budget)</td></tr>
   <tr><td>Message ⚠️ rouge dans la carte du moteur</td><td>Copier le texte et me l'envoyer</td></tr>
+  <tr><td>Google « à reconnecter » / envoi en échec</td><td>Réglages → Connexions & règles → Reconnecter (accès retiré ou expiré)</td></tr>
   <tr><td>Les agents ne bougent plus</td><td>Le budget du jour est peut-être atteint (voir la jauge) : l'augmenter ou attendre le lendemain</td></tr>
 </table>
 
-<h2>6. Prochaine étape — Phase 4</h2>
+<h2>6. Prochaine étape — Phase 5</h2>
 <ul>
-  <li><b>Gmail</b> : les agents lisent et trient la boîte <code>mjagency.officiel@gmail.com</code> et préparent les réponses.</li>
-  <li><b>Douane réelle</b> : un mail ne part qu'après votre clic sur « Envoyer », signé Jérémy, Matheis ou l'équipe.</li>
-  <li><b>Agenda</b> : Céleste propose des créneaux en tenant compte de vos contraintes.</li>
+  <li><b>Le moteur tourne seul</b>, même page fermée (pg_cron toutes les 2 min) : tri des mails, relances, envois validés.</li>
+  <li><b>Toutes les routines</b> du tableau Réglages → Routines s'exécutent à l'heure.</li>
+  <li><b>Récap quotidien de 07:30</b> envoyé par mail (HTML aux couleurs du Port) + archivé dans le Journal ; stand-up de 08:30 animé dans La Criée, point de 18 h, rapport hebdo.</li>
 </ul>
-<p><b>À préparer :</b> un client OAuth Google (Gmail + Agenda) autorisé sur <code>mjagency.officiel@gmail.com</code>. Je vous guiderai pas à pas au début de la phase.</p>
 
 </body>
 </html>

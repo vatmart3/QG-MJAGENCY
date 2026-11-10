@@ -3,31 +3,49 @@ import { z } from "zod";
 import type { EAgent } from "../db";
 import { askAgent } from "./ask_agent";
 import { askFounder } from "./ask_founder";
+import { createEmailDraft } from "./create_email_draft";
+import { createEvent } from "./create_event";
 import { createFounderTodo } from "./create_founder_todo";
 import { delegateTask } from "./delegate_task";
+import { findFreeSlots } from "./find_free_slots";
 import { finishTask } from "./finish_task";
+import { labelEmail } from "./label_email";
+import { listEvents } from "./list_events";
+import { listInbox } from "./list_inbox";
 import { planMission } from "./plan_mission";
 import { postToJournal } from "./post_to_journal";
 import { proposeCompanyMemoryUpdate } from "./propose_company_memory_update";
+import { readEmail } from "./read_email";
 import { readCompanyMemory } from "./read_company_memory";
 import { requestMeeting } from "./request_meeting";
+import { searchEmails } from "./search_emails";
 import { searchMemory } from "./search_memory";
+import { sendEmail } from "./send_email";
 import type { ToolDef } from "./types";
 import { writeAgentNote } from "./write_agent_note";
 
-/** Outils disponibles en Phase 3 (communication interne, mémoire, orchestration). */
+/** Outils construits : communication interne, mémoire, orchestration (Phase 3), mails et agenda (Phase 4). */
 export const TOOLS: ToolDef[] = [
   askAgent,
   askFounder,
+  createEmailDraft,
+  createEvent,
   createFounderTodo,
   delegateTask,
+  findFreeSlots,
   finishTask,
+  labelEmail,
+  listEvents,
+  listInbox,
   planMission,
   postToJournal,
   proposeCompanyMemoryUpdate,
   readCompanyMemory,
+  readEmail,
   requestMeeting,
+  searchEmails,
   searchMemory,
+  sendEmail,
   writeAgentNote,
 ] as ToolDef[];
 

@@ -1,9 +1,11 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useUI } from "@/store/ui";
 import { AccesTab } from "./reglages/AccesTab";
 import { AgentsTab } from "./reglages/AgentsTab";
+import { ConnexionsTab } from "./reglages/ConnexionsTab";
 import { DemoTab } from "./reglages/DemoTab";
 import { MemoryTab } from "./reglages/MemoryTab";
 import { PolesTab } from "./reglages/PolesTab";
@@ -16,11 +18,14 @@ const TABS = [
   { id: "routines", label: "Routines" },
   { id: "memoire", label: "Mémoire" },
   { id: "acces", label: "Accès & budget" },
+  { id: "connexions", label: "Connexions & règles" },
   { id: "demo", label: "Affichage & tests" },
 ] as const;
 
 export function ReglagesPanel() {
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("agents");
+  const params = useSearchParams();
+  const initial = TABS.find((t) => t.id === params.get("onglet"))?.id ?? "agents";
+  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>(initial);
   const conn = useUI((s) => s.conn);
   return (
     <RoutePanel title="Réglages" kicker={conn === "demo" ? "Mode démo — enregistré dans ce navigateur" : "Enregistré dans Supabase"} icon="⚙️" accent="#5b5470" width={580}>
@@ -41,6 +46,7 @@ export function ReglagesPanel() {
       {tab === "routines" && <RoutinesTab />}
       {tab === "memoire" && <MemoryTab />}
       {tab === "acces" && <AccesTab />}
+      {tab === "connexions" && <ConnexionsTab />}
       {tab === "demo" && <DemoTab />}
     </RoutePanel>
   );

@@ -93,6 +93,28 @@ export interface EApproval {
   statut: "en_attente" | "approuve" | "modifie" | "refuse";
   motif: string | null;
   decide_par: string | null;
+  destinataire?: string | null;
+  objet?: string | null;
+  execution_statut?: ExecutionStatut | null;
+}
+
+export type ExecutionStatut = "a_faire" | "en_cours" | "fait" | "echec" | "simule" | "annule";
+
+export interface EEmail {
+  id: string;
+  thread_id: string | null;
+  compte: string;
+  de: string;
+  a: string;
+  objet: string;
+  extrait: string;
+  recu_le: string | null;
+  categorie?: string | null;
+  resume?: string | null;
+  urgence?: number;
+  statut: "a_trier" | "trie" | "traite";
+  task_id?: string | null;
+  demo: boolean;
 }
 
 export interface ESettings {
@@ -100,6 +122,8 @@ export interface ESettings {
   budget_mois: number;
   bavardage_actif: boolean;
   signataire: string;
+  allowlist_emails: string[];
+  contraintes_agenda: { jeremy?: string; matheis?: string };
 }
 
 export interface EngineDb {
@@ -134,7 +158,25 @@ export interface EngineDb {
   insertMessage(row: { conversation_id?: string | null; from_agent: string | null; to_agent: string | null; task_id?: string | null; type: "question" | "reponse" | "delegation" | "livrable" | "bavardage"; contenu: string; resume_bulle: string | null }): Promise<void>;
   insertJournal(row: { type: string; titre: string; contenu?: string | null; agent_id?: string | null; pole_id?: string | null }): Promise<void>;
   journalSince(titre: string, sinceIso: string): Promise<boolean>;
-  insertApproval(row: { agent_id: string; task_id: string | null; type_action: string; titre: string; apercu: string; destinataire?: string | null; objet?: string | null; payload?: Record<string, unknown> }): Promise<string>;
+  insertApproval(row: { agent_id: string; task_id: string | null; type_action: string; titre: string; apercu: string; destinataire?: string | null; objet?: string | null; payload?: Record<string, unknown>; execution_statut?: ExecutionStatut | null; statut?: EApproval["statut"]; decide_par?: string | null }): Promise<string>;
+  /** envois validés (ou refusés) dont l'exécution n'est pas encore traitée */
+  approvalsToExecute(): Promise<EApproval[]>;
+  /** réserve l'exécution d'un envoi (a_faire → en_cours) ; false si un autre tick l'a déjà pris */
+  claimApprovalExecution(id: string): Promise<boolean>;
+  finishApprovalExecution(id: string, statut: ExecutionStatut, execution: Record<string, unknown>): Promise<void>;
+  /** règle « Toujours autoriser » active pour cet agent et ce type d'action */
+  hasAutonomyRule(agentId: string, type: string): Promise<boolean>;
+
+  kvGet<T = unknown>(cle: string): Promise<T | null>;
+  kvSet(cle: string, valeur: unknown): Promise<void>;
+  routineActive(id: string): Promise<boolean>;
+  /** une tâche non terminée de cet agent dont le titre commence par… */
+  hasOpenTask(agentId: string, titrePrefix: string): Promise<boolean>;
+
+  knownEmailIds(ids: string[]): Promise<string[]>;
+  insertEmails(rows: Omit<EEmail, "statut">[]): Promise<void>;
+  email(id: string): Promise<EEmail | null>;
+  updateEmail(id: string, patch: Partial<EEmail>): Promise<void>;
   approval(id: string): Promise<EApproval | null>;
   /** mises à jour de mémoire validées en Douane et pas encore appliquées */
   pendingMemoryApprovals(): Promise<EApproval[]>;
@@ -173,8 +215,10 @@ const parseTask = (t: ETask): ETask => ({ ...t, etapes: Array.isArray(t.etapes) 
 export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
   return {
     async settings() {
-      const s = ok(await sb.from("settings").select("budget_jour, budget_mois, bavardage_actif, signataire").eq("id", 1).maybeSingle());
-      return s ? { ...s, budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois) } : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY" };
+      const s = ok(await sb.from("settings").select("budget_jour, budget_mois, bavardage_actif, signataire, allowlist_emails, contraintes_agenda").eq("id", 1).maybeSingle());
+      return s
+        ? { ...s, budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {} }
+        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {} };
     },
     async poles() {
       return rows(await sb.from("poles").select("id, nom"));
@@ -261,6 +305,50 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     },
     async markApprovalApplied(id, payload) {
       ok(await sb.from("approvals").update({ payload: { ...payload, applique: true } }).eq("id", id));
+    },
+    async approvalsToExecute() {
+      return rows(await sb.from("approvals").select("*").eq("execution_statut", "a_faire").neq("statut", "en_attente").order("decide_le").limit(20));
+    },
+    async claimApprovalExecution(id) {
+      const r = rows(await sb.from("approvals").update({ execution_statut: "en_cours" }).eq("id", id).eq("execution_statut", "a_faire").select("id"));
+      return r.length > 0;
+    },
+    async finishApprovalExecution(id, statut, execution) {
+      ok(await sb.from("approvals").update({ execution_statut: statut, execution, execute_le: new Date().toISOString() }).eq("id", id));
+    },
+    async hasAutonomyRule(agentId, type) {
+      const r = rows(await sb.from("autonomy_rules").select("id").eq("agent_id", agentId).eq("type_action", type).eq("actif", true).limit(1));
+      return r.length > 0;
+    },
+    async kvGet(cle) {
+      const r = ok(await sb.from("engine_kv").select("valeur").eq("cle", cle).maybeSingle());
+      return (r?.valeur ?? null) as never;
+    },
+    async kvSet(cle, valeur) {
+      ok(await sb.from("engine_kv").upsert({ cle, valeur, maj_le: new Date().toISOString() }, { onConflict: "cle" }));
+    },
+    async routineActive(id) {
+      const r = ok(await sb.from("routines").select("actif").eq("id", id).maybeSingle());
+      return r ? !!r.actif : true;
+    },
+    async hasOpenTask(agentId, titrePrefix) {
+      const r = rows(
+        await sb.from("tasks").select("id").eq("agent_id", agentId).like("titre", `${titrePrefix.replace(/[%_]/g, "")}%`).in("statut", ["queued", "running", "waiting_tool", "waiting_approval", "waiting_founder"]).limit(1),
+      );
+      return r.length > 0;
+    },
+    async knownEmailIds(ids) {
+      if (!ids.length) return [];
+      return rows<{ id: string }>(await sb.from("emails").select("id").in("id", ids)).map((r) => r.id);
+    },
+    async insertEmails(list) {
+      if (list.length) ok(await sb.from("emails").upsert(list, { onConflict: "id", ignoreDuplicates: true }));
+    },
+    async email(id) {
+      return ok(await sb.from("emails").select("*").eq("id", id).maybeSingle());
+    },
+    async updateEmail(id, patch) {
+      ok(await sb.from("emails").update({ ...patch, maj_le: new Date().toISOString() }).eq("id", id));
     },
     async upsertMemory(cle, contenu) {
       ok(await sb.from("company_memory").upsert({ id: `mem_${cle}`, cle, contenu }, { onConflict: "cle" }));

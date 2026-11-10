@@ -4,7 +4,7 @@ Une petite île-port sétoise en pixel art isométrique, vivante, où chaque pô
 et chaque agent IA un petit bonhomme qui travaille, va au café, rejoint La Criée et parle avec les autres.
 Ce qu'on voit dans la ville est le reflet de l'état réel des agents.
 
-> **État : Phase 3 terminée — le moteur d'agents (Marius planifie, les agents se parlent et livrent).**
+> **État : Phase 4 terminée — la Douane envoie pour de vrai (Gmail), Lucie trie la boîte, Noé répond, Firmin relance, Céleste gère l'agenda.**
 > Sans variables Supabase, tout tourne en **mode démo** (local), exactement comme en Phase 1.
 > 📄 Compte rendu à télécharger : [`docs/compte-rendu.pdf`](docs/compte-rendu.pdf) (source : `docs/compte-rendu.html`, mis à jour à chaque phase).
 
@@ -120,6 +120,37 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
 
+## La Douane + Gmail + Agenda (Phase 4)
+
+- **Connexion Google** (Réglages → *Connexions & règles* → « Connecter Google ») : OAuth 2.0, scopes minimaux
+  `gmail.modify`, `gmail.send`, `calendar.events` (+ `openid email`). Le refresh token est **chiffré AES-256-GCM**
+  (`ENCRYPTION_KEY`) dans `integrations`, table illisible depuis le navigateur. Déconnexion = révocation chez Google.
+  Boîte prévue : `AGENCY_MAILBOX` (mjagency.officiel@gmail.com). Architecture multi-comptes, une seule boîte active.
+- **Sans Google** : boîte et agenda de **DÉMO** (adresses fictives `.example`, tout est marqué DÉMO, rien ne part).
+- **Lucie** trie toutes les 15 min de 8 h à 20 h (routine `rt_tri_mails`) : les nouveaux mails non lus arrivent dans
+  `emails`, elle les classe avec `label_email` (catégorie, résumé, urgence, libellé « LE PORT/… » dans Gmail) et crée
+  la tâche pour le bon agent (réponse → Noé). Mail urgent → alerte au Journal ; mail piégé → spam, signalé.
+- **Noé** répond (`read_email` → `send_email`, dans le fil d'origine) ; **Firmin** relance à 14 h en semaine les mails
+  envoyés restés sans réponse depuis 3 jours (`rt_relances_mails`) ; **Céleste** lit l'agenda, trouve des créneaux
+  (en tenant compte des contraintes fixes de Réglages) et crée les RDV — en Douane s'il y a des invités extérieurs.
+- **La Douane envoie vraiment** : « Envoyer » / « Modifier » (texte et objet) → le moteur envoie via Gmail au passage
+  suivant (lancé aussitôt), avec réservation atomique (jamais deux envois). Suivi dans « Décidé récemment » : envoyé,
+  simulé, échec. « Refuser » : le motif est gardé en note par l'agent. Signature MJAGENCY automatique (Réglages).
+- **Règles d'autonomie** (« Toujours autoriser ce type ») : listées et révocables dans Réglages ; un envoi
+  automatique n'a lieu que vers une adresse déjà connue de la boîte, jamais vers une adresse jamais vue.
+- Migration `…0700_le_port_google.sql` : `integrations`, `emails`, `engine_kv`, suivi d'exécution des validations.
+
+### Créer le client Google (une fois, avec mjagency.officiel@gmail.com)
+1. [console.cloud.google.com](https://console.cloud.google.com) → nouveau projet « LE PORT ».
+2. *API et services → Bibliothèque* : activer **Gmail API** et **Google Calendar API**.
+3. *Google Auth Platform* (écran de consentement) : type **Externe**, nom « LE PORT », e-mail d'assistance ; ajouter
+   mjagency.officiel@gmail.com comme utilisateur test, puis **Publier l'application** (sinon l'accès expire tous les 7 jours ;
+   Google affichera « application non validée » : *Paramètres avancés → Accéder à LE PORT*).
+4. *Clients → Créer un client* : **Application Web**, URI de redirection autorisée :
+   `https://qg-mjagency.vercel.app/api/integrations/google/callback` (et `http://localhost:3000/...` pour le dev).
+5. Vercel → *Environment Variables* : `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ENCRYPTION_KEY` (bouton « Générer »
+   dans Réglages, ou `openssl rand -base64 32`) → **Redeploy** → Réglages → *Connexions & règles* → « Connecter Google ».
+
 ## Comptes rendus et flux entre agents
 
 - **Comptes rendus rangés** : chaque agent termine sa tâche avec un compte rendu structuré (`finish_task`) — résumé, sections en
@@ -163,6 +194,9 @@ src/engine/                   moteur d'agents : tick, boucle par pas, prompts, m
 src/engine/tools/             un fichier par outil (schéma zod + exécution)
 app/api/engine/tick           exécution des pas (CRON_SECRET ou session) · app/api/cron/daily : filet quotidien
 app/api/agents/[id]/chat      chat direct avec un agent
+app/api/integrations/google   connexion OAuth (connect, callback, status, disconnect)
+src/integrations/             Gmail + Agenda (REST), boîte/agenda DÉMO, services du moteur (jetons déchiffrés côté serveur)
+src/engine/douane.ts          exécution des envois validés · src/engine/courrier.ts : tri (Lucie) et relances (Firmin)
 src/world/                    PixiJS : Game, layout de l'île, ciel, ambiance, couche DOM (étiquettes & bulles)
 src/world/sprites/            raster pixel art, atlas, bonshommes, mobilier, sol
 src/world/agents/             A*, contrôleur visuel des bonshommes
@@ -189,7 +223,7 @@ Toutes les variables sont listées dans `.env.example`. `MOCK_MODE=true` : tout 
 - [x] **Phase 1** — La ville vivante (mock)
 - [x] Phase 2 — Supabase + Auth + temps réel
 - [x] Phase 3 — Le moteur d'agents
-- [ ] Phase 4 — La Douane + Gmail + Agenda
+- [x] Phase 4 — La Douane + Gmail + Agenda
 - [ ] Phase 5 — Routines + récap quotidien
 - [ ] Phase 6 — Finance
 - [ ] Phase 7 — Prospection & Commercial
