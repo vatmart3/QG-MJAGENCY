@@ -4,7 +4,7 @@ Une petite île-port sétoise en pixel art isométrique, vivante, où chaque pô
 et chaque agent IA un petit bonhomme qui travaille, va au café, rejoint La Criée et parle avec les autres.
 Ce qu'on voit dans la ville est le reflet de l'état réel des agents.
 
-> **État : Phase 5 terminée — pilote automatique (les agents travaillent LE PORT fermé), routines, récaps à la demande, crédits au plus bas.**
+> **État : Phase 6 terminée — LE PORT est l'outil de facturation de MJAGENCY (factures conformes, devis, avoirs, paiements, exports, prévisionnel, fiscal).**
 > Sans variables Supabase, tout tourne en **mode démo** (local), exactement comme en Phase 1.
 > 📄 Compte rendu à télécharger : [`docs/compte-rendu.pdf`](docs/compte-rendu.pdf) (source : `docs/compte-rendu.html`, mis à jour à chaque phase).
 
@@ -119,6 +119,31 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 ```
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
+
+## Finance (Phase 6)
+
+- **Pièces conformes** : devis `D-AAAA-NNNN`, factures `F-AAAA-NNNN`, avoirs `A-AAAA-NNNN`. Numérotation **continue et sans
+  trou** attribuée par la base (`prochain_numero`, verrou de ligne) au moment de l'**émission** (`emettre_facture`,
+  `emettre_devis`, `creer_avoir`). Une pièce naît en brouillon ; émise, elle est **verrouillée** par déclencheur
+  (ni modification ni suppression : correction par avoir uniquement). Les paiements sont figés (livre des recettes).
+- **PDF** (`src/finance/pdf.ts`, pdf-lib, polices standard) avec toutes les mentions : émetteur et SIRET, client figé à
+  l'émission, désignations, quantités, prix, total, échéance, « TVA non applicable, art. 293 B du CGI », pénalités de
+  retard, indemnité de 40 € (clients pros), IBAN. Archivé une seule fois dans **Supabase Storage** (bucket privé
+  `factures`) avec son **SHA-256** en base. Brouillon = aperçu filigrané.
+- **Écran Finances** : tableau de bord (encaissé / objectif, facturé, reste à encaisser, impayés, cotisations estimées,
+  12 mois, prévision 3 mois, seuil de TVA), factures et devis (édition, émission, PDF, envoi par mail avec PDF joint,
+  encaissement, avoir, devis → facture), clients, abonnements, exports & import, fiscal & réglages, MJ E-comm (séparé).
+- **Exports** : livre des recettes CSV/PDF, registre CSV des factures, **ZIP mensuel** pour l'expert-comptable (PDF + CSV).
+  **Import CSV** de l'existant (clients, anciennes factures avec leur numéro et leur paiement) avec association des colonnes ;
+  la numérotation reprend après le dernier numéro importé.
+- **Automatismes sans IA (zéro crédit)** : 1er du mois → factures des abonnements préparées par Bastien (émises et envoyées
+  après validation en Douane) ; chaque matin → relances graduées de Rémi (J+3 courtoise, J+10 ferme, J+30 mise en demeure,
+  PDF joint, jamais automatiques) ; 1er du mois → clôture d'Héloïse et Agathe au Journal ; alertes fiscales à 7 jours et
+  au seuil de TVA (Agathe). Calendrier URSSAF/CFE indicatif (`src/finance/fiscal.ts`).
+- **Outils des agents** : `get_client`, `create_quote`, `create_invoice`, `render_pdf` (émission), `send_document`
+  (Douane, PDF joint), `record_payment`, `list_unpaid_invoices`, `get_finance_summary`, `get_tax_calendar`.
+- Sécurité : RLS fondateurs sur toutes les tables finance ; fonctions d'émission refusées à tout compte hors allowlist
+  (`exiger_fondateur`). Structure prête pour la facture électronique (`invoices.facturx`). Migrations `…1000` à `…1020`.
 
 ## Pilote automatique, routines et économies (Phase 5)
 
@@ -247,6 +272,6 @@ Toutes les variables sont listées dans `.env.example`. `MOCK_MODE=true` : tout 
 - [x] Phase 3 — Le moteur d'agents
 - [x] Phase 4 — La Douane + Gmail + Agenda
 - [x] Phase 5 — Pilote automatique + routines + récaps (à la demande)
-- [ ] Phase 6 — Finance
+- [x] Phase 6 — Finance
 - [ ] Phase 7 — Prospection & Commercial
 - [ ] Phase 8 — Les autres pôles + finitions

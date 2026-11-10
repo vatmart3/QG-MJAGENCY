@@ -8,6 +8,7 @@ import { createEvent } from "./create_event";
 import { createFounderTodo } from "./create_founder_todo";
 import { delegateTask } from "./delegate_task";
 import { findFreeSlots } from "./find_free_slots";
+import { FINANCE_TOOLS } from "./finance_tools";
 import { finishTask } from "./finish_task";
 import { labelEmail } from "./label_email";
 import { listEvents } from "./list_events";
@@ -47,6 +48,7 @@ export const TOOLS: ToolDef[] = [
   searchMemory,
   sendEmail,
   writeAgentNote,
+  ...FINANCE_TOOLS,
 ] as ToolDef[];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));

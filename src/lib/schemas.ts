@@ -13,7 +13,7 @@ export const TOOLS = [
   "list_events", "find_free_slots", "create_event",
   "create_lead", "update_lead", "search_leads", "create_opportunity", "update_opportunity_stage", "get_client",
   "places_search", "fetch_url_summary", "web_search",
-  "create_quote", "create_invoice", "render_pdf", "record_payment", "list_unpaid_invoices", "get_finance_summary", "get_tax_calendar",
+  "create_quote", "create_invoice", "render_pdf", "send_document", "record_payment", "list_unpaid_invoices", "get_finance_summary", "get_tax_calendar",
   "check_site_health", "audit_url",
   "create_founder_todo",
 ] as const;

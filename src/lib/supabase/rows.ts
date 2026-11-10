@@ -240,6 +240,7 @@ export const approvalFromRow = (r: ApprovalRow): Approval => ({
   delivered: true,
   demo: r.payload?.demo === true,
   raison: typeof r.payload?.raison_douane === "string" ? r.payload.raison_douane : undefined,
+  piece: r.payload?.kind === "document" && typeof r.payload.id === "string" ? { doc: r.payload.doc === "devis" ? "devis" : "facture", id: r.payload.id, emettre: !!r.payload.emettre } : undefined,
   jamaisVue: Array.isArray(r.payload?.jamais_vue) && (r.payload.jamais_vue as string[]).length ? (r.payload.jamais_vue as string[]) : undefined,
 });
 

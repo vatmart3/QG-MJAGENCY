@@ -332,7 +332,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "victor", nom: "Victor", pole: "commercial", role: "Devis & propositions",
     personnalite: "Carré, chiffré, transparent sur les prix.",
-    modele: "worker", outils: [...COMMUNS, "create_quote", "render_pdf", "get_client"],
+    modele: "worker", outils: [...COMMUNS, "create_quote", "render_pdf", "get_client", "send_document"],
     autonomie: 0, critique: false, responsable: true, sortant: true,
     routines: [],
     taches: ["Devis D-2026-0042 site vitrine", "Proposition commerciale cartes NFC", "Devis maintenance mensuelle"],
@@ -357,7 +357,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "bastien", nom: "Bastien", pole: "finance", role: "Facturation",
     personnalite: "Rigoureux, ne laisse jamais un numéro sauter.",
-    modele: "worker", outils: [...COMMUNS, "create_invoice", "render_pdf", "record_payment", "send_email"],
+    modele: "worker", outils: [...COMMUNS, "create_invoice", "render_pdf", "record_payment", "send_email", "send_document", "get_client", "list_unpaid_invoices"],
     autonomie: 0, critique: false, responsable: true, sortant: true,
     routines: ["1er du mois — factures d'abonnement"],
     taches: ["Facture F-2026-0087 Arvéo", "Abonnements maintenance de novembre", "Paiement reçu : Bistrot du Canal"],
@@ -632,6 +632,8 @@ export const ROUTINES: Routine[] = [
   R({ id: "rt_point_18h", nom: "Point de fin de journée", agentId: "diane", heure: "18:00", promptTache: "Fais un point court : ce qui est fait, ce qui attend une validation." , actif: false }),
   R({ id: "rt_plan_contenu", nom: "Plan de contenu de la semaine", agentId: "chloe", heure: "08:00", jours: [1], promptTache: "Prépare le plan de contenu Instagram / TikTok de la semaine." , actif: false }),
   R({ id: "rt_rapport_hebdo", nom: "Rapport hebdo", agentId: "diane", heure: "17:00", jours: [5], promptTache: "Rédige le rapport hebdo (KPIs, finances avec Héloïse, pipeline, veille avec Gabin)." , actif: false }),
+  R({ id: "rt_abonnements", nom: "Factures des abonnements", agentId: "bastien", heure: "08:00", jourDuMois: 1, promptTache: "Prépare la facture de chaque abonnement actif du mois (envoi après validation en Douane)." }),
+  R({ id: "rt_fiscal", nom: "Échéances fiscales", agentId: "agathe", heure: "08:05", promptTache: "Préviens 7 jours avant chaque échéance fiscale et au passage des seuils de TVA." }),
   R({ id: "rt_cloture", nom: "Clôture du mois", agentId: "heloise", heure: "09:00", jourDuMois: 1, promptTache: "Clôture le mois : CA, encaissements, cotisations estimées (avec Agathe), prévisionnel." }),
 ];
 

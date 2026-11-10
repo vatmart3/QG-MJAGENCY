@@ -66,7 +66,7 @@ function ApprovalCard({ ap }: { ap: Approval }) {
   const [objet, setObjet] = useState(ap.subject ?? "");
   const [motif, setMotif] = useState("");
   const d = getDirector();
-  const neverAuto = ap.type === "facture" || ap.type === "question";
+  const neverAuto = ap.type === "facture" || ap.type === "devis" || ap.type === "question" || !!ap.piece;
 
   return (
     <article className="relative rounded-2xl border border-paper-edge bg-white/75 p-3.5 shadow-[0_2px_0_var(--color-paper-edge)]">
@@ -113,6 +113,12 @@ function ApprovalCard({ ap }: { ap: Approval }) {
         />
       ) : (
         <pre className="mt-2 max-h-48 overflow-y-auto rounded-xl bg-paper-2/70 p-2.5 font-sans text-[13px] leading-relaxed whitespace-pre-wrap">{ap.preview}</pre>
+      )}
+
+      {ap.piece && (
+        <a href={`/api/finance/pdf?kind=${ap.piece.doc}&id=${encodeURIComponent(ap.piece.id)}`} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 rounded-full border border-ink/15 px-3 py-1 text-[12.5px] hover:bg-white">
+          📎 Voir le PDF joint{ap.piece.emettre ? " (émis et numéroté à l'envoi)" : ""}
+        </a>
       )}
 
       {mode === "refuse" && (
@@ -165,8 +171,8 @@ function ApprovalCard({ ap }: { ap: Approval }) {
           </>
         )}
       </div>
-      {neverAuto && mode === "view" && ap.type === "facture" && (
-        <p className="mt-2 text-[11px] text-ink-soft">Les factures ne sont jamais envoyées automatiquement.</p>
+      {neverAuto && mode === "view" && (ap.type === "facture" || ap.type === "devis" || ap.piece) && (
+        <p className="mt-2 text-[11px] text-ink-soft">Factures, devis et relances d&apos;impayés ne partent jamais automatiquement.</p>
       )}
     </article>
   );

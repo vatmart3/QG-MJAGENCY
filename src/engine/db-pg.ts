@@ -1,4 +1,6 @@
 import type { Pool } from "pg";
+import type { FinanceDb } from "@/finance/db";
+import { lireFinance, num, type Client, type Invoice, type Ligne, type Payment, type Quote, type Subscription } from "@/finance/types";
 import { AUTONOMIE_DEFAUT, lireAutonomie, type ERoutine, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
 
 /**
@@ -51,6 +53,7 @@ export function pgEngineDb(pool: Pool): EngineDb {
   };
 
   return {
+    finance: pgFinanceDb(q),
     async settings() {
       const [s] = await q<{ budget_jour: string; budget_mois: string; bavardage_actif: boolean; signataire: string; allowlist_emails: string[]; contraintes_agenda: { jeremy?: string; matheis?: string }; autonomie: unknown }>("select * from public.settings where id = 1");
       return s
@@ -231,6 +234,97 @@ export function pgEngineDb(pool: Pool): EngineDb {
     async chats(agentId, limit) {
       const r = await q<{ role: "fondateur" | "agent"; contenu: string }>("select role, contenu from public.agent_chats where agent_id = $1 order by cree_le desc limit $2", [agentId, limit]);
       return r.reverse();
+    },
+  };
+}
+
+// ------------------------------------------------------------------ finance (tests)
+type Q = <T = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<T[]>;
+const d10 = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : null);
+const pInv = (r: Record<string, unknown>): Invoice => ({ ...(r as unknown as Invoice), total: num(r.total), lignes: (r.lignes as Ligne[]) ?? [], emis_le: d10(r.emis_le), echeance: d10(r.echeance), paye_le: d10(r.paye_le), cree_le: String(r.cree_le) });
+const pQuo = (r: Record<string, unknown>): Quote => ({ ...(r as unknown as Quote), total: num(r.total), lignes: (r.lignes as Ligne[]) ?? [], emis_le: d10(r.emis_le), valable_jusqu: d10(r.valable_jusqu), cree_le: String(r.cree_le) });
+const pPay = (r: Record<string, unknown>): Payment => ({ ...(r as unknown as Payment), montant: num(r.montant), date: d10(r.date)! });
+
+function pgFinanceDb(q: Q): FinanceDb {
+  const ins = async (table: string, row: Record<string, unknown>) => {
+    const keys = Object.keys(row).filter((k) => row[k] !== undefined);
+    const vals = keys.map((k) => (typeof row[k] === "object" && row[k] !== null ? JSON.stringify(row[k]) : row[k]));
+    const [r] = await q(`insert into public.${table} (${keys.map((k) => `"${k}"`).join(",")}) values (${keys.map((_, i) => `$${i + 1}`).join(",")}) returning *`, vals);
+    return r!;
+  };
+  const upd = async (table: string, id: string, patch: Record<string, unknown>) => {
+    const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
+    if (!keys.length) return;
+    const vals = keys.map((k) => (typeof patch[k] === "object" && patch[k] !== null ? JSON.stringify(patch[k]) : patch[k]));
+    await q(`update public.${table} set ${keys.map((k, i) => `"${k}" = $${i + 1}`).join(",")} where id = $${keys.length + 1}`, [...vals, id]);
+  };
+  return {
+    async settings() {
+      const [s] = await q<{ finance: unknown }>("select finance from public.settings where id = 1");
+      return lireFinance(s?.finance);
+    },
+    async clients(recherche) {
+      return (await q(recherche ? "select * from public.clients where nom ilike $1 order by nom" : "select * from public.clients order by nom", recherche ? [`%${recherche}%`] : [])) as unknown as Client[];
+    },
+    async client(id) {
+      const [r] = await q("select * from public.clients where id = $1", [id]);
+      return (r as unknown as Client) ?? null;
+    },
+    async insertClient(c) {
+      return (await ins("clients", c as Record<string, unknown>)) as unknown as Client;
+    },
+    async invoice(id) {
+      const [r] = await q("select * from public.invoices where id = $1", [id]);
+      return r ? pInv(r) : null;
+    },
+    async invoiceByNumero(n) {
+      const [r] = await q("select * from public.invoices where numero = $1", [n]);
+      return r ? pInv(r) : null;
+    },
+    async quote(id) {
+      const [r] = await q("select * from public.quotes where id = $1", [id]);
+      return r ? pQuo(r) : null;
+    },
+    async quoteByNumero(n) {
+      const [r] = await q("select * from public.quotes where numero = $1", [n]);
+      return r ? pQuo(r) : null;
+    },
+    async insertInvoice(row) {
+      return pInv(await ins("invoices", row as Record<string, unknown>));
+    },
+    async insertQuote(row) {
+      return pQuo(await ins("quotes", row as Record<string, unknown>));
+    },
+    updateInvoice: (id, patch) => upd("invoices", id, patch as Record<string, unknown>),
+    updateQuote: (id, patch) => upd("quotes", id, patch as Record<string, unknown>),
+    async emettre(kind, id) {
+      const [r] = await q<{ n: string }>(`select public.${kind === "facture" ? "emettre_facture" : "emettre_devis"}($1) as n`, [id]);
+      return r!.n;
+    },
+    async avoir(id, motif) {
+      const [r] = await q<{ n: string }>("select public.creer_avoir($1, $2, null) as n", [id, motif]);
+      return r!.n;
+    },
+    async insertPayment(p) {
+      await ins("payments", p as Record<string, unknown>);
+    },
+    async invoicesSince(date) {
+      return (await q("select * from public.invoices where statut <> 'brouillon' and emis_le >= $1 order by emis_le", [date])).map(pInv);
+    },
+    async openInvoices() {
+      return (await q("select * from public.invoices where type = 'facture' and statut in ('emise','envoyee') order by echeance")).map(pInv);
+    },
+    async payments(since) {
+      return (await q("select * from public.payments where date >= $1 order by date", [since])).map(pPay);
+    },
+    async paymentsOf(id) {
+      return (await q("select * from public.payments where invoice_id = $1", [id])).map(pPay);
+    },
+    async subscriptions() {
+      return (await q("select * from public.subscriptions order by libelle")).map((s) => ({ ...(s as unknown as Subscription), montant: num(s.montant), debut: d10(s.debut)!, fin: d10(s.fin) }));
+    },
+    async markSubscription(id, mois) {
+      return (await q("update public.subscriptions set dernier_mois = $2 where id = $1 and (dernier_mois is null or dernier_mois < $2) returning id", [id, mois])).length > 0;
     },
   };
 }

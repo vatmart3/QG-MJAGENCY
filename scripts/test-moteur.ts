@@ -11,6 +11,8 @@ import { demoServices } from "@/integrations/demo";
 import { SENSIBLE_RE } from "@/engine/tools/autonomie";
 import { launchRoutine } from "@/engine/routines";
 import { estAutomatique } from "@/engine/courrier";
+import { resumeFinance } from "@/finance/calc";
+import { sha256Hex } from "@/finance/pdf";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -253,6 +255,97 @@ async function scenarioRoutines() {
   check(estAutomatique("Instagram <follow-suggestions@mail.instagram.com>") && estAutomatique("Supabase <welcome@supabase.com>") && estAutomatique("noreply@exemple.fr") && !estAutomatique("Claire <contact@fournil-du-quai.example>"), "notifications et newsletters rangées sans IA, vrais mails gardés");
 }
 
+async function scenarioFinance() {
+  console.log("\n— Finance : facture de Bastien, Douane, paiements, abonnements, relances, avoir, fiscal");
+  await reset();
+  await pool.query("set session_replication_role = replica; delete from public.payments; delete from public.invoices where avoir_de is not null; delete from public.invoices; delete from public.subscriptions; delete from public.quotes; delete from public.clients; delete from public.engine_kv; set session_replication_role = origin;");
+  const run = async (iso: string, n = 6) => {
+    for (let i = 0; i < n; i++) await tick(db, llm, { now: () => new Date(iso), services: demoServices });
+  };
+  const f = db.finance;
+
+  // 1. Bastien : brouillon → émission (numéro + PDF archivé) → Douane
+  await q("insert into public.tasks (agent_id, cree_par, titre, description, statut) values ('bastien', 'jeremy', 'Facture du pack NFC pour La Marée', 'Prépare la facture et envoie-la.', 'queued')");
+  await run("2026-11-10T10:00:00Z");
+  const [fac] = await q<{ id: string; numero: string; statut: string; total: string; pdf_path: string; pdf_sha256: string }>("select * from public.invoices where type = 'facture' order by cree_le limit 1");
+  check(!!fac && /^F-\d{4}-\d{4}$/.test(fac.numero) && Number(fac.total) === 436, `Bastien émet la facture ${fac?.numero} (${fac?.total} €)`);
+  const pdf = fac?.pdf_path ? await demoServices.documents.lire(fac.pdf_path) : null;
+  check(!!pdf && new TextDecoder().decode(pdf.slice(0, 5)) === "%PDF-" && fac!.pdf_sha256 === (await sha256Hex(pdf)), "PDF archivé, empreinte SHA-256 conforme");
+  const [ap] = await q<{ id: string; type_action: string; execution_statut: string; payload: { kind: string } }>("select * from public.approvals where type_action = 'facture'");
+  check(ap?.payload.kind === "document" && ap.execution_statut === "a_faire", "l'envoi de la facture attend en Douane (jamais automatique)");
+  await q("update public.approvals set statut = 'approuve', decide_par = 'test', decide_le = now() where id = $1", [ap!.id]);
+  await run("2026-11-10T10:05:00Z", 1);
+  const [apres] = await q<{ statut: string }>("select statut from public.invoices where id = $1", [fac!.id]);
+  const [ex] = await q<{ execution_statut: string }>("select execution_statut from public.approvals where id = $1", [ap!.id]);
+  check(ex?.execution_statut === "simule" && apres?.statut === "envoyee", "validée en Douane : envoyée avec le PDF joint (simulé), facture « envoyée »");
+
+  // 2. verrou légal
+  let verrou = false;
+  try {
+    await q("update public.invoices set lignes = '[]' where id = $1", [fac!.id]);
+  } catch {
+    verrou = true;
+  }
+  check(verrou, "une facture émise ne se modifie plus");
+
+  // 3. paiements → payée → livre des recettes
+  await f.insertPayment({ invoice_id: fac!.id, montant: 200, date: "2026-11-12", moyen: "virement" });
+  const [part] = await q<{ statut: string }>("select statut from public.invoices where id = $1", [fac!.id]);
+  await f.insertPayment({ invoice_id: fac!.id, montant: 236, date: "2026-11-15", moyen: "carte" });
+  const [paid] = await q<{ statut: string; paye_le: Date }>("select statut, paye_le from public.invoices where id = $1", [fac!.id]);
+  const livre = await q("select * from public.livre_recettes");
+  check(part?.statut === "envoyee" && paid?.statut === "payee" && livre.length === 2, "paiement partiel puis total : facture payée, 2 lignes au livre des recettes");
+
+  // 4. abonnement facturé le 1er du mois → Douane → émis à la validation
+  await q("update public.routines set actif = true where id in ('rt_abonnements', 'rt_echues', 'rt_fiscal', 'rt_cloture')");
+  const cl = await f.insertClient({ nom: "Boulangerie Abonnée (test)", email: "abo@example.fr", type: "pro" });
+  await q("insert into public.subscriptions (client_id, libelle, lignes, debut) values ($1, 'Maintenance du site', '[{\"designation\":\"Maintenance mensuelle\",\"quantite\":1,\"prix_unitaire\":49}]', '2026-01-01')", [cl.id]);
+  await run("2026-12-01T07:30:00Z", 1);
+  await run("2026-12-01T07:31:00Z", 1);
+  const abo = await q<{ id: string; statut: string; total: string }>("select * from public.invoices where abonnement_id is not null");
+  const [apAbo] = await q<{ id: string }>("select id from public.approvals where titre like 'Facture d''abonnement%'");
+  check(abo.length === 1 && abo[0]!.statut === "brouillon" && Number(abo[0]!.total) === 49 && !!apAbo, "1er du mois : facture d'abonnement préparée (brouillon), envoi en Douane, une seule fois");
+  await q("update public.approvals set statut = 'approuve', decide_le = now() where id = $1", [apAbo!.id]);
+  await run("2026-12-01T07:35:00Z", 1);
+  const [aboEmis] = await q<{ numero: string; statut: string }>("select numero, statut from public.invoices where id = $1", [abo[0]!.id]);
+  check(!!aboEmis?.numero && aboEmis.statut === "envoyee", `validée : émise ${aboEmis?.numero} et envoyée`);
+
+  // 5. relances graduées (sans IA)
+  const brouillon = await f.insertInvoice({ client_id: cl.id, objet: "Logo", lignes: [{ designation: "Logo", quantite: 1, prix_unitaire: 300 }], delai_jours: 0 });
+  await f.emettre("facture", brouillon.id);
+  const usage0 = await q<{ n: string }>("select count(*) as n from public.usage");
+  // le test remonte le temps : on oublie la dernière exécution de la routine
+  await q("update public.routines set derniere_execution = null where id = 'rt_echues'");
+  await run("2026-11-22T06:20:00Z", 1);
+  await run("2026-11-22T06:25:00Z", 1);
+  const r1 = await q<{ titre: string; payload: { relance: number } }>("select titre, payload from public.approvals where type_action = 'relance' order by cree_le");
+  await run("2026-12-11T06:20:00Z", 1);
+  const r2 = await q<{ payload: { relance: number; jamais_auto: boolean } }>("select payload from public.approvals where type_action = 'relance' order by cree_le");
+  const usage1 = await q<{ n: string }>("select count(*) as n from public.usage");
+  check(r1.length === 1 && r1[0]!.payload.relance === 2 && r2.length === 2 && r2[1]!.payload.relance === 3 && r2[1]!.payload.jamais_auto, "relances : ferme à J+12, mise en demeure à J+31 (jamais automatique), une seule par niveau");
+  check(usage0[0]!.n === usage1[0]!.n, "relances, abonnements et alertes : zéro appel à l'IA");
+
+  // 6. avoir
+  await f.avoir(brouillon.id, "Erreur de prestation");
+  const [annule] = await q<{ statut: string }>("select statut from public.invoices where id = $1", [brouillon.id]);
+  const [av] = await q<{ numero: string; total: string }>("select numero, total from public.invoices where type = 'avoir'");
+  check(annule?.statut === "annulee" && /^A-/.test(av?.numero ?? "") && Number(av?.total) === -300, `avoir ${av?.numero} : la facture est annulée`);
+
+  // 7. tableau de bord, clôture, fiscal
+  const inv = await f.invoicesSince("2025-11-01");
+  const pays = await f.payments("2025-11-01");
+  const r = resumeFinance({ invoices: inv, payments: pays, subscriptions: await f.subscriptions(), settings: await f.settings(), mois: "2026-11", aujourdhui: "2026-11-30" });
+  check(r.encaisseMois === 436 && r.cotisationsMois === Math.round(436 * 0.246 * 100) / 100, `tableau de bord : ${r.encaisseMois} € encaissés en novembre, cotisations estimées ${r.cotisationsMois} €`);
+  await run("2026-12-01T08:05:00Z", 1);
+  const clo = await q<{ titre: string }>("select titre from public.journal where titre like '📊 Clôture%'");
+  check(clo.length === 1 && clo[0]!.titre.includes("436"), "clôture du mois publiée au Journal (chiffres réels)");
+  await q("update public.routines set derniere_execution = null where id = 'rt_fiscal'");
+  await run("2026-11-25T07:10:00Z", 1);
+  await run("2026-11-25T07:20:00Z", 1);
+  const fisc = await q("select 1 from public.journal where titre like '🗓️%'");
+  check(fisc.length >= 1, "Agathe prévient de l'échéance URSSAF à 7 jours (une seule fois)");
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -262,6 +355,7 @@ async function scenarioRoutines() {
     await scenarioCourrier();
     await scenarioAutonome();
     await scenarioRoutines();
+    await scenarioFinance();
   } catch (e) {
     console.error(e);
     failures++;

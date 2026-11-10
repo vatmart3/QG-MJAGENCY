@@ -1,4 +1,5 @@
 import type { Services } from "@/integrations/types";
+import { archiverPdf, emettrePiece } from "@/finance/emit";
 import type { EApproval, EngineDb } from "./db";
 
 /**
@@ -20,7 +21,7 @@ export async function executeApprovals(db: EngineDb, services: Services, now = n
       continue;
     }
     try {
-      const r = await executeOne(a, services);
+      const r = await executeOne(a, services, db);
       await db.finishApprovalExecution(a.id, r.demo ? "simule" : "fait", r.execution);
       await db.insertJournal({ type: "action", titre: `${r.titre}${a.decide_par === "mode autonome" ? " · mode autonome" : ""}`.slice(0, 300), contenu: r.contenu, agent_id: a.agent_id });
       const repondre = typeof a.payload.repondre_a === "string" ? a.payload.repondre_a : null;
@@ -36,7 +37,7 @@ export async function executeApprovals(db: EngineDb, services: Services, now = n
   return { faits, echecs };
 }
 
-async function executeOne(a: EApproval, services: Services): Promise<{ demo: boolean; execution: Record<string, unknown>; titre: string; contenu: string }> {
+async function executeOne(a: EApproval, services: Services, db: EngineDb): Promise<{ demo: boolean; execution: Record<string, unknown>; titre: string; contenu: string }> {
   const p = a.payload;
   if (p.kind === "email") {
     const mb = await services.mailbox();
@@ -47,6 +48,31 @@ async function executeOne(a: EApproval, services: Services): Promise<{ demo: boo
     const r = await mb.send({ a: dest, objet, corps, threadId: (p.threadId as string) || undefined, inReplyTo: (p.inReplyTo as string) || undefined, references: (p.references as string) || undefined });
     const demo = mb.kind === "demo";
     return { demo, execution: { id: r.id, threadId: r.threadId }, titre: `✉️ Mail ${demo ? "simulé (DÉMO)" : "envoyé"} à ${dest} : ${objet}`, contenu: corps.slice(0, 1500) };
+  }
+  if (p.kind === "document") {
+    const kind = p.doc === "devis" ? "devis" : "facture";
+    const id = String(p.id);
+    const f = db.finance;
+    let piece = kind === "facture" ? await f.invoice(id) : await f.quote(id);
+    if (!piece) throw new Error("Pièce introuvable.");
+    if (piece.statut === "brouillon") {
+      if (!p.emettre) throw new Error("La pièce n'est pas émise.");
+      await emettrePiece(f, services.documents, kind, id);
+    } else if (!piece.pdf_path) await archiverPdf(f, services.documents, kind, id);
+    piece = kind === "facture" ? await f.invoice(id) : await f.quote(id);
+    if (!piece?.pdf_path || !piece.numero) throw new Error("PDF introuvable.");
+    const pdf = await services.documents.lire(piece.pdf_path);
+    if (!pdf) throw new Error("PDF absent du coffre.");
+    const dest = a.destinataire || String(p.a ?? "") || piece.client_snapshot?.email || "";
+    if (!dest) throw new Error("Le client n'a pas d'adresse e-mail : ajoute-la dans Finances → Clients.");
+    const mb = await services.mailbox();
+    const objet = a.objet || `${kind === "facture" ? "Facture" : "Devis"} ${piece.numero}`;
+    const corps = a.apercu || String(p.corps ?? "");
+    const r = await mb.send({ a: dest, objet, corps, pieces: [{ nom: `${piece.numero}.pdf`, mime: "application/pdf", data: pdf }] });
+    if (kind === "facture" && piece.statut === "emise") await f.updateInvoice(id, { statut: "envoyee" });
+    if (kind === "devis" && piece.statut === "emis") await f.updateQuote(id, { statut: "envoye" });
+    const demo = mb.kind === "demo";
+    return { demo, execution: { id: r.id, numero: piece.numero }, titre: `🧾 ${p.relance ? `Relance ${piece.numero}` : `${kind === "facture" ? "Facture" : "Devis"} ${piece.numero}`} ${demo ? "simulée (DÉMO)" : "envoyée"} à ${dest}`, contenu: corps.slice(0, 1500) };
   }
   if (p.kind === "event") {
     const cal = await services.calendar();

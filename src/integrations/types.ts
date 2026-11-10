@@ -26,6 +26,8 @@ export interface OutgoingMail {
   corps: string;
   /** version HTML (récaps) : le texte reste la version de secours */
   html?: string;
+  /** pièces jointes (PDF des factures et devis) */
+  pieces?: { nom: string; mime: string; data: Uint8Array }[];
   threadId?: string;
   inReplyTo?: string;
   references?: string;
@@ -74,9 +76,16 @@ export interface Calendar {
   create(e: NewEvent): Promise<{ id: string; lien?: string }>;
 }
 
+/** Coffre des PDF (Supabase Storage, bucket privé « factures »). */
+export interface Documents {
+  ecrire(path: string, bytes: Uint8Array): Promise<void>;
+  lire(path: string): Promise<Uint8Array | null>;
+}
+
 export interface Services {
   mailbox(): Promise<Mailbox>;
   calendar(): Promise<Calendar>;
+  documents: Documents;
 }
 
 /** Extrait l'adresse d'un en-tête « Nom <adresse> ». */

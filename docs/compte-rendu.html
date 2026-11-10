@@ -40,7 +40,7 @@
 <div class="cover">
   <h1>⚓ LE PORT</h1>
   <p class="sub">Quartier général IA de MJAGENCY · Compte rendu d'avancement</p>
-  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 5 terminées</b> · prochaine étape : Phase 6 (Finance)</p>
+  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 6 terminées</b> · prochaine étape : Phase 7 (Prospection & commercial)</p>
   <div class="grid">
     <div class="box"><b>Site en ligne</b>https://qg-mjagency.vercel.app</div>
     <div class="box"><b>Code</b>GitHub · vatmart3/QG-MJAGENCY<br>branche <code>claude/practical-goodall-xeybyi</code></div>
@@ -57,8 +57,8 @@
   <tr><td>3</td><td>Le moteur d'agents (Claude)</td><td><span class="tag ok">✓ Terminée · testée en ligne</span></td><td>Les agents réfléchissent, se parlent et livrent pour de vrai</td></tr>
   <tr><td>4</td><td>Douane + Gmail + Agenda</td><td><span class="tag ok">✓ Terminée · Google à connecter</span></td><td>Lucie trie la boîte, Noé répond, Firmin relance, les mails partent après votre clic, Céleste gère l'agenda</td></tr>
   <tr><td>5</td><td>Pilote automatique + routines</td><td><span class="tag ok">✓ Terminée</span></td><td>Les agents travaillent LE PORT fermé ; récaps à la demande ; crédits réduits</td></tr>
-  <tr><td>6</td><td>Finance</td><td><span class="tag next">→ Prochaine</span></td><td>Devis, factures, impayés</td></tr>
-  <tr><td>7</td><td>Prospection & commercial</td><td><span class="tag no">À venir</span></td><td>Recherche de prospects (Google Places), suivi des leads</td></tr>
+  <tr><td>6</td><td>Finance</td><td><span class="tag ok">✓ Terminée</span></td><td>Devis, factures, impayés</td></tr>
+  <tr><td>7</td><td>Prospection & commercial</td><td><span class="tag next">→ Prochaine</span></td><td>Recherche de prospects (Google Places), suivi des leads</td></tr>
   <tr><td>8</td><td>Autres pôles + finitions</td><td><span class="tag no">À venir</span></td><td>Shopify, derniers pôles, polish</td></tr>
 </table>
 
@@ -91,6 +91,14 @@
   <li><b>Budget suivi en euros</b> : alerte à 80 %. À 100 %, seuls les agents critiques (Lucie, Diane, Rémi) continuent.</li>
   <li><b>Sécurité</b> : un mail ou une page lus ne sont que des données. Un agent qui y trouve des ordres les signale au lieu d'obéir.</li>
   <li><b>Mode simulé</b> sans clé API : le même circuit tourne, sans aucune dépense.</li>
+</ul>
+
+<h3>Phase 6 — Finance (LE PORT devient l'outil de facturation)</h3>
+<ul>
+  <li><b>Factures, devis, avoirs conformes</b> : numérotation continue sans trou (F-2026-0001…), facture émise verrouillée, correction par avoir uniquement, toutes les mentions légales, PDF archivé avec empreinte SHA-256.</li>
+  <li><b>Écran Finances</b> : tableau de bord (encaissé / objectif 6 000 €, impayés, cotisations estimées, prévision 3 mois, seuil de TVA), factures, devis, clients, abonnements, exports, fiscal, MJ E-comm séparé.</li>
+  <li><b>Exports comptables</b> : livre des recettes (CSV/PDF), registre des factures, ZIP mensuel pour l'expert-comptable. <b>Import CSV</b> des anciennes factures et clients.</li>
+  <li><b>Sans IA, donc gratuit</b> : factures d'abonnement le 1er du mois (Bastien), relances graduées J+3 / J+10 / J+30 (Rémi), clôture du mois (Héloïse), alertes fiscales (Agathe). Tout envoi client passe par la Douane.</li>
 </ul>
 
 <h3>Phase 5 — Pilote automatique et économies</h3>
@@ -164,6 +172,9 @@
   <tr><th style="width:34%">Je veux…</th><th>Comment</th></tr>
   <tr><td>Donner une mission</td><td>Barre du bas : « Prépare une offre NFC pour un restaurant de Sète ». Marius s'en charge.</td></tr>
   <tr><td>Parler à un agent précis</td><td><code>@Bastien relance les impayés</code>, ou clic sur l'agent → chat dans sa fiche</td></tr>
+  <tr><td>Faire une facture ou un devis</td><td>Finances → Factures / Devis → « + Nouvelle », ou « @Bastien fais la facture de… »</td></tr>
+  <tr><td>Reprendre mes anciennes factures</td><td>Finances → Exports &amp; import → Reprise de l'existant (CSV)</td></tr>
+  <tr><td>Donner la compta à l'expert-comptable</td><td>Finances → Exports &amp; import → Paquet ZIP du mois</td></tr>
   <tr><td>Valider ce que les agents proposent</td><td>Onglet <b>Douane</b> : Envoyer / Modifier / Refuser / Toujours autoriser</td></tr>
   <tr><td>Voir ce qui s'est passé</td><td>Onglet <b>Journal</b></td></tr>
   <tr><td>Avoir un récap de la journée</td><td>Onglet <b>Rapports</b> → « 📋 Demander un récap »</td></tr>
@@ -188,11 +199,11 @@
   <tr><td>Les agents ne bougent plus</td><td>Le budget du jour est peut-être atteint (voir la jauge) : l'augmenter ou attendre le lendemain</td></tr>
 </table>
 
-<h2>6. Prochaine étape — Phase 6 (Finance)</h2>
+<h2>6. Prochaine étape — Phase 7 (Prospection & commercial)</h2>
 <ul>
-  <li>Clients, devis et factures PDF conformes (numérotation, mentions légales, « TVA non applicable, art. 293 B du CGI »), avoirs, abonnements mensuels.</li>
-  <li>Import de l'existant (CSV), livre des recettes, exports comptables, suivi des paiements.</li>
-  <li>Impayés et relances graduées (Rémi), tableau Finances : CA, objectif, prévisionnel, cotisations estimées, calendrier fiscal.</li>
+  <li>Google Places : Hugo trouve les commerces locaux, Inès les note, Sacha prépare les mails de prospection (Douane) et le DM Instagram à copier.</li>
+  <li>Pipeline de Margaux en kanban, devis de Victor branchés sur la facturation, fiches RDV de Théo.</li>
+  <li>À préparer : une clé Google Places API (même projet Google Cloud « LE PORT »).</li>
 </ul>
 
 </body>

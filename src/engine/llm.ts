@@ -151,6 +151,28 @@ function mockCourrier(m: MockMeta, messages: Msg[]): Anthropic.Beta.BetaContentB
   return null;
 }
 
+function mockFinance(m: MockMeta, messages: Msg[]): Anthropic.Beta.BetaContentBlock[] | null {
+  if (m.agentId !== "bastien" || !/factur/i.test(m.taskTitle)) return null;
+  if (!usedTool(messages, "create_invoice"))
+    return [
+      toolUse("create_invoice", {
+        client_nouveau: { nom: "Restaurant La Marée (test)", email: "bonjour@lamaree-sete.example", ville: "Sète", type: "pro" },
+        objet: "Pack NFC avis Google",
+        lignes: [
+          { designation: "Pack NFC terrasse (10 chevalets)", quantite: 1, prix_unitaire: 349 },
+          { designation: "Configuration et suivi des avis (mois)", quantite: 3, prix_unitaire: 29 },
+        ],
+      }),
+    ];
+  const id = (lastToolResults(messages).match(/id ([0-9a-f-]{36})/) ?? [])[1];
+  if (!usedTool(messages, "render_pdf") && id) return [toolUse("render_pdf", { type: "facture", id })];
+  if (!usedTool(messages, "send_document")) {
+    const numero = (lastToolResults(messages).match(/F-\d{4}-\d{4}/) ?? [])[0];
+    if (numero) return [toolUse("send_document", { type: "facture", id: numero, message: "Bonjour,\n\nVeuillez trouver ci-joint votre facture. Merci pour votre confiance ! (Message simulé.)" })];
+  }
+  return [toolUse("finish_task", { titre: m.taskTitle.slice(0, 160), resume: "Facture préparée, émise (PDF archivé) et déposée en Douane pour l'envoi. (Simulé.)", sections: [{ titre: "Détail", contenu: lastToolResults(messages) || "Fait." }] })];
+}
+
 export class MockLLM implements LLM {
   readonly kind = "mock" as const;
 
@@ -214,6 +236,10 @@ export class MockLLM implements LLM {
         ],
       };
     }
+
+    // finance (Phase 6) : Bastien prépare, émet et dépose la facture en Douane
+    const finance = mockFinance(m, req.messages);
+    if (finance) return { ...base, content: finance };
 
     // courrier (Phase 4) : tri de Lucie, réponses de Noé, relances de Firmin
     const courrier = mockCourrier(m, req.messages);

@@ -88,6 +88,8 @@ export interface Approval {
   jamaisVue?: string[];
   /** pourquoi le mode autonome n'a pas envoyé seul */
   raison?: string;
+  /** facture ou devis joint (PDF consultable avant validation) */
+  piece?: { doc: "facture" | "devis"; id: string; emettre: boolean };
 }
 
 export type ExecutionStatut = "a_faire" | "en_cours" | "fait" | "echec" | "simule" | "annule";

@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt, encrypt, hasEncryptionKey } from "@/lib/crypto";
 import { demoCalendar, demoMailbox } from "./demo";
 import { GoogleAuthError, GoogleClient, gmailMailbox, googleCalendar, hasGoogleOAuth } from "./google";
-import type { Calendar, Mailbox, Services } from "./types";
+import type { Calendar, Documents, Mailbox, Services } from "./types";
 
 export interface IntegrationRow {
   id: string;
@@ -78,6 +78,7 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
     if (row) await admin.from("integrations").update({ statut: "erreur", erreur: "Accès Google retiré ou expiré : reconnecte Google dans Réglages." }).eq("id", row.id);
   };
   return {
+    documents: storageDocuments(admin),
     async mailbox(): Promise<Mailbox> {
       const c = await getClient();
       return c ? guard(gmailMailbox(c), markError) : demoMailbox();
@@ -85,6 +86,21 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
     async calendar(): Promise<Calendar> {
       const c = await getClient();
       return c ? guard(googleCalendar(c), markError) : demoCalendar();
+    },
+  };
+}
+
+/** Coffre privé des PDF : Supabase Storage, bucket « factures » (jamais d'écrasement). */
+export function storageDocuments(admin: SupabaseClient): Documents {
+  return {
+    async ecrire(path, bytes) {
+      const { error } = await admin.storage.from("factures").upload(path, bytes, { contentType: "application/pdf", upsert: false });
+      if (error) throw new Error(`Archivage du PDF impossible : ${error.message}`);
+    },
+    async lire(path) {
+      const { data, error } = await admin.storage.from("factures").download(path);
+      if (error || !data) return null;
+      return new Uint8Array(await data.arrayBuffer());
     },
   };
 }

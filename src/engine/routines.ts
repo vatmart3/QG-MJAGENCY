@@ -3,6 +3,7 @@ import { fr } from "date-fns/locale";
 import { rapportEmailHtml } from "@/lib/email-html";
 import { lireRapport, rapportVersMarkdown } from "@/lib/rapport";
 import type { Services } from "@/integrations/types";
+import { alertesFiscales, clotureMois, facturerAbonnements, relancesImpayes } from "@/finance/automations";
 import { relancesSansReponse, triInbox } from "./courrier";
 import type { EAgent, ERoutine, EngineDb } from "./db";
 import { portDigest } from "./digest";
@@ -15,7 +16,7 @@ import { bulle } from "./prompts";
 
 const TZ = "Europe/Paris";
 /** routines qui attendent les outils d'une phase suivante (rien n'est lancé pour ne pas inventer de travail) */
-export const ROUTINES_PLUS_TARD: Record<string, number> = { rt_sante_sites: 8, rt_echues: 6, rt_leads: 7, rt_relances_devis: 7, rt_cloture: 6 };
+export const ROUTINES_PLUS_TARD: Record<string, number> = { rt_sante_sites: 8, rt_leads: 7, rt_relances_devis: 7 };
 /** comptes rendus envoyés par mail aux destinataires du récap (Réglages) */
 const PAR_MAIL: Record<string, string> = { rt_recap: "Récap quotidien", rt_rapport_hebdo: "Rapport hebdo" };
 /** routines qui reçoivent les données réelles du port dans leur consigne */
@@ -65,6 +66,11 @@ export async function launchRoutine(db: EngineDb, services: Services, team: EAge
   if (!agent) return false;
   if (r.id === "rt_tri_mails") return (await triInbox(db, services, agent.id)) > 0;
   if (r.id === "rt_relances_mails") return (await relancesSansReponse(db, services, now, agent.id)) > 0;
+  // finance : calculs et modèles, sans IA
+  if (r.id === "rt_echues") return (await relancesImpayes(db, now)) > 0;
+  if (r.id === "rt_abonnements") return (await facturerAbonnements(db, now)) > 0;
+  if (r.id === "rt_cloture") return clotureMois(db, now);
+  if (r.id === "rt_fiscal") return (await alertesFiscales(db, now)) > 0;
   if (await db.hasOpenTask(agent.id, r.nom)) return false;
   const dateLabel = formatInTimeZone(now, TZ, "EEEE d MMMM", { locale: fr });
   const donnees = AVEC_DONNEES[r.id] ? await portDigest(db, services, team, now, AVEC_DONNEES[r.id]) : "";

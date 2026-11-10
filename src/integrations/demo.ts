@@ -1,4 +1,4 @@
-import type { CalEvent, Calendar, MailFull, Mailbox, Services } from "./types";
+import type { CalEvent, Calendar, Documents, MailFull, Mailbox, Services } from "./types";
 
 /**
  * Boîte mail et agenda de DÉMONSTRATION (aucun compte Google connecté).
@@ -136,7 +136,22 @@ export function demoCalendar(): Calendar {
   };
 }
 
+/** Coffre en mémoire (démo et tests). */
+export function memoryDocuments(): Documents {
+  const store = new Map<string, Uint8Array>();
+  return {
+    async ecrire(path, bytes) {
+      if (store.has(path)) throw new Error("Le PDF archivé ne peut pas être remplacé.");
+      store.set(path, bytes);
+    },
+    async lire(path) {
+      return store.get(path) ?? null;
+    },
+  };
+}
+
 export const demoServices: Services = {
   mailbox: async () => demoMailbox(),
   calendar: async () => demoCalendar(),
+  documents: memoryDocuments(),
 };

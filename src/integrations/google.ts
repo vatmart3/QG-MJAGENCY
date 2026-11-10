@@ -170,6 +170,16 @@ const b64body = (s: string) => Buffer.from(s.replace(/\r?\n/g, "\r\n"), "utf8").
 export function buildRaw(from: string, m: OutgoingMail): string {
   const lines = [`From: MJAGENCY <${from}>`, `To: ${m.a}`, `Subject: ${encodeHeader(m.objet)}`, "MIME-Version: 1.0"];
   if (m.inReplyTo) lines.push(`In-Reply-To: ${m.inReplyTo}`, `References: ${[m.references, m.inReplyTo].filter(Boolean).join(" ")}`);
+  if (m.pieces?.length) {
+    const mixed = `leport_mix_${Date.now().toString(36)}`;
+    lines.push(`Content-Type: multipart/mixed; boundary="${mixed}"`);
+    const corps = `--${mixed}\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${b64body(m.corps)}`;
+    const pj = m.pieces.map(
+      (p) =>
+        `--${mixed}\r\nContent-Type: ${p.mime}; name="${encodeHeader(p.nom)}"\r\nContent-Disposition: attachment; filename="${encodeHeader(p.nom)}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(p.data).toString("base64").replace(/(.{76})/g, "$1\r\n")}`,
+    );
+    return b64url(`${lines.join("\r\n")}\r\n\r\n${[corps, ...pj].join("\r\n")}\r\n--${mixed}--`);
+  }
   if (!m.html) {
     lines.push("Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64");
     return b64url(`${lines.join("\r\n")}\r\n\r\n${b64body(m.corps)}`);

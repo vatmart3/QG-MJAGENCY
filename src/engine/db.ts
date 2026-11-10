@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabaseFinanceDb, type FinanceDb } from "@/finance/db";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentState } from "@/data/types";
 import type { TaskStep } from "@/store/world";
@@ -157,6 +158,8 @@ export const AUTONOMIE_DEFAUT: Autonomie = { actif: false, types: ["email", "rel
 export const lireAutonomie = (v: unknown): Autonomie => ({ ...AUTONOMIE_DEFAUT, ...((v && typeof v === "object" ? v : {}) as Partial<Autonomie>) });
 
 export interface EngineDb {
+  /** finance (factures, devis, paiements, abonnements) */
+  finance: FinanceDb;
   settings(): Promise<ESettings>;
   poles(): Promise<{ id: string; nom: string }[]>;
   memory(): Promise<{ cle: string; contenu: string }[]>;
@@ -260,6 +263,7 @@ const parseTask = (t: ETask): ETask => ({ ...t, etapes: Array.isArray(t.etapes) 
 
 export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
   return {
+    finance: supabaseFinanceDb(sb),
     async settings() {
       const s = ok(await sb.from("settings").select("*").eq("id", 1).maybeSingle());
       return s
