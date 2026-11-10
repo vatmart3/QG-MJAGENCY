@@ -24,18 +24,20 @@ function sansNom(titre: string, nom: string | null): string {
  * Ce qui s'est passé au port depuis le dernier passage, sans IA : chaque action des agents (Journal),
  * les nouvelles demandes en Douane et les alertes (importantes).
  */
-export async function nouvellesDuPort(db: EngineDb, depuis: string): Promise<Nouvelle[]> {
-  const [journal, attente, team, poles] = await Promise.all([db.journalDepuis(depuis, 40), db.pendingApprovals(), db.agents(), db.poles()]);
+export async function nouvellesDuPort(db: EngineDb, depuis: string, jusqua: string): Promise<Nouvelle[]> {
+  // fenêtre ]depuis, jusqua] : une entrée tombe dans un seul passage, même créée dans la même milliseconde
+  const [journal, attente, team, poles] = await Promise.all([db.journalDepuis(depuis, 40, jusqua), db.pendingApprovals(), db.agents(), db.poles()]);
   const agent = (id: string | null) => team.find((a) => a.id === id);
   const pole = (id: string | null | undefined) => poles.find((p) => p.id === id)?.nom ?? null;
   const t0 = new Date(depuis).getTime();
+  const t1 = new Date(jusqua).getTime();
   const out: Nouvelle[] = [];
   for (const j of journal) {
     const a = agent(j.agent_id);
     const important = j.type === "alerte" || j.titre.startsWith("Synthèse livrée") || j.titre.startsWith("🛍️ Nouvelle commande");
     out.push({ important, agent: a?.nom ?? null, pole: pole(a?.pole_id ?? j.pole_id), texte: sansNom(j.titre, a?.nom ?? null), url: j.type === "alerte" ? "/journal" : "/" });
   }
-  for (const d of attente.filter((x) => !!x.cree_le && new Date(x.cree_le).getTime() > t0 && !x.payload.envoyer_apres)) {
+  for (const d of attente.filter((x) => !!x.cree_le && new Date(x.cree_le).getTime() > t0 && new Date(x.cree_le).getTime() <= t1 && !x.payload.envoyer_apres)) {
     const a = agent(d.agent_id);
     out.push({ important: true, agent: a?.nom ?? null, pole: pole(a?.pole_id), texte: `🛂 attend ta validation : ${sansNom(d.titre, a?.nom ?? null)}`, url: "/douane" });
   }
@@ -55,7 +57,7 @@ export async function notifierFondateurs(db: EngineDb, services: Services, now =
     await db.kvSet(CLE, { le: now.toISOString() });
     return 0;
   }
-  const [nouvelles, canaux] = await Promise.all([nouvellesDuPort(db, memo.le), db.canaux()]);
+  const [nouvelles, canaux] = await Promise.all([nouvellesDuPort(db, memo.le, now.toISOString()), db.canaux()]);
   await db.kvSet(CLE, { le: now.toISOString() });
   if (!nouvelles.length) return 0;
   let n = 0;

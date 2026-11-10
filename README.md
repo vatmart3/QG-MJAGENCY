@@ -120,6 +120,19 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
 
+## Cerveau mélangé : clé API pour l'urgent, abonnement Claude pour le reste
+
+- Réglages → Connexions → **Cerveau des agents** : `api` (tout par la clé), **`mixte`** (par défaut) ou `abonnement`.
+  En mixte, les réponses aux clients (« Répondre : … »), le SAV d'Iris, le tri de Lucie et les priorités ≥ 5 partent
+  tout de suite par la clé API ; le reste (missions, rapports, devis, veille, prospection…) est marqué
+  `executeur = 'claude'` et attend **Claude Code** (tâche programmée sur l'abonnement des fondateurs).
+- Claude Code passe régulièrement et joue les agents via `/api/claude/prendre`, `/api/claude/pas`, `/api/claude/rendre`
+  (en-tête `Authorization: Bearer CLAUDE_WORKER_SECRET`) : les outils sont exécutés **par le moteur** (mêmes règles,
+  même Douane, mêmes comptes rendus) ; la recherche web payante est remplacée par celle de Claude Code. Coût sur la
+  clé API : 0 €.
+- Sécurité : si Claude Code n'est pas passé depuis 3 h, ses tâches reviennent automatiquement sur la clé API.
+  Migration `…1500` (`tasks.executeur`, `claim_tasks_claude`).
+
 ## Telegram (gratuit) : missions et « quel agent fait quoi » sur le téléphone
 
 - Une seule variable, `TELEGRAM_BOT_TOKEN` (bot créé avec @BotFather). Réglages → Connexions → Telegram :

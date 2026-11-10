@@ -70,16 +70,26 @@ async function mockMeta(db: EngineDb, task: ETask, agent: EAgent, mission: EMiss
   return meta;
 }
 
-export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Shared): Promise<StepResult> {
+/** Ce qu'il faut pour jouer un pas, quel que soit le « cerveau » (clé API ou Claude sur l'abonnement). */
+export interface Prepare {
+  agent: EAgent;
+  mission: EMission | null;
+  run: ERun;
+  etapes: TaskStep[];
+  defs: ReturnType<typeof toolsFor>;
+}
+
+/** Prépare un pas : agent au travail, historique initialisé. Renvoie un résultat si le pas ne peut pas avoir lieu. */
+export async function preparerPas(db: EngineDb, task: ETask, shared: Shared, o: { ignorerBudget?: boolean } = {}): Promise<Prepare | { result: StepResult }> {
   const { team, now } = shared;
   const agent = team.find((a) => a.id === task.agent_id);
-  if (!agent || !agent.actif) return fail(db, task, agent, "Agent introuvable ou désactivé.");
+  if (!agent || !agent.actif) return { result: await fail(db, task, agent, "Agent introuvable ou désactivé.") };
 
   // budget épuisé : seuls les agents critiques continuent
-  if (shared.budgetOver && !isCritical(agent)) {
+  if (!o.ignorerBudget && shared.budgetOver && !isCritical(agent)) {
     await db.updateTask(task.id, { statut: "queued", locked_until: null, pas_avant: new Date(now.getTime() + 15 * 60_000).toISOString() });
     await db.updateAgent(agent.id, { etat: "offline", offline_raison: "budget", tache_courante_id: null });
-    return "deferred";
+    return { result: "deferred" };
   }
 
   const mission = task.mission_id ? await db.mission(task.mission_id) : null;
@@ -96,13 +106,19 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
     // le début de la tâche apparaît au Journal (et dans les notifications « quel agent fait quoi »)
     await db.insertJournal({ type: "action", titre: `▶️ ${agent.nom} commence : ${task.titre}`.slice(0, 300), agent_id: agent.id, pole_id: agent.pole_id });
   }
-  if (run.iterations >= LIMITS.maxIterations) return fail(db, task, agent, `Plus de ${LIMITS.maxIterations} itérations d'outils sans terminer.`);
+  if (run.iterations >= LIMITS.maxIterations) return { result: await fail(db, task, agent, `Plus de ${LIMITS.maxIterations} itérations d'outils sans terminer.`) };
 
   await db.updateAgent(agent.id, { etat: "working", tache_courante_id: task.id, interlocuteur: null, offline_raison: null });
-  let etapes = pushStep(task.etapes, "Réfléchit…", false);
+  const etapes = pushStep(task.etapes, "Réfléchit…", false);
   await db.updateTask(task.id, { etapes });
+  return { agent, mission, run, etapes, defs: toolsFor(agent) };
+}
 
-  const defs = toolsFor(agent);
+export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Shared): Promise<StepResult> {
+  const prep = await preparerPas(db, task, shared);
+  if ("result" in prep) return prep.result;
+  const { agent, mission, run, defs } = prep;
+  const { team, now } = shared;
   const model = MODELS[agent.modele];
   let res;
   try {
@@ -126,7 +142,26 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
   const cout = costEur(model, res.usage);
   await db.insertUsage({ agent_id: agent.id, modele: res.model, tokens_in: res.usage.input + res.usage.cacheRead + res.usage.cacheWrite, tokens_out: res.usage.output, cout_estime: cout });
   if (res.refusal) return fail(db, task, agent, `Le modèle a refusé la tâche (${res.refusal}).`);
+  return (await appliquerReponse(db, llm, task, shared, prep, res.content, cout)).result;
+}
 
+/**
+ * Applique la réponse d'un « cerveau » (blocs texte + appels d'outils) : exécute les outils, enregistre
+ * l'historique, termine ou met en attente la tâche. Même logique pour la clé API et pour Claude sur l'abonnement.
+ */
+export async function appliquerReponse(
+  db: EngineDb,
+  llm: LLM,
+  task: ETask,
+  shared: Shared,
+  prep: Prepare,
+  content: Anthropic.Beta.BetaContentBlock[],
+  cout: number,
+): Promise<{ result: StepResult; results: ToolResultBlock[]; attente: ERun["attente"] }> {
+  const { agent, mission, run, defs } = prep;
+  let { etapes } = prep;
+  const { team, now } = shared;
+  const res = { content };
   const messages: Msg[] = [...run.messages, { role: "assistant", content: res.content as unknown as Anthropic.Beta.BetaContentBlockParam[] }];
   const uses = res.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
   const ctx: ToolCtx = { db, llm, task, agent, run, team, poles: shared.poles, memory: shared.memory, now, settings: shared.settings, services: shared.services };
@@ -134,10 +169,10 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
   // réponse sans outil : le texte devient le livrable
   if (!uses.length) {
     const texte = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
-    if (!texte) return fail(db, task, agent, "Réponse vide du modèle.");
+    if (!texte) return { result: await fail(db, task, agent, "Réponse vide du modèle."), results: [], attente: [] };
     await db.saveRun(task.id, { messages, iterations: run.iterations + 1, cout: Number(run.cout) + cout });
     await completeTask(db, task, agent, mission, { rapport: rapportDepuisTexte(task.titre, texte), important: false }, pushStep(etapes, "Compte rendu rendu", true));
-    return "done";
+    return { result: "done", results: [], attente: [] };
   }
 
   const results: ToolResultBlock[] = [];
@@ -172,7 +207,7 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
     const closing = [...results, ...attente.map((w) => ({ type: "tool_result" as const, tool_use_id: w.tool_use_id, content: "Sans objet : tâche terminée." }))];
     await db.saveRun(task.id, { messages: [...messages, { role: "user", content: closing }], iterations, cout: totalCout, attente: [], resultats_en_suspens: [] });
     await completeTask(db, task, agent, mission, finish, pushStep(etapes, "Compte rendu rendu", true));
-    return "done";
+    return { result: "done", results, attente };
   }
 
   if (attente.length) {
@@ -181,12 +216,12 @@ export async function runStep(db: EngineDb, llm: LLM, task: ETask, shared: Share
     await db.updateTask(task.id, { statut: founder ? "waiting_founder" : "waiting_tool", locked_until: null, etapes: etapes.map((s) => ({ ...s, done: true })) });
     const current = await db.agent(agent.id);
     if (current?.etat === "working") await db.updateAgent(agent.id, { etat: "idle", tache_courante_id: null });
-    return "wait";
+    return { result: "wait", results, attente };
   }
 
   await db.saveRun(task.id, { messages: [...messages, { role: "user", content: results }], iterations, cout: totalCout });
   await db.updateTask(task.id, { statut: "queued", locked_until: null, etapes });
-  return "continue";
+  return { result: "continue", results, attente };
 }
 
 async function completeTask(db: EngineDb, task: ETask, agent: EAgent, mission: EMission | null, finish: { rapport: Rapport; important: boolean }, etapes: TaskStep[]): Promise<void> {

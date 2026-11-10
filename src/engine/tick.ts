@@ -6,6 +6,7 @@ import { deliverReports, runRoutines } from "./routines";
 import type { EngineDb } from "./db";
 import { executeApprovals } from "./douane";
 import { notifierFondateurs, retoursMissions } from "./notifications";
+import { claudeVivant, versAbonnement, type ModeIa } from "./cerveau";
 import type { LLM } from "./llm";
 import { isCritical, resumeWaiting, runStep, type Shared, type StepResult } from "./loop";
 
@@ -187,18 +188,32 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
   const shared: Shared = { team, poles, memory, budgetOver: over, now, settings, services };
   const maxSteps = opts.maxSteps ?? LIMITS.stepsPerTick;
   const budgetMs = opts.budgetMs ?? LIMITS.tickBudgetMs;
+  // cerveau mélangé : ce qui peut attendre est confié à Claude Code (abonnement), s'il passe bien
+  let modeIa: ModeIa = "api";
+  await safe("cerveau", async () => {
+    const mode = await db.modeIa();
+    if (mode !== "api" && (await claudeVivant(db, now))) modeIa = mode;
+    // Claude Code ne passe pas (ou mode « api ») : ses tâches reviennent au moteur, rien ne reste bloqué
+    else await db.rendreTachesClaude();
+  });
+
   let steps = 0;
   while (steps < maxSteps && Date.now() - start < budgetMs) {
     const claimed = await db.claimTasks(Math.min(LIMITS.parallel, maxSteps - steps), LIMITS.lockSeconds);
     if (!claimed.length) break;
     const results = await Promise.all(
-      claimed.map((t) =>
-        runStep(db, llm, t, { ...shared, now: clock() }).catch(async (e): Promise<StepResult> => {
+      claimed.map(async (t) => {
+        const agent = team.find((a) => a.id === t.agent_id);
+        if (agent && versAbonnement(modeIa, t, agent)) {
+          await db.updateTask(t.id, { executeur: "claude", statut: "queued", locked_until: null });
+          return "deferred" as StepResult;
+        }
+        return runStep(db, llm, t, { ...shared, now: clock() }).catch(async (e): Promise<StepResult> => {
           report.erreurs.push(`${t.titre} : ${e instanceof Error ? e.message : String(e)}`);
           await db.updateTask(t.id, { statut: "queued", locked_until: null, pas_avant: new Date(Date.now() + 60_000).toISOString() }).catch(() => undefined);
           return "retry";
-        }),
-      ),
+        });
+      }),
     );
     for (const r of results) report.pas[r]++;
     steps += claimed.length;

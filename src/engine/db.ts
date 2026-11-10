@@ -4,6 +4,7 @@ import { supabaseFinanceDb, type FinanceDb } from "@/finance/db";
 import { lireBoutique, type ReglagesBoutique } from "@/boutique/shopify";
 import { supabaseTechDb, type TechDb } from "@/tech/db";
 import { lireTelegram, type ChatTelegram } from "@/integrations/telegram";
+import { lireModeIa, type ModeIa } from "./cerveau";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentState } from "@/data/types";
 import type { TaskStep } from "@/store/world";
@@ -34,6 +35,8 @@ export interface ETask {
   locked_until: string | null;
   cree_le: string;
   maj_le: string;
+  /** qui fait la tâche : moteur (clé API) ou Claude Code (abonnement) */
+  executeur?: "api" | "claude";
 }
 
 export type Attente =
@@ -195,7 +198,7 @@ export interface EngineDb {
   /** chats Telegram reliés et niveau des notifications push */
   canaux(): Promise<{ telegram: Record<string, ChatTelegram>; niveau: "tout" | "important" }>;
   /** toutes les entrées du Journal depuis une date (ordre chronologique) */
-  journalDepuis(iso: string, limit: number): Promise<{ type: string; titre: string; contenu: string | null; agent_id: string | null; pole_id: string | null; cree_le: string }[]>;
+  journalDepuis(iso: string, limit: number, jusqua?: string): Promise<{ type: string; titre: string; contenu: string | null; agent_id: string | null; pole_id: string | null; cree_le: string }[]>;
 
   insertTask(row: Partial<ETask> & { titre: string }): Promise<ETask>;
   updateTask(id: string, patch: Partial<ETask>): Promise<void>;
@@ -204,6 +207,13 @@ export interface EngineDb {
   /** tâches d'une même mission (sous-tâches visibles par un agent) */
   missionTasks(missionId: string): Promise<ETask[]>;
   claimTasks(limit: number, lockSeconds: number): Promise<ETask[]>;
+  /** tâches confiées à Claude Code (abonnement), réservées pour lui */
+  claimTasksClaude(limit: number, lockSeconds: number): Promise<ETask[]>;
+  /** Claude Code ne passe plus : ses tâches reviennent au moteur (clé API) */
+  rendreTachesClaude(): Promise<number>;
+  /** nombre de tâches qui attendent Claude Code */
+  tachesClaudeEnAttente(): Promise<number>;
+  modeIa(): Promise<ModeIa>;
   waitingTasks(): Promise<ETask[]>;
   /** tâches non terminées créées avant `before` */
   staleTasks(before: string): Promise<ETask[]>;
@@ -335,8 +345,10 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
       const s = ok(await sb.from("settings").select("telegram, notifications").eq("id", 1).maybeSingle());
       return { telegram: lireTelegram(s?.telegram).chats, niveau: (s?.notifications as { niveau?: string } | null)?.niveau === "important" ? "important" : "tout" };
     },
-    async journalDepuis(iso, limit) {
-      return rows(await sb.from("journal").select("type, titre, contenu, agent_id, pole_id, cree_le").gt("cree_le", iso).order("cree_le").limit(limit));
+    async journalDepuis(iso, limit, jusqua) {
+      let q = sb.from("journal").select("type, titre, contenu, agent_id, pole_id, cree_le").gt("cree_le", iso).order("cree_le").limit(limit);
+      if (jusqua) q = q.lte("cree_le", jusqua);
+      return rows(await q);
     },
     async newMissions() {
       return rows(await sb.from("missions").select("*").eq("statut", "nouvelle").order("cree_le"));
@@ -366,6 +378,21 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     },
     async claimTasks(limit, lockSeconds) {
       return ((ok(await sb.rpc("claim_tasks", { p_limit: limit, p_lock_seconds: lockSeconds })) ?? []) as ETask[]).map(parseTask);
+    },
+    async claimTasksClaude(limit, lockSeconds) {
+      return ((ok(await sb.rpc("claim_tasks_claude", { p_limit: limit, p_lock_seconds: lockSeconds })) ?? []) as ETask[]).map(parseTask);
+    },
+    async rendreTachesClaude() {
+      const r = rows(await sb.from("tasks").update({ executeur: "api", locked_until: null }).eq("executeur", "claude").in("statut", ["queued", "running"]).or(`locked_until.is.null,locked_until.lt.${new Date().toISOString()}`).select("id"));
+      return r.length;
+    },
+    async tachesClaudeEnAttente() {
+      const r = await sb.from("tasks").select("id", { count: "exact", head: true }).eq("executeur", "claude").in("statut", ["queued", "running"]);
+      return r.count ?? 0;
+    },
+    async modeIa() {
+      const s = ok(await sb.from("settings").select("ia").eq("id", 1).maybeSingle());
+      return lireModeIa(s?.ia);
     },
     async waitingTasks() {
       return rows(await sb.from("tasks").select("*").in("statut", ["waiting_tool", "waiting_founder"])).map(parseTask);

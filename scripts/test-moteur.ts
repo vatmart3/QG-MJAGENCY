@@ -26,6 +26,7 @@ import { notifierFondateurs } from "@/engine/notifications";
 import { createHmac } from "node:crypto";
 import { interpreter, messagesEntrants, normNumero, signatureValide } from "@/integrations/whatsapp";
 import { messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
+import { autoriseClaude, jouerPas, prendreTaches } from "@/engine/claude-worker";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -489,11 +490,13 @@ async function scenarioAtelierBoutique() {
   await notifierFondateurs(db, avecPush, new Date());
   await new Promise((r) => setTimeout(r, 20));
   await db.insertJournal({ type: "action", titre: "▶️ Noé commence : Répondre : Devis site La Marée", agent_id: "noe", pole_id: "accueil" });
+  await new Promise((r) => setTimeout(r, 10));
   await notifierFondateurs(db, avecPush, new Date());
   check(tg.length === 1 && tg[0]!.chat === "111" && tg[0]!.silencieux && tg[0]!.t.includes("<b>Noé</b>") && tg[0]!.t.includes("commence : Répondre") && !tg[0]!.t.includes("Noé commence") && recues.length === 0, `Telegram « tout » : nom de l'agent + ce qu'il fait, sans sonnerie (${tg[0]?.t})`);
   await new Promise((r) => setTimeout(r, 20));
   await pool.query("insert into public.approvals (agent_id, type_action, titre, apercu, statut) values ('noe', 'email', 'Réponse à La Marée', 'Bonjour…', 'en_attente')");
   await db.insertJournal({ type: "alerte", titre: "🚨 Site test : en panne", agent_id: "jade" });
+  await new Promise((r) => setTimeout(r, 10));
   await notifierFondateurs(db, avecPush, new Date());
   await notifierFondateurs(db, avecPush, new Date(Date.now() + 1000));
   const sonnent = tg.slice(1);
@@ -545,6 +548,50 @@ async function scenarioWhatsApp() {
   check(nuit !== undefined, "routine de nuit présente (coupée en production)");
 }
 
+async function scenarioCerveau() {
+  console.log("\n— Cerveau mélangé : l'urgent par la clé API, le reste par Claude Code (abonnement)");
+  await reset();
+  await q("delete from public.engine_kv where cle = 'claude.dernier'");
+  await q(`update public.settings set ia = '{"mode": "mixte"}' where id = 1`);
+  const veille = await db.insertTask({ agent_id: "gabin", cree_par: "test", titre: "Veille : nouveautés SEO local", description: "Fais une veille courte.", statut: "queued", priorite: 2 });
+  // Claude Code n'est jamais passé : tout reste sur la clé API (rien ne reste bloqué)
+  await tick(db, llm, { services: demoServices, maxSteps: 1 });
+  const [v0] = await q<{ executeur: string }>("select executeur from public.tasks where id = $1", [veille.id]);
+  check(v0?.executeur === "api", "sans passage de Claude Code, la tâche reste au moteur (clé API)");
+  await q("delete from public.task_runs; delete from public.tasks");
+
+  await db.kvSet("claude.dernier", { le: new Date().toISOString() });
+  const rep = await db.insertTask({ agent_id: "noe", cree_par: "test", titre: "Répondre : Devis site vitrine", description: "Mail id=x de client@exemple.example.\nRéponds.", statut: "queued", priorite: 3 });
+  const v = await db.insertTask({ agent_id: "gabin", cree_par: "test", titre: "Veille : nouveautés SEO local", description: "Fais une veille courte et rends un compte rendu.", statut: "queued", priorite: 2 });
+  await tick(db, llm, { services: demoServices, maxSteps: 4 });
+  const ex = await q<{ id: string; executeur: string; statut: string }>("select id, executeur, statut from public.tasks where id = any($1)", [[rep.id, v.id]]);
+  const noe = ex.find((x) => x.id === rep.id);
+  const gab = ex.find((x) => x.id === v.id);
+  check(noe?.executeur === "api" && noe.statut !== "queued" && gab?.executeur === "claude" && gab.statut === "queued", `mixte : la réponse au client part tout de suite (clé API), la veille attend Claude Code (${noe?.executeur}/${noe?.statut}, ${gab?.executeur}/${gab?.statut})`);
+
+  const usage0 = await q<{ n: string; c: string }>("select count(*) n, coalesce(sum(cout_estime),0) c from public.usage");
+  const taches = await prendreTaches(db, demoServices, 3);
+  const t = taches.find((x) => x.id === v.id);
+  check(!!t && t.agent.nom === "Gabin" && t.historique.includes("CONSIGNE") && t.outils.some((o) => o.name === "finish_task") && !t.outils.some((o) => o.name === "web_search") && t.systeme.length > 200, "Claude Code reçoit la tâche : personnage, consigne, outils du moteur (sans la recherche payante)");
+  const p1 = await jouerPas(db, llm, demoServices, v.id, { appels: [{ outil: "post_to_journal", input: { titre: "Veille SEO : 3 tendances repérées" } }] });
+  check("statut" in p1 && p1.statut === "continue" && p1.resultats[0]?.outil === "post_to_journal", "un appel d'outil par Claude Code est exécuté par le vrai moteur");
+  const p2 = await jouerPas(db, llm, demoServices, v.id, { appels: [{ outil: "finish_task", input: { titre: "Veille SEO local — novembre", resume: "Trois tendances utiles pour les commerces de Sète.", sections: [{ titre: "Tendances", contenu: "Avis, fiches Google, recherche vocale." }] } }] });
+  const [fin] = await q<{ statut: string; resultat: { rapport?: unknown } }>("select statut, resultat from public.tasks where id = $1", [v.id]);
+  const usage1 = await q<{ n: string; c: string }>("select count(*) n, coalesce(sum(cout_estime),0) c from public.usage");
+  check("statut" in p2 && p2.statut === "done" && fin?.statut === "done" && !!lireRapport(fin.resultat?.rapport), "finish_task : compte rendu structuré, tâche terminée");
+  check(Number(usage1[0]!.c) === Number(usage0[0]!.c) && Number(usage1[0]!.n) === Number(usage0[0]!.n) + 2, "Claude Code (abonnement) : 0 € sur la clé API (pas notés à 0 €)");
+  const p3 = await jouerPas(db, llm, demoServices, v.id, { appels: [{ outil: "post_to_journal", input: { titre: "x" } }] });
+  check("erreur" in p3, "une tâche terminée ne peut plus être rejouée");
+
+  // Claude Code ne passe plus : ses tâches reviennent au moteur
+  const v2 = await db.insertTask({ agent_id: "gabin", cree_par: "test", titre: "Veille : concurrents", description: "x", statut: "queued", priorite: 2, executeur: "claude" });
+  await db.kvSet("claude.dernier", { le: new Date(Date.now() - 4 * 3600_000).toISOString() });
+  await tick(db, llm, { services: demoServices, maxSteps: 0 });
+  const [r2] = await q<{ executeur: string }>("select executeur from public.tasks where id = $1", [v2.id]);
+  check(r2?.executeur === "api", "Claude Code absent depuis 3 h : ses tâches repassent sur la clé API");
+  check(!autoriseClaude("Bearer x") && !autoriseClaude(null), "routes de Claude Code protégées par un secret");
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -559,6 +606,7 @@ async function scenarioWhatsApp() {
     await scenarioCommercial();
     await scenarioAtelierBoutique();
     await scenarioWhatsApp();
+    await scenarioCerveau();
   } catch (e) {
     console.error(e);
     failures++;

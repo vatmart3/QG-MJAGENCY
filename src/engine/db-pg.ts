@@ -4,6 +4,7 @@ import { lireProspection } from "@/commercial/prospection";
 import type { FinanceDb } from "@/finance/db";
 import { lireBoutique } from "@/boutique/shopify";
 import { lireTelegram } from "@/integrations/telegram";
+import { lireModeIa } from "./cerveau";
 import type { SiteSuivi, TechDb } from "@/tech/db";
 import { lireFinance, num, type Client, type Invoice, type Ligne, type Payment, type Quote, type Subscription } from "@/finance/types";
 import { AUTONOMIE_DEFAUT, lireAutonomie, type ERoutine, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
@@ -94,8 +95,8 @@ export function pgEngineDb(pool: Pool): EngineDb {
       const [s] = await q<{ telegram: unknown; notifications: { niveau?: string } | null }>("select telegram, notifications from public.settings where id = 1");
       return { telegram: lireTelegram(s?.telegram).chats, niveau: s?.notifications?.niveau === "important" ? "important" : "tout" };
     },
-    async journalDepuis(iso, limit) {
-      return (await q<{ type: string; titre: string; contenu: string | null; agent_id: string | null; pole_id: string | null; cree_le: Date }>("select type, titre, contenu, agent_id, pole_id, cree_le from public.journal where cree_le > $1 order by cree_le limit $2", [iso, limit])).map((r) => ({ ...r, cree_le: new Date(r.cree_le).toISOString() }));
+    async journalDepuis(iso, limit, jusqua) {
+      return (await q<{ type: string; titre: string; contenu: string | null; agent_id: string | null; pole_id: string | null; cree_le: Date }>("select type, titre, contenu, agent_id, pole_id, cree_le from public.journal where cree_le > $1 and ($3::timestamptz is null or cree_le <= $3) order by cree_le limit $2", [iso, limit, jusqua ?? null])).map((r) => ({ ...r, cree_le: new Date(r.cree_le).toISOString() }));
     },
     async newMissions() {
       return (await q("select * from public.missions where statut = 'nouvelle' order by cree_le")) as unknown as EMission[];
@@ -121,6 +122,20 @@ export function pgEngineDb(pool: Pool): EngineDb {
     },
     async claimTasks(limit, lockSeconds) {
       return (await q("select * from public.claim_tasks($1, $2)", [limit, lockSeconds])).map(normTask);
+    },
+    async claimTasksClaude(limit, lockSeconds) {
+      return (await q("select * from public.claim_tasks_claude($1, $2)", [limit, lockSeconds])).map(normTask);
+    },
+    async rendreTachesClaude() {
+      return (await q("update public.tasks set executeur = 'api', locked_until = null where executeur = 'claude' and statut in ('queued','running') and (locked_until is null or locked_until < now()) returning id")).length;
+    },
+    async tachesClaudeEnAttente() {
+      const [r] = await q<{ n: string }>("select count(*) n from public.tasks where executeur = 'claude' and statut in ('queued','running')");
+      return Number(r?.n ?? 0);
+    },
+    async modeIa() {
+      const [s] = await q<{ ia: unknown }>("select ia from public.settings where id = 1");
+      return lireModeIa(s?.ia);
     },
     async waitingTasks() {
       return (await q("select * from public.tasks where statut in ('waiting_tool','waiting_founder')")).map(normTask);
