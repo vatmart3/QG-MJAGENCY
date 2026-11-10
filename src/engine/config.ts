@@ -3,15 +3,16 @@ import type { ModelTier } from "@/data/types";
 /** Réglages du moteur d'agents (§7). Surchargeables par variables d'environnement. */
 
 export const MODELS: Record<ModelTier, string> = {
-  planner: process.env.MODEL_PLANNER || "claude-opus-5-5",
+  // Sonnet par défaut pour Marius (2× moins cher qu'Opus) ; MODEL_PLANNER=claude-opus-5-5 pour revenir à Opus
+  planner: process.env.MODEL_PLANNER || "claude-sonnet-5-5",
   worker: process.env.MODEL_WORKER || "claude-sonnet-5-5",
   light: process.env.MODEL_LIGHT || "claude-haiku-5-5",
 };
 
-/** Profondeur de réflexion par niveau (Opus 5.5 et Haiku 5.5 sont à « medium » par défaut). */
+/** Profondeur de réflexion par niveau : volontairement économe (moins de jetons de réflexion facturés). */
 export const EFFORT: Record<ModelTier, "low" | "medium" | "high"> = {
-  planner: "high",
-  worker: "medium",
+  planner: (process.env.EFFORT_PLANNER as "low" | "medium" | "high") || "medium",
+  worker: (process.env.EFFORT_WORKER as "low" | "medium" | "high") || "low",
   light: "low",
 };
 
@@ -52,7 +53,7 @@ export const LIMITS = {
   meetingDelayMs: Number(process.env.ENGINE_MEETING_DELAY_MS || 45_000),
   /** erreurs d'API consécutives avant d'abandonner une tâche */
   maxErrors: 3,
-  maxTokens: 16_000,
+  maxTokens: 8_000,
 };
 
 /** Agents qui continuent même quand le budget du jour est épuisé (§7.6). */

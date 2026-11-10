@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { AUTONOMIE_DEFAUT, lireAutonomie, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
+import { AUTONOMIE_DEFAUT, lireAutonomie, type ERoutine, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
 
 /**
  * Implémentation Postgres directe du moteur (tests d'intégration en local,
@@ -54,8 +54,8 @@ export function pgEngineDb(pool: Pool): EngineDb {
     async settings() {
       const [s] = await q<{ budget_jour: string; budget_mois: string; bavardage_actif: boolean; signataire: string; allowlist_emails: string[]; contraintes_agenda: { jeremy?: string; matheis?: string }; autonomie: unknown }>("select * from public.settings where id = 1");
       return s
-        ? { budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), bavardage_actif: s.bavardage_actif, signataire: s.signataire, allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {}, autonomie: lireAutonomie(s.autonomie) }
-        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {}, autonomie: AUTONOMIE_DEFAUT };
+        ? { budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), bavardage_actif: s.bavardage_actif, signataire: s.signataire, allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {}, autonomie: lireAutonomie(s.autonomie), recap_destinataires: (s as { recap_destinataires?: string[] }).recap_destinataires ?? [] }
+        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {}, autonomie: AUTONOMIE_DEFAUT, recap_destinataires: [] };
     },
     poles: () => q("select id, nom from public.poles"),
     memory: () => q("select cle, contenu from public.company_memory order by cle"),
@@ -156,6 +156,39 @@ export function pgEngineDb(pool: Pool): EngineDb {
     },
     async kvSet(cle, valeur) {
       await q("insert into public.engine_kv (cle, valeur, maj_le) values ($1, $2, now()) on conflict (cle) do update set valeur = excluded.valeur, maj_le = now()", [cle, JSON.stringify(valeur)]);
+    },
+    async activeRoutines() {
+      return (await q("select *, to_char(heure, 'HH24:MI') as heure, to_char(plage_debut, 'HH24:MI') as plage_debut, to_char(plage_fin, 'HH24:MI') as plage_fin from public.routines where actif")).map((r) => ({
+        ...r,
+        derniere_execution: r.derniere_execution ? iso(r.derniere_execution) : null,
+      })) as unknown as ERoutine[];
+    },
+    async routine(id) {
+      const [r] = await q("select *, to_char(heure, 'HH24:MI') as heure, to_char(plage_debut, 'HH24:MI') as plage_debut, to_char(plage_fin, 'HH24:MI') as plage_fin from public.routines where id = $1", [id]);
+      return (r as unknown as ERoutine) ?? null;
+    },
+    async claimRoutine(id, beforeIso, nowIso) {
+      return (await q("update public.routines set derniere_execution = $3 where id = $1 and (derniere_execution is null or derniere_execution < $2) returning id", [id, beforeIso, nowIso])).length > 0;
+    },
+    async kvClaim(cle, valeur, olderThanIso, nowIso) {
+      await q("insert into public.engine_kv (cle, valeur, maj_le) values ($1, '{}', 'epoch') on conflict (cle) do nothing", [cle]);
+      return (await q("update public.engine_kv set valeur = $2, maj_le = $4 where cle = $1 and maj_le < $3 returning cle", [cle, JSON.stringify(valeur), olderThanIso, nowIso])).length > 0;
+    },
+    async pendingApprovals() {
+      return (await q("select * from public.approvals where statut = 'en_attente' order by cree_le limit 50")) as unknown as EApproval[];
+    },
+    async emailsSince(since) {
+      return (await q("select * from public.emails where recu_le >= $1 order by recu_le desc limit 60", [since])) as unknown as EEmail[];
+    },
+    async tasksDoneSince(since, limit) {
+      return (await q("select * from public.tasks where statut = 'done' and maj_le >= $1 order by maj_le desc limit $2", [since, limit])).map(normTask);
+    },
+    async openTasks(limit) {
+      return (await q("select * from public.tasks where statut in ('queued','running','waiting_tool','waiting_approval','waiting_founder') order by priorite desc limit $1", [limit])).map(normTask);
+    },
+    async reportsToSend(prefixes, since) {
+      const list = (await q("select * from public.tasks where statut = 'done' and cree_par = 'routine' and maj_le >= $1 and (resultat->>'envoye_le') is null limit 20", [since])).map(normTask);
+      return list.filter((t) => prefixes.some((p) => t.titre.startsWith(p)));
     },
     async routineActive(id) {
       const [r] = await q<{ actif: boolean }>("select actif from public.routines where id = $1", [id]);

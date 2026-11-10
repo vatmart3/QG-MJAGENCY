@@ -9,6 +9,7 @@ import { browserSupabase } from "@/lib/supabase/client";
 import { kickEngine, spentToday, testBench } from "@/sync/live";
 import { useUI } from "@/store/ui";
 import { useWorld, world } from "@/store/world";
+import { useNow } from "../../hooks";
 import { Field, Toggle, inputCls, useSaver } from "./fields";
 
 const HOURS: { label: string; h: number | null }[] = [
@@ -100,7 +101,7 @@ function MoteurCard() {
       <button type="button" disabled={moteur.enCours} onClick={() => void kickEngine()} className="mt-3 rounded-full border border-ink/15 px-3 py-1.5 text-[13px] disabled:opacity-50">
         {moteur.enCours ? "Le moteur tourne…" : "⚙️ Faire avancer le moteur"}
       </button>
-      <p className="mt-2 text-[11px] text-ink-soft">Tant que cette page est ouverte et qu&apos;il y a du travail, le moteur avance toutes les 20 s. En Phase 5, pg_cron le fera toutes les 2 min, même page fermée.</p>
+      <PiloteAuto />
     </div>
   );
 }
@@ -211,6 +212,36 @@ function TestBench() {
         </button>
       </div>
       {saver.message && <p className={`mt-2 text-[12px] ${saver.status === "error" ? "text-phare" : "text-moss"}`}>{saver.message}</p>}
+    </div>
+  );
+}
+
+/** Pilote automatique : la base réveille le moteur toutes les 2 min, même LE PORT fermé. */
+function PiloteAuto() {
+  const now = useNow(30_000);
+  const [p, setP] = useState<{ at: string; erreurs?: string[] } | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/engine/status")
+      .then((r) => r.json())
+      .then((d: { pilote?: { at: string; erreurs?: string[] } | null }) => alive && setP(d.pilote ?? null))
+      .catch(() => alive && setP(null));
+    return () => {
+      alive = false;
+    };
+  }, [now]);
+  const age = p ? Math.round((now - new Date(p.at).getTime()) / 60_000) : null;
+  const ok = age !== null && age <= 6;
+  return (
+    <div className={`mt-3 rounded-xl px-3 py-2 text-[12px] ${ok ? "bg-moss/10 text-moss" : "bg-amber-50 text-amber-800"}`}>
+      {p === undefined
+        ? "Pilote automatique : vérification…"
+        : ok
+          ? `✈️ Pilote automatique actif : dernier passage il y a ${age! < 1 ? "moins d'une minute" : `${age} min`}. Les agents travaillent même LE PORT fermé.`
+          : p
+            ? `Pilote automatique : dernier passage il y a ${age} min (attendu toutes les 2 min).`
+            : "Pilote automatique : pas encore de passage enregistré."}
+      {p?.erreurs?.length ? <span className="block text-phare">⚠️ {p.erreurs[0]}</span> : null}
     </div>
   );
 }

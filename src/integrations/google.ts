@@ -165,18 +165,19 @@ const summary = (m: GMessage): MailSummary => ({
 /** En-tête encodé (RFC 2047) pour les accents de l'objet. */
 const encodeHeader = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${Buffer.from(s, "utf8").toString("base64")}?=`);
 
+const b64body = (s: string) => Buffer.from(s.replace(/\r?\n/g, "\r\n"), "utf8").toString("base64").replace(/(.{76})/g, "$1\r\n");
+
 export function buildRaw(from: string, m: OutgoingMail): string {
-  const lines = [
-    `From: MJAGENCY <${from}>`,
-    `To: ${m.a}`,
-    `Subject: ${encodeHeader(m.objet)}`,
-    "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-  ];
+  const lines = [`From: MJAGENCY <${from}>`, `To: ${m.a}`, `Subject: ${encodeHeader(m.objet)}`, "MIME-Version: 1.0"];
   if (m.inReplyTo) lines.push(`In-Reply-To: ${m.inReplyTo}`, `References: ${[m.references, m.inReplyTo].filter(Boolean).join(" ")}`);
-  const body = Buffer.from(m.corps.replace(/\r?\n/g, "\r\n"), "utf8").toString("base64").replace(/(.{76})/g, "$1\r\n");
-  return b64url(`${lines.join("\r\n")}\r\n\r\n${body}`);
+  if (!m.html) {
+    lines.push("Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64");
+    return b64url(`${lines.join("\r\n")}\r\n\r\n${b64body(m.corps)}`);
+  }
+  const boundary = `leport_${Date.now().toString(36)}`;
+  lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+  const part = (type: string, content: string) => `--${boundary}\r\nContent-Type: ${type}; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${b64body(content)}`;
+  return b64url(`${lines.join("\r\n")}\r\n\r\n${part("text/plain", m.corps)}\r\n${part("text/html", m.html)}\r\n--${boundary}--`);
 }
 
 export function gmailMailbox(g: GoogleClient): Mailbox {

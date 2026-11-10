@@ -1,5 +1,6 @@
 "use client";
 
+import { useUI } from "@/store/ui";
 import { useState } from "react";
 import { slugify, useCatalog } from "@/data/catalog";
 import { getRepo } from "@/data/repo";
@@ -34,6 +35,7 @@ const blank = (agentId: string): Routine => ({
 export function RoutinesTab() {
   const routines = useCatalog((s) => s.routines);
   const agents = useCatalog((s) => s.agents);
+  const live = useUI((s) => s.conn) !== "demo";
   const [editing, setEditing] = useState<{ draft: Routine; isNew: boolean } | null>(null);
 
   if (editing) return <RoutineForm key={editing.draft.id || "nouvelle"} initial={editing.draft} isNew={editing.isNew} onDone={() => setEditing(null)} />;
@@ -42,21 +44,26 @@ export function RoutinesTab() {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm text-ink-soft">Fuseau Europe/Paris · exécution automatique en Phase 5</p>
+        <p className="text-sm text-ink-soft">Fuseau Europe/Paris · actives = automatiques ; ▶ pour lancer quand tu veux</p>
         <button type="button" onClick={() => setEditing({ draft: blank(agents[0]?.id ?? ""), isNew: true })} className="rounded-full bg-ink px-3.5 py-1.5 text-[13px] font-medium text-white">
           + Routine
         </button>
       </div>
       <div className="space-y-0.5">
         {sorted.map((r) => (
-          <ListRow key={r.id} onClick={() => setEditing({ draft: r, isNew: false })}>
-            <span className={`min-w-0 flex-1 ${r.actif ? "" : "opacity-50"}`}>
-              <span className="block truncate font-medium">{r.nom}</span>
-              <span className="block truncate text-[11px] opacity-70">
-                {agents.find((a) => a.id === r.agentId)?.nom ?? "—"} · {horaire(r)}
-              </span>
-            </span>
-          </ListRow>
+          <div key={r.id} className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <ListRow onClick={() => setEditing({ draft: r, isNew: false })}>
+                <span className={`min-w-0 flex-1 ${r.actif ? "" : "opacity-60"}`}>
+                  <span className="block truncate font-medium">{r.nom}</span>
+                  <span className="block truncate text-[11px] opacity-70">
+                    {agents.find((a) => a.id === r.agentId)?.nom ?? "—"} · {PLUS_TARD[r.id] ? `arrive en phase ${PLUS_TARD[r.id]}` : r.actif ? horaire(r) : "à la demande"}
+                  </span>
+                </span>
+              </ListRow>
+            </div>
+            {live && !PLUS_TARD[r.id] && <LaunchButton id={r.id} />}
+          </div>
         ))}
       </div>
     </div>
@@ -170,5 +177,39 @@ function RoutineForm({ initial, isNew, onDone }: { initial: Routine; isNew: bool
       </div>
       <SaveBar saver={saver} onSave={save} onCancel={onDone} onDelete={isNew ? undefined : remove} />
     </div>
+  );
+}
+
+/** routines qui attendent les outils d'une phase suivante (même liste que le moteur) */
+const PLUS_TARD: Record<string, number> = { rt_sante_sites: 8, rt_echues: 6, rt_leads: 7, rt_relances_devis: 7, rt_cloture: 6 };
+
+/** ▶ Lancer maintenant (le compte rendu arrive dans l'onglet Rapports). */
+function LaunchButton({ id }: { id: string }) {
+  const [etat, setEtat] = useState<"idle" | "envoi" | "ok" | "rien" | "erreur">("idle");
+  const [msg, setMsg] = useState("");
+  const go = async () => {
+    setEtat("envoi");
+    try {
+      const res = await fetch(`/api/routines/${encodeURIComponent(id)}/run`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
+      setEtat(data.ok ? "ok" : "rien");
+      setMsg(data.message ?? "");
+      if (data.ok) void import("@/sync/live").then(({ kickEngine }) => kickEngine());
+    } catch (e) {
+      setEtat("erreur");
+      setMsg(e instanceof Error ? e.message : "Erreur");
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => void go()}
+      disabled={etat === "envoi"}
+      title={msg || "Lancer maintenant"}
+      className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium ${etat === "ok" ? "bg-moss/15 text-moss" : etat === "erreur" ? "bg-phare/10 text-phare" : "border border-ink/15 hover:bg-white"}`}
+    >
+      {etat === "envoi" ? "…" : etat === "ok" ? "✓ Lancé" : etat === "rien" ? "Rien à faire" : etat === "erreur" ? "Erreur" : "▶ Lancer"}
+    </button>
   );
 }

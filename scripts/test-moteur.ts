@@ -9,6 +9,9 @@ import { MockLLM } from "@/engine/llm";
 import { tick } from "@/engine/tick";
 import { demoServices } from "@/integrations/demo";
 import { SENSIBLE_RE } from "@/engine/tools/autonomie";
+import { launchRoutine } from "@/engine/routines";
+import { estAutomatique } from "@/engine/courrier";
+type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
 const pool = new Pool({ connectionString: url });
@@ -24,7 +27,7 @@ const q = async <T = Record<string, unknown>>(sql: string, p: unknown[] = []) =>
 async function reset() {
   await q("delete from public.agent_chats; delete from public.usage; delete from public.agent_messages; delete from public.approvals; delete from public.task_runs; update public.agents set tache_courante_id = null, etat = 'idle', offline_raison = null, interlocuteur = null; delete from public.tasks; delete from public.missions; delete from public.journal;");
   // le courrier planifié (tri, relances) ne tourne que dans son propre scénario
-  await q("update public.routines set actif = false where id in ('rt_tri_mails', 'rt_relances_mails')");
+  await q("update public.routines set actif = false, derniere_execution = null");
 }
 
 async function scenarioMission() {
@@ -209,6 +212,47 @@ async function scenarioAutonome() {
   }
 }
 
+async function scenarioRoutines() {
+  console.log("\n— Routines : récap programmé (mail), récap à la demande (sans mail), stand-up, tri sans IA");
+  await reset();
+  await q("delete from public.emails; delete from public.engine_kv;");
+  await q("update public.routines set actif = true where id in ('rt_recap', 'rt_standup')");
+  const run = async (iso: string, n = 4) => {
+    for (let i = 0; i < n; i++) await tick(db, llm, { now: () => new Date(iso), services: demoServices });
+  };
+  // 07:31 à Paris : le récap est dû, pas le stand-up (08:30)
+  await run("2026-11-10T06:31:00Z");
+  const recap = await q<{ statut: string; description: string; cree_par: string }>("select statut, description, cree_par from public.tasks where agent_id = 'diane'");
+  check(recap.length === 1 && recap[0]!.statut === "done" && recap[0]!.description.includes("<donnees_du_port"), "à 07:30, Diane rédige le récap avec les vraies données du port");
+  const envoi = await q<{ titre: string }>("select titre from public.journal where titre like '📬 Récap quotidien envoyé%'");
+  check(envoi.length === 1, "le récap programmé part par mail (une seule fois)");
+  await run("2026-11-10T06:40:00Z", 2);
+  const encore = await q("select 1 from public.tasks where agent_id = 'diane'");
+  check(encore.length === 1, "une routine ne se lance qu'une fois par jour");
+  const clem0 = await q("select 1 from public.tasks where agent_id = 'clemence'");
+  check(clem0.length === 0, "le stand-up attend son heure (08:30)");
+
+  // 08:31 : stand-up dans La Criée
+  await tick(db, llm, { now: () => new Date("2026-11-10T07:31:00Z"), services: demoServices, maxSteps: 0 });
+  const enReunion = await q<{ id: string }>("select id from public.agents where etat = 'meeting'");
+  const bulles = await q("select 1 from public.agent_messages where type = 'bavardage'");
+  check(enReunion.length >= 3 && bulles.length === enReunion.length, `stand-up : ${enReunion.length} responsables rejoignent La Criée et prennent la parole`);
+  await run("2026-11-10T07:32:00Z");
+  const cr = await q<{ statut: string }>("select statut from public.tasks where agent_id = 'clemence'");
+  check(cr.length === 1 && cr[0]!.statut === "done", "Clémence publie le compte rendu du stand-up");
+
+  // récap à la demande : aucune exécution automatique, et pas de mail
+  await q("update public.routines set actif = false where id = 'rt_point_18h'");
+  const [r18] = await q<ERoutineRow>("select *, to_char(heure, 'HH24:MI') as heure, to_char(plage_debut, 'HH24:MI') as plage_debut, to_char(plage_fin, 'HH24:MI') as plage_fin from public.routines where id = 'rt_point_18h'");
+  const team = await db.agents();
+  check(await launchRoutine(db, demoServices, team, r18 as never, new Date("2026-11-10T09:00:00Z"), "jeremyvatuonepro@gmail.com"), "« Lancer maintenant » crée la tâche tout de suite");
+  await run("2026-11-10T09:01:00Z");
+  const mails = await q("select 1 from public.journal where titre like '📬%'");
+  check(mails.length === 1, "un récap demandé reste dans LE PORT (pas de mail)");
+
+  check(estAutomatique("Instagram <follow-suggestions@mail.instagram.com>") && estAutomatique("Supabase <welcome@supabase.com>") && estAutomatique("noreply@exemple.fr") && !estAutomatique("Claire <contact@fournil-du-quai.example>"), "notifications et newsletters rangées sans IA, vrais mails gardés");
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -217,6 +261,7 @@ async function scenarioAutonome() {
     await scenarioConcurrence();
     await scenarioCourrier();
     await scenarioAutonome();
+    await scenarioRoutines();
   } catch (e) {
     console.error(e);
     failures++;

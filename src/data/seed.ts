@@ -619,19 +619,19 @@ const R = (r: Partial<Routine> & Pick<Routine, "id" | "nom" | "agentId" | "promp
   ...r,
 });
 
-/** Routines automatiques (§8), fuseau Europe/Paris. Exécutées à partir de la Phase 5. */
+/** Routines (§8), fuseau Europe/Paris. Le tri et les relances tournent seuls ; les récaps sont lancés à la demande (économie de crédits). */
 export const ROUTINES: Routine[] = [
   R({ id: "rt_tri_mails", nom: "Tri des nouveaux mails", agentId: "lucie", mode: "intervalle", intervalleMinutes: 15, plageDebut: "08:00", plageFin: "20:00", promptTache: "Trie les nouveaux mails de la boîte officielle, résume-les et crée les tâches pour les bons pôles." }),
   R({ id: "rt_sante_sites", nom: "Santé des sites clients", agentId: "jade", heure: "07:00", promptTache: "Vérifie que chaque site client répond (HTTP, temps de réponse, SSL, expiration du domaine) et alerte en cas de souci." }),
   R({ id: "rt_echues", nom: "Factures échues → relances", agentId: "remi", heure: "07:15", promptTache: "Repère les factures échues et prépare les relances graduées (J+3, J+10, J+30 à valider)." }),
-  R({ id: "rt_recap", nom: "Récap quotidien", agentId: "diane", heure: "07:30", promptTache: "Rédige et envoie le récap quotidien aux destinataires définis dans Réglages, puis archive-le dans le Journal." }),
-  R({ id: "rt_standup", nom: "Stand-up dans La Criée", agentId: "clemence", heure: "08:30", promptTache: "Réunis les responsables de pôle dans La Criée, fais le point et publie le compte-rendu." }),
+  R({ id: "rt_recap", nom: "Récap quotidien", agentId: "diane", heure: "07:30", promptTache: "Rédige et envoie le récap quotidien aux destinataires définis dans Réglages, puis archive-le dans le Journal." , actif: false }),
+  R({ id: "rt_standup", nom: "Stand-up dans La Criée", agentId: "clemence", heure: "08:30", promptTache: "Réunis les responsables de pôle dans La Criée, fais le point et publie le compte-rendu." , actif: false }),
   R({ id: "rt_leads", nom: "10 leads qualifiés + mails en brouillon", agentId: "hugo", heure: "10:00", jours: [1, 2, 3, 4, 5], promptTache: "Trouve 10 nouveaux commerces locaux, transmets-les à Inès pour scoring puis à Sacha pour les mails de prospection." }),
   R({ id: "rt_relances_mails", nom: "Relances des mails sans réponse", agentId: "firmin", heure: "14:00", promptTache: "Repère les mails envoyés restés sans réponse et prépare une relance." }),
   R({ id: "rt_relances_devis", nom: "Relances des devis en attente", agentId: "margaux", heure: "14:00", promptTache: "Relance les devis en attente de réponse." }),
-  R({ id: "rt_point_18h", nom: "Point de fin de journée", agentId: "diane", heure: "18:00", promptTache: "Fais un point court : ce qui est fait, ce qui attend une validation." }),
-  R({ id: "rt_plan_contenu", nom: "Plan de contenu de la semaine", agentId: "chloe", heure: "08:00", jours: [1], promptTache: "Prépare le plan de contenu Instagram / TikTok de la semaine." }),
-  R({ id: "rt_rapport_hebdo", nom: "Rapport hebdo", agentId: "diane", heure: "17:00", jours: [5], promptTache: "Rédige le rapport hebdo (KPIs, finances avec Héloïse, pipeline, veille avec Gabin)." }),
+  R({ id: "rt_point_18h", nom: "Point de fin de journée", agentId: "diane", heure: "18:00", promptTache: "Fais un point court : ce qui est fait, ce qui attend une validation." , actif: false }),
+  R({ id: "rt_plan_contenu", nom: "Plan de contenu de la semaine", agentId: "chloe", heure: "08:00", jours: [1], promptTache: "Prépare le plan de contenu Instagram / TikTok de la semaine." , actif: false }),
+  R({ id: "rt_rapport_hebdo", nom: "Rapport hebdo", agentId: "diane", heure: "17:00", jours: [5], promptTache: "Rédige le rapport hebdo (KPIs, finances avec Héloïse, pipeline, veille avec Gabin)." , actif: false }),
   R({ id: "rt_cloture", nom: "Clôture du mois", agentId: "heloise", heure: "09:00", jourDuMois: 1, promptTache: "Clôture le mois : CA, encaissements, cotisations estimées (avec Agathe), prévisionnel." }),
 ];
 

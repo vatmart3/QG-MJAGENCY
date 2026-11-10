@@ -24,6 +24,8 @@ export interface OutgoingMail {
   a: string;
   objet: string;
   corps: string;
+  /** version HTML (récaps) : le texte reste la version de secours */
+  html?: string;
   threadId?: string;
   inReplyTo?: string;
   references?: string;

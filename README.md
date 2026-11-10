@@ -4,7 +4,7 @@ Une petite île-port sétoise en pixel art isométrique, vivante, où chaque pô
 et chaque agent IA un petit bonhomme qui travaille, va au café, rejoint La Criée et parle avec les autres.
 Ce qu'on voit dans la ville est le reflet de l'état réel des agents.
 
-> **État : Phase 4 terminée — la Douane envoie pour de vrai (Gmail), Lucie trie la boîte, Noé répond, Firmin relance, Céleste gère l'agenda.**
+> **État : Phase 5 terminée — pilote automatique (les agents travaillent LE PORT fermé), routines, récaps à la demande, crédits au plus bas.**
 > Sans variables Supabase, tout tourne en **mode démo** (local), exactement comme en Phase 1.
 > 📄 Compte rendu à télécharger : [`docs/compte-rendu.pdf`](docs/compte-rendu.pdf) (source : `docs/compte-rendu.html`, mis à jour à chaque phase).
 
@@ -120,6 +120,24 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
 
+## Pilote automatique, routines et économies (Phase 5)
+
+- **Pilote automatique** : `pg_cron` appelle toutes les 2 min `public.le_port_battement()`, qui envoie (pg_net) un POST
+  à `/api/engine/tick` avec l'en-tête `x-le-port-cron`. Le jeton est généré dans **Supabase Vault** et vérifié par le
+  serveur via `public.le_port_cron_token()` (réservée à `service_role`) : aucun secret à copier. Adresse de l'app dans
+  `engine_kv` (clé `pilote`). État visible dans Réglages → Affichage & tests. Migration `…0900` (Supabase uniquement).
+- **Routines** (`src/engine/routines.ts`) : à chaque tick, celles qui sont dues sont réservées atomiquement
+  (`derniere_execution`) puis lancées ; une routine « fixe » manquée est rattrapée pendant 6 h, pas au-delà.
+  Tri des mails (15 min, 8 h–20 h) et relances (14 h) tournent seuls. Récap, stand-up, point de 18 h, rapport hebdo et plan
+  de contenu sont **désactivés par défaut** : on les lance **à la demande** (▶ dans Réglages → Routines, ou « Demander un
+  récap » dans Rapports) ; activés, le récap et le rapport hebdo partent par mail HTML aux destinataires du récap.
+  Les récaps reçoivent les **vraies données** du port (Douane, agenda, mails importants, travail des agents, budget).
+- Routines qui attendent une phase suivante (santé des sites, factures échues, leads, relances de devis, clôture) : rien
+  n'est lancé, pour ne pas inventer de travail.
+- **Économies** : tri des mails limité à l'onglet *Principal* de Gmail, notifications/newsletters rangées **sans IA** ;
+  Marius sur Sonnet par défaut (`MODEL_PLANNER=claude-opus-5-5` pour revenir à Opus), réflexion réduite
+  (`EFFORT_PLANNER`, `EFFORT_WORKER`), réponses plafonnées à 8 000 jetons ; un tick sans travail ne coûte rien.
+
 ## La Douane + Gmail + Agenda (Phase 4)
 
 - **Connexion Google** (Réglages → *Connexions & règles* → « Connecter Google ») : OAuth 2.0, scopes minimaux
@@ -228,7 +246,7 @@ Toutes les variables sont listées dans `.env.example`. `MOCK_MODE=true` : tout 
 - [x] Phase 2 — Supabase + Auth + temps réel
 - [x] Phase 3 — Le moteur d'agents
 - [x] Phase 4 — La Douane + Gmail + Agenda
-- [ ] Phase 5 — Routines + récap quotidien
+- [x] Phase 5 — Pilote automatique + routines + récaps (à la demande)
 - [ ] Phase 6 — Finance
 - [ ] Phase 7 — Prospection & Commercial
 - [ ] Phase 8 — Les autres pôles + finitions

@@ -10,7 +10,7 @@ async function handle(request: Request) {
   const caller = await identify(request);
   if (!caller) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   try {
-    const r = await runTick();
+    const r = await runTick(caller.kind);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
     return NextResponse.json({ ...r.report, appelant: caller.kind });
   } catch (e) {

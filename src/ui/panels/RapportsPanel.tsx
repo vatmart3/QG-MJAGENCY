@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { agentById, poleById, useCatalogVersion } from "@/data/catalog";
 import { formatParis } from "@/lib/paris";
+import { useUI } from "@/store/ui";
 import { useWorld, type RapportItem } from "@/store/world";
 import { Portrait } from "../Portrait";
 import { inputCls } from "./reglages/fields";
@@ -58,7 +59,8 @@ export function RapportsPanel() {
 
   return (
     <RoutePanel title="Rapports" kicker="Comptes rendus des agents" icon="📄" accent="#c2930f" width={520}>
-      <div className="flex gap-2">
+      <RecapButton />
+      <div className="mt-3 flex gap-2">
         <input className={inputCls} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Chercher (agent, sujet…)" aria-label="Chercher un compte rendu" />
       </div>
       <div className="mt-2 flex gap-1 rounded-full bg-ink/5 p-1">
@@ -119,5 +121,43 @@ export function RapportsPanel() {
         </p>
       )}
     </RoutePanel>
+  );
+}
+
+/** Récap à la demande (au lieu d'un mail automatique chaque matin : moins de crédits). */
+function RecapButton() {
+  const live = useUI((s) => s.conn) !== "demo";
+  const [etat, setEtat] = useState<"idle" | "envoi" | "ok" | "erreur">("idle");
+  const [msg, setMsg] = useState("");
+  if (!live) return null;
+  const go = async (id: string) => {
+    setEtat("envoi");
+    try {
+      const res = await fetch(`/api/routines/${id}/run`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
+      setEtat("ok");
+      setMsg(data.ok ? "Diane prépare le récap : il arrive ici dans une minute ou deux." : (data.message ?? ""));
+      if (data.ok) void import("@/sync/live").then(({ kickEngine }) => kickEngine());
+    } catch (e) {
+      setEtat("erreur");
+      setMsg(e instanceof Error ? e.message : "Erreur");
+    }
+  };
+  return (
+    <div className="rounded-2xl border border-paper-edge bg-white/60 p-3">
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" disabled={etat === "envoi"} onClick={() => void go("rt_recap")} className="rounded-full bg-ink px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50">
+          📋 Demander un récap
+        </button>
+        <button type="button" disabled={etat === "envoi"} onClick={() => void go("rt_point_18h")} className="rounded-full border border-ink/15 px-3 py-1.5 text-[13px] disabled:opacity-50">
+          Point rapide
+        </button>
+        <button type="button" disabled={etat === "envoi"} onClick={() => void go("rt_rapport_hebdo")} className="rounded-full border border-ink/15 px-3 py-1.5 text-[13px] disabled:opacity-50">
+          Rapport de la semaine
+        </button>
+      </div>
+      {msg && <p className={`mt-2 text-[12px] ${etat === "erreur" ? "text-phare" : "text-moss"}`}>{msg}</p>}
+    </div>
   );
 }

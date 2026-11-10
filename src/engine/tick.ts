@@ -2,7 +2,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { LIMITS } from "./config";
 import { demoServices } from "@/integrations/demo";
 import type { Services } from "@/integrations/types";
-import { scheduleCourrier } from "./courrier";
+import { deliverReports, runRoutines } from "./routines";
 import type { EngineDb } from "./db";
 import { executeApprovals } from "./douane";
 import type { LLM } from "./llm";
@@ -20,7 +20,8 @@ export interface TickReport {
   missions: number;
   reprises: number;
   envois: number;
-  courrier: { tri: number; relances: number };
+  routines: string[];
+  rapportsEnvoyes: number;
   pas: Record<StepResult, number>;
   budget: { depense: number; jour: number; depasse: boolean };
   erreurs: string[];
@@ -36,7 +37,8 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
     missions: 0,
     reprises: 0,
     envois: 0,
-    courrier: { tri: 0, relances: 0 },
+    routines: [],
+    rapportsEnvoyes: 0,
     pas: { done: 0, continue: 0, wait: 0, failed: 0, deferred: 0, retry: 0 },
     budget: { depense: 0, jour: 0, depasse: false },
     erreurs: [],
@@ -121,8 +123,11 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
     const r = await executeApprovals(db, services, now);
     report.envois = r.faits;
   });
-  await safe("courrier", async () => {
-    report.courrier = await scheduleCourrier(db, services, team, now);
+  await safe("routines", async () => {
+    report.routines = await runRoutines(db, services, team, now);
+  });
+  await safe("récaps", async () => {
+    report.rapportsEnvoyes = await deliverReports(db, services, settings.recap_destinataires, now);
   });
 
   // 5. tâches de plus de 24 h
@@ -138,7 +143,9 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
   // 6. agents dans un état passager (célébration, discussion, réunion) depuis un moment
   await safe("calme", async () => {
     const before = new Date(now.getTime() - 40_000).toISOString();
-    const relax = await db.agentsToRelax(before);
+    // une réunion (stand-up) dure quelques minutes : on laisse le temps de rejoindre La Criée
+    const meetingBefore = now.getTime() - 4 * 60_000;
+    const relax = (await db.agentsToRelax(before)).filter((a) => a.etat !== "meeting" || new Date(a.maj_le).getTime() < meetingBefore);
     await db.updateAgents(
       relax.map((a) => a.id),
       { etat: "idle", interlocuteur: null },

@@ -22,7 +22,7 @@ export interface ETask {
   statut: "queued" | "running" | "waiting_tool" | "waiting_approval" | "waiting_founder" | "done" | "failed" | "cancelled";
   priorite: number;
   etapes: TaskStep[];
-  resultat: { texte?: string; erreur?: string; rapport?: unknown } | null;
+  resultat: { texte?: string; erreur?: string; rapport?: unknown; envoye_le?: string } | null;
   profondeur: number;
   depend_de: string[];
   pas_avant: string | null;
@@ -64,6 +64,7 @@ export interface EAgent {
   outils: string[];
   autonomie: { niveau?: number } | null;
   critique: boolean;
+  responsable?: boolean;
   actif: boolean;
   etat: AgentState;
   offline_raison: "nuit" | "budget" | null;
@@ -125,6 +126,23 @@ export interface ESettings {
   allowlist_emails: string[];
   contraintes_agenda: { jeremy?: string; matheis?: string };
   autonomie: Autonomie;
+  recap_destinataires: string[];
+}
+
+export interface ERoutine {
+  id: string;
+  nom: string;
+  agent_id: string | null;
+  mode: "fixe" | "intervalle";
+  heure: string;
+  intervalle_minutes: number;
+  plage_debut: string;
+  plage_fin: string;
+  jours: number[];
+  jour_du_mois: number | null;
+  prompt_tache: string;
+  actif: boolean;
+  derniere_execution: string | null;
 }
 
 /** Mode autonome : les agents envoient sans attendre la Douane (envoi différé et annulable). */
@@ -184,6 +202,20 @@ export interface EngineDb {
   kvGet<T = unknown>(cle: string): Promise<T | null>;
   kvSet(cle: string, valeur: unknown): Promise<void>;
   routineActive(id: string): Promise<boolean>;
+  activeRoutines(): Promise<ERoutine[]>;
+  routine(id: string): Promise<ERoutine | null>;
+  /** réserve une exécution de routine (derniere_execution < before) ; false si déjà faite */
+  claimRoutine(id: string, beforeIso: string, nowIso: string): Promise<boolean>;
+  /** réserve un créneau (clé dont la dernière mise à jour est antérieure à olderThanIso) */
+  kvClaim(cle: string, valeur: unknown, olderThanIso: string, nowIso: string): Promise<boolean>;
+
+  // ---- lectures pour les récaps
+  pendingApprovals(): Promise<EApproval[]>;
+  emailsSince(iso: string): Promise<EEmail[]>;
+  tasksDoneSince(iso: string, limit: number): Promise<ETask[]>;
+  openTasks(limit: number): Promise<ETask[]>;
+  /** comptes rendus de routine à envoyer par mail (récap, rapport hebdo) */
+  reportsToSend(prefixes: string[], sinceIso: string): Promise<ETask[]>;
   /** une tâche non terminée de cet agent dont le titre commence par… */
   hasOpenTask(agentId: string, titrePrefix: string): Promise<boolean>;
 
@@ -231,8 +263,8 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     async settings() {
       const s = ok(await sb.from("settings").select("*").eq("id", 1).maybeSingle());
       return s
-        ? { ...s, budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {}, autonomie: lireAutonomie(s.autonomie) }
-        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {}, autonomie: AUTONOMIE_DEFAUT };
+        ? { ...s, budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {}, autonomie: lireAutonomie(s.autonomie), recap_destinataires: s.recap_destinataires ?? [] }
+        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {}, autonomie: AUTONOMIE_DEFAUT, recap_destinataires: [] };
     },
     async poles() {
       return rows(await sb.from("poles").select("id, nom"));
@@ -349,6 +381,37 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     async routineActive(id) {
       const r = ok(await sb.from("routines").select("actif").eq("id", id).maybeSingle());
       return r ? !!r.actif : true;
+    },
+    async activeRoutines() {
+      return rows(await sb.from("routines").select("*").eq("actif", true));
+    },
+    async routine(id) {
+      return ok(await sb.from("routines").select("*").eq("id", id).maybeSingle());
+    },
+    async claimRoutine(id, beforeIso, nowIso) {
+      const r = rows(await sb.from("routines").update({ derniere_execution: nowIso }).eq("id", id).or(`derniere_execution.is.null,derniere_execution.lt.${beforeIso}`).select("id"));
+      return r.length > 0;
+    },
+    async kvClaim(cle, valeur, olderThanIso, nowIso) {
+      ok(await sb.from("engine_kv").upsert({ cle, valeur: {}, maj_le: "1970-01-01T00:00:00Z" }, { onConflict: "cle", ignoreDuplicates: true }));
+      const r = rows(await sb.from("engine_kv").update({ valeur, maj_le: nowIso }).eq("cle", cle).lt("maj_le", olderThanIso).select("cle"));
+      return r.length > 0;
+    },
+    async pendingApprovals() {
+      return rows(await sb.from("approvals").select("*").eq("statut", "en_attente").order("cree_le").limit(50));
+    },
+    async emailsSince(iso) {
+      return rows(await sb.from("emails").select("*").gte("recu_le", iso).order("recu_le", { ascending: false }).limit(60));
+    },
+    async tasksDoneSince(iso, limit) {
+      return rows<ETask>(await sb.from("tasks").select("*").eq("statut", "done").gte("maj_le", iso).order("maj_le", { ascending: false }).limit(limit)).map(parseTask);
+    },
+    async openTasks(limit) {
+      return rows<ETask>(await sb.from("tasks").select("*").in("statut", ["queued", "running", "waiting_tool", "waiting_approval", "waiting_founder"]).order("priorite", { ascending: false }).limit(limit)).map(parseTask);
+    },
+    async reportsToSend(prefixes, sinceIso) {
+      const list = rows<ETask>(await sb.from("tasks").select("*").eq("statut", "done").eq("cree_par", "routine").gte("maj_le", sinceIso).limit(20)).map(parseTask);
+      return list.filter((t) => prefixes.some((p) => t.titre.startsWith(p)) && !t.resultat?.envoye_le);
     },
     async hasOpenTask(agentId, titrePrefix) {
       const r = rows(
