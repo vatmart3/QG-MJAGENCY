@@ -122,7 +122,7 @@ la question aux fondateurs via la Douane, le plafond de budget, et deux ticks si
 
 ## Pilote automatique, routines et économies (Phase 5)
 
-- **Pilote automatique** : `pg_cron` appelle chaque minute `public.le_port_battement()` (pg_net échoue une fois sur deux en HTTP/2 vers Vercel : un passage effectif ~toutes les 2 min), qui envoie (pg_net) un POST
+- **Pilote automatique** : `pg_cron` appelle chaque minute, de 7 h à 22 h (heure de Paris en hiver), `public.le_port_battement()` (pg_net échoue parfois en HTTP/2 vers Vercel : au moins un passage toutes les 2 min ; rien la nuit), qui envoie (pg_net) un POST
   à `/api/engine/tick` avec l'en-tête `x-le-port-cron`. Le jeton est généré dans **Supabase Vault** et vérifié par le
   serveur via `public.le_port_cron_token()` (réservée à `service_role`) : aucun secret à copier. Adresse de l'app dans
   `engine_kv` (clé `pilote`). État visible dans Réglages → Affichage & tests. Migration `…0900` (Supabase uniquement).

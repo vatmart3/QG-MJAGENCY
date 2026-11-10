@@ -55,5 +55,6 @@ $$;
 revoke all on function public.le_port_battement() from public, anon, authenticated;
 
 select cron.unschedule(jobid) from cron.job where jobname = 'le-port-moteur';
--- chaque minute : pg_net échoue une fois sur deux en HTTP/2 avec Vercel, on obtient ainsi un passage ~toutes les 2 min
-select cron.schedule('le-port-moteur', '* * * * *', 'select public.le_port_battement()');
+-- chaque minute de 6 h à 20 h 59 UTC (7 h–22 h à Paris en hiver, 8 h–23 h en été) : pg_net échoue parfois en HTTP/2
+-- avec Vercel, on garde ainsi un passage au moins toutes les 2 min ; la nuit, rien ne tourne (quota Vercel ménagé).
+select cron.schedule('le-port-moteur', '* 6-20 * * *', 'select public.le_port_battement()');
