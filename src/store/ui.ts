@@ -1,0 +1,39 @@
+import { createStore } from "zustand/vanilla";
+import { useStore } from "zustand";
+
+export interface UIState {
+  selectedAgent: string | null;
+  selectedPole: string | null;
+  hoverAgent: string | null;
+  /** zoom courant de la caméra (échelle monde → écran) */
+  zoom: number;
+  /** la ville est prête (textures générées) */
+  ready: boolean;
+  fps: number;
+}
+
+export const uiStore = createStore<UIState>(() => ({
+  selectedAgent: null,
+  selectedPole: null,
+  hoverAgent: null,
+  zoom: 1,
+  ready: false,
+  fps: 0,
+}));
+
+export const useUI = <T>(selector: (s: UIState) => T): T => useStore(uiStore, selector);
+
+export const ui = {
+  selectAgent(id: string | null): void {
+    uiStore.setState({ selectedAgent: id, selectedPole: id ? null : uiStore.getState().selectedPole });
+  },
+  selectPole(id: string | null): void {
+    uiStore.setState({ selectedPole: id, selectedAgent: id ? null : uiStore.getState().selectedAgent });
+  },
+  closeSheets(): void {
+    uiStore.setState({ selectedAgent: null, selectedPole: null });
+  },
+  setHover(id: string | null): void {
+    if (uiStore.getState().hoverAgent !== id) uiStore.setState({ hoverAgent: id });
+  },
+};
