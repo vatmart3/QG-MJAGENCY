@@ -3,6 +3,7 @@ import { z } from "zod";
 import { MODELS, costEur } from "@/engine/config";
 import { supabaseEngineDb } from "@/engine/db";
 import { llmFromEnv } from "@/engine/llm";
+import { invitationIa, reponseGratuite } from "@/engine/causette";
 import { systemFor } from "@/engine/prompts";
 import { identify } from "@/lib/supabase/guard";
 import { adminSupabase } from "@/lib/supabase/server";
@@ -10,7 +11,7 @@ import { adminSupabase } from "@/lib/supabase/server";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-const body = z.object({ message: z.string().trim().min(1).max(4000) });
+const body = z.object({ message: z.string().trim().min(1).max(4000), ia: z.boolean().optional() });
 
 /** Chat direct avec un agent (fiche agent) : un appel, sans outils, avec sa personnalité et la mémoire. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -28,23 +29,36 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!agent) return NextResponse.json({ error: "Agent introuvable." }, { status: 404 });
 
   await db.insertChat(id, "fondateur", parsed.data.message, caller.email);
+
+  // discussion gratuite : réponse composée sans IA ; l'IA seulement quand le fondateur appuie sur ⚡
+  if (!parsed.data.ia) {
+    const [tache] = agent.tache_courante_id ? await db.tasks([agent.tache_courante_id]) : [];
+    const [derniere] = await db.tasksDoneSince(new Date(Date.now() - 7 * 86400_000).toISOString(), 50).then((l) => l.filter((t) => t.agent_id === id));
+    const prenom = /matheis/i.test(caller.email) ? "Matheis" : /jeremy|vatuone/i.test(caller.email) ? "Jérémy" : "";
+    const ctx = { nom: agent.nom, role: agent.role, etat: agent.etat, tache: tache?.titre ?? null, derniere: derniere?.titre ?? null, heure: Number(new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "numeric", hour12: false }).format(new Date())), fondateur: prenom };
+    const reply = reponseGratuite(parsed.data.message, ctx) ?? invitationIa(ctx);
+    await db.insertChat(id, "agent", reply);
+    return NextResponse.json({ reply, gratuit: true });
+  }
+
   const llm = llmFromEnv();
-  const model = MODELS[agent.modele];
-  const messages = [...history, { role: "fondateur" as const, contenu: parsed.data.message }].map((m) => ({
+  // réponse ⚡ : toujours le modèle le plus économique (Haiku), réponse courte
+  const model = MODELS.light;
+  const messages = [...history.slice(-10), { role: "fondateur" as const, contenu: parsed.data.message }].map((m) => ({
     role: m.role === "fondateur" ? ("user" as const) : ("assistant" as const),
     content: m.contenu,
   }));
   try {
     const res = await llm.create({
       model,
-      tier: agent.modele === "planner" ? "worker" : agent.modele,
+      tier: "light",
       system: [
         ...systemFor(agent, agents, new Map(poles.map((p) => [p.id, p.nom])), memory),
         { type: "text", text: `Tu discutes directement avec un fondateur (${caller.email}) depuis ta fiche. Réponds en quelques phrases, sur le ton d'un collègue. Tu n'as pas d'outils dans cette discussion : si on te demande un vrai travail, propose de le faire passer par une mission.` },
       ],
       messages,
       tools: [],
-      maxTokens: 4000,
+      maxTokens: 700,
       meta: { agentId: agent.id, agentNom: agent.nom, role: agent.role, planner: false, taskTitle: "chat", chat: true },
     });
     const reply = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim() || "…";

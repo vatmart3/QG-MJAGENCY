@@ -179,7 +179,7 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
       // l'envoi validé part au prochain passage du moteur : on le lance tout de suite
       if (d.statut !== "refuse") void kickEngine();
     },
-    chat: (agentId, text) => sendChat(agentId, text),
+    chat: (agentId, text, ia) => sendChat(agentId, text, ia),
     async log(e) {
       await sb.from("journal").insert({ type: e.type, titre: e.titre.slice(0, 300), contenu: e.contenu ?? null, agent_id: e.agentId ?? null, pole_id: e.poleId ?? null });
     },
@@ -380,11 +380,11 @@ export async function loadChat(agentId: string): Promise<void> {
   world.setChats(agentId, data.messages.map((m) => ({ from: m.role, text: m.contenu, at: Date.now() })));
 }
 
-export async function sendChat(agentId: string, text: string): Promise<void> {
-  world.pushChat(agentId, { from: "fondateur", text, at: Date.now() });
-  world.say(agentId, "Je regarde ça…", 2000);
+export async function sendChat(agentId: string, text: string, ia = false): Promise<void> {
+  world.pushChat(agentId, { from: "fondateur", text: ia ? `⚡ ${text}` : text, at: Date.now() });
+  if (ia) world.say(agentId, "Je réfléchis…", 2000);
   try {
-    const res = await fetch(`/api/agents/${agentId}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text }) });
+    const res = await fetch(`/api/agents/${agentId}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text, ia }) });
     const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string };
     world.pushChat(agentId, { from: "agent", text: res.ok ? (data.reply ?? "…") : `(Je n'ai pas pu répondre : ${data.error ?? res.status})`, at: Date.now() });
   } catch {

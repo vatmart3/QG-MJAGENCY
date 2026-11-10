@@ -68,7 +68,7 @@ export interface LiveAdapter {
   insertMission(texte: string, cible: string): Promise<void>;
   decideApproval(id: string, decision: { statut: "approuve" | "modifie" | "refuse"; motif?: string; apercu?: string; objet?: string; regle?: { agentId: string; type: string } }): Promise<void>;
   log(entry: { type: string; titre: string; contenu?: string; agentId?: string; poleId?: string }): Promise<void>;
-  chat(agentId: string, text: string): Promise<void>;
+  chat(agentId: string, text: string, ia?: boolean): Promise<void>;
 }
 
 class Director {
@@ -588,11 +588,11 @@ class Director {
   }
 
   // ---------------------------------------------------------------- chat direct
-  chat(agentId: string, text: string): void {
+  chat(agentId: string, text: string, ia = false): void {
     const a = agentById(agentId);
     if (!a || !text.trim()) return;
     if (this.mode === "live" && this.live) {
-      void this.live.chat(agentId, text.trim());
+      void this.live.chat(agentId, text.trim(), ia);
       return;
     }
     world.pushChat(agentId, { from: "fondateur", text: text.trim(), at: Date.now() });

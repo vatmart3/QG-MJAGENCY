@@ -52,11 +52,12 @@ export function AgentSheet() {
       footer={
         agent && (
           <form
-            className="flex items-center gap-2"
+            className="flex flex-wrap items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               if (!msg.trim() || !id) return;
-              getDirector().chat(id, msg);
+              const ia = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("data-ia") === "1";
+              getDirector().chat(id, msg, ia);
               setMsg("");
             }}
           >
@@ -67,9 +68,13 @@ export function AgentSheet() {
               className="min-w-0 flex-1 rounded-full border border-paper-edge bg-white/70 px-4 py-2.5 text-sm outline-none focus:border-ink/30"
               aria-label={`Message pour ${agent.nom}`}
             />
-            <button type="submit" disabled={!msg.trim()} className="rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:opacity-35">
+            <button type="submit" disabled={!msg.trim()} className="rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:opacity-35" title="Discussion gratuite (sans IA)">
               Envoyer
             </button>
+            <button type="submit" data-ia="1" disabled={!msg.trim()} className="rounded-full border border-ink/15 bg-white/70 px-3 py-2.5 text-sm font-medium disabled:opacity-35" title="Réponse réfléchie par l'IA (≈ 0,1 centime)">
+              ⚡
+            </button>
+            <p className="w-full text-[10.5px] text-ink-soft">« Envoyer » = discussion gratuite · ⚡ = vraie réponse de l&apos;IA (≈ 0,1 centime)</p>
           </form>
         )
       }
@@ -175,7 +180,7 @@ export function AgentSheet() {
 
           <SectionTitle>Chat direct</SectionTitle>
           <div className="space-y-2">
-            {!chat?.length && <p className="text-sm text-ink-soft">Pose une question ou donne une consigne à {agent.nom}.</p>}
+            {!chat?.length && <p className="text-sm text-ink-soft">Discute avec {agent.nom} gratuitement, ou appuie sur ⚡ pour une vraie réponse de l&apos;IA. Pour un travail, passe par une mission.</p>}
             {chat?.map((m, i) => (
               <div key={i} className={`flex ${m.from === "fondateur" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-3 py-2 text-sm ${m.from === "fondateur" ? "bg-ink text-white" : "bg-white/80 shadow-sm"}`}>{m.text}</div>
