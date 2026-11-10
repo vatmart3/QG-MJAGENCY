@@ -13,6 +13,8 @@ export interface UIState {
   /** démo locale, ou état de la connexion temps réel à Supabase */
   conn: "demo" | "connexion" | "direct" | "hors_ligne";
   userEmail: string | null;
+  /** dernier passage du moteur d'agents (mode direct) */
+  moteur: { kind: "anthropic" | "mock" | null; dernier: number | null; erreur: string | null; enCours: boolean };
 }
 
 export const uiStore = createStore<UIState>(() => ({
@@ -24,6 +26,7 @@ export const uiStore = createStore<UIState>(() => ({
   fps: 0,
   conn: "demo",
   userEmail: null,
+  moteur: { kind: null, dernier: null, erreur: null, enCours: false },
 }));
 
 export const useUI = <T>(selector: (s: UIState) => T): T => useStore(uiStore, selector);

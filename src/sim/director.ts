@@ -29,6 +29,7 @@ export interface LiveAdapter {
   insertMission(texte: string, cible: string): Promise<void>;
   decideApproval(id: string, decision: { statut: "approuve" | "modifie" | "refuse"; motif?: string; apercu?: string; regle?: { agentId: string; type: string } }): Promise<void>;
   log(entry: { type: string; titre: string; contenu?: string; agentId?: string; poleId?: string }): Promise<void>;
+  chat(agentId: string, text: string): Promise<void>;
 }
 
 class Director {
@@ -521,13 +522,11 @@ class Director {
   chat(agentId: string, text: string): void {
     const a = agentById(agentId);
     if (!a || !text.trim()) return;
-    world.pushChat(agentId, { from: "fondateur", text: text.trim(), at: Date.now() });
-    if (this.mode === "live") {
-      this.later(900, () =>
-        world.pushChat(agentId, { from: "agent", text: "Message bien reçu. Je pourrai te répondre pour de vrai quand le moteur d'agents sera branché (Phase 3).", at: Date.now() }),
-      );
+    if (this.mode === "live" && this.live) {
+      void this.live.chat(agentId, text.trim());
       return;
     }
+    world.pushChat(agentId, { from: "fondateur", text: text.trim(), at: Date.now() });
     const rt = world.get().agents[agentId];
     if (rt && rt.state !== "offline") world.say(agentId, "Je regarde ça…", 1800);
     this.later(1300 + rand() * 900, () => {
@@ -536,7 +535,7 @@ class Director {
         `Ok, je l'ajoute à ma liste. ${rt?.task ? `Là je suis sur « ${shorten(rt.task.title, 40)} ».` : "Je suis dispo."}`,
         "Reçu 👍 Je te fais un retour dans le Journal.",
       ];
-      world.pushChat(agentId, { from: "agent", text: `${pickOne(replies)}\n\n(Mode démo : les vraies réponses arrivent avec le moteur d'agents, Phase 3.)`, at: Date.now() });
+      world.pushChat(agentId, { from: "agent", text: `${pickOne(replies)}\n\n(Mode démo : avec Supabase et une clé API Anthropic, l'agent répond pour de vrai.)`, at: Date.now() });
     });
   }
 }

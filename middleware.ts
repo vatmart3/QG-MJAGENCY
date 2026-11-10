@@ -7,7 +7,8 @@ import { NextResponse, type NextRequest } from "next/server";
  * L'allowlist est vérifiée à l'envoi du lien magique et par la RLS de chaque table.
  */
 
-const PUBLIC = ["/login", "/auth/", "/api/auth/"];
+// /api/engine et /api/cron vérifient eux-mêmes CRON_SECRET ou la session
+const PUBLIC = ["/login", "/auth/", "/api/auth/", "/api/engine/", "/api/cron/"];
 
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCatalog } from "@/data/catalog";
 import { getRepo, resetDemoCatalog } from "@/data/repo";
 import { STATE_LABEL, type AgentState } from "@/data/types";
 import { hhmm } from "@/lib/paris";
 import { browserSupabase } from "@/lib/supabase/client";
-import { testBench } from "@/sync/live";
+import { kickEngine, spentToday, testBench } from "@/sync/live";
 import { useUI } from "@/store/ui";
 import { useWorld, world } from "@/store/world";
 import { Field, Toggle, inputCls, useSaver } from "./fields";
@@ -43,7 +43,64 @@ export function DemoTab() {
       {!live && <Toggle checked={chatter} onChange={(v) => world.setChatter(v)} label="Bavardage de démo" hint="Répliques d'exemple entre agents" />}
       <p className="font-silk text-[9px] text-ink-soft">Rendu : {fps} i/s</p>
 
+      {live && <MoteurCard />}
       {live ? <TestBench /> : <DemoReset />}
+    </div>
+  );
+}
+
+/** État du moteur d'agents (mode direct). */
+function MoteurCard() {
+  const moteur = useUI((s) => s.moteur);
+  const settings = useCatalog((s) => s.settings);
+  const [depense, setDepense] = useState<number | null>(null);
+  useEffect(() => {
+    const sb = browserSupabase();
+    if (!sb) return;
+    let alive = true;
+    const load = () => void spentToday(sb).then((v) => alive && setDepense(v));
+    load();
+    const t = setInterval(load, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [moteur.dernier]);
+  const pct = depense === null ? 0 : Math.min(100, (depense / Math.max(0.01, settings.budgetJour)) * 100);
+  return (
+    <div className="rounded-2xl border border-paper-edge bg-white/60 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-bold">Moteur d&apos;agents</h4>
+        <span className={`rounded-full px-2 py-0.5 font-silk text-[9px] ${moteur.kind === "anthropic" ? "bg-moss/15 text-moss" : "bg-phare/10 text-phare"}`}>
+          {moteur.kind === "anthropic" ? "CLAUDE" : moteur.kind === "mock" ? "SIMULÉ" : "—"}
+        </span>
+      </div>
+      <p className="mt-1 text-[12px] text-ink-soft">
+        {moteur.kind === "mock"
+          ? "Sans clé API Anthropic, les agents suivent un scénario simulé (plans, échanges, livrables marqués « simulé »)."
+          : moteur.kind === "anthropic"
+            ? "Les agents réfléchissent avec Claude (Opus pour Marius, Sonnet pour la rédaction, Haiku pour le tri)."
+            : "Le moteur n'a pas encore tourné depuis l'ouverture de cette page."}
+      </p>
+      <p className="mt-1 text-[12px] text-ink-soft">
+        Dernier passage : {moteur.dernier ? new Date(moteur.dernier).toLocaleTimeString("fr-FR") : "jamais"}
+        {moteur.erreur && <span className="block text-phare">⚠️ {moteur.erreur}</span>}
+      </p>
+      <div className="mt-2">
+        <div className="flex justify-between text-[12px]">
+          <span>Dépense IA du jour</span>
+          <span className="tabular-nums">
+            {depense === null ? "…" : `${depense.toFixed(2)} €`} / {settings.budgetJour} €
+          </span>
+        </div>
+        <div className="mt-1 h-2 overflow-hidden rounded-full bg-ink/8">
+          <div className={`h-full rounded-full ${pct >= 100 ? "bg-phare" : pct >= 80 ? "bg-amber-500" : "bg-moss"}`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <button type="button" disabled={moteur.enCours} onClick={() => void kickEngine()} className="mt-3 rounded-full border border-ink/15 px-3 py-1.5 text-[13px] disabled:opacity-50">
+        {moteur.enCours ? "Le moteur tourne…" : "⚙️ Faire avancer le moteur"}
+      </button>
+      <p className="mt-2 text-[11px] text-ink-soft">Tant que cette page est ouverte et qu&apos;il y a du travail, le moteur avance toutes les 20 s. En Phase 5, pg_cron le fera toutes les 2 min, même page fermée.</p>
     </div>
   );
 }

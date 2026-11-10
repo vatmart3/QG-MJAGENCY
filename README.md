@@ -4,7 +4,7 @@ Une petite île-port sétoise en pixel art isométrique, vivante, où chaque pô
 et chaque agent IA un petit bonhomme qui travaille, va au café, rejoint La Criée et parle avec les autres.
 Ce qu'on voit dans la ville est le reflet de l'état réel des agents.
 
-> **État : Phase 2 terminée — Supabase, connexion par lien magique, temps réel, Réglages éditables.**
+> **État : Phase 3 terminée — le moteur d'agents (Marius planifie, les agents se parlent et livrent).**
 > Sans variables Supabase, tout tourne en **mode démo** (local), exactement comme en Phase 1.
 
 ## Démarrer
@@ -14,7 +14,8 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-Autres commandes : `npm run build`, `npm run lint`, `npm run typecheck`, `npm run db:seed` (régénère `supabase/seed.sql`).
+Autres commandes : `npm run build`, `npm run lint`, `npm run typecheck`, `npm run db:seed` (régénère `supabase/seed.sql`),
+`npm run test:moteur` (test d'intégration du moteur sur un Postgres local, voir plus bas).
 
 ## Brancher Supabase (Phase 2)
 
@@ -80,6 +81,44 @@ Astuces de démo :
   - Sur mobile, les fiches deviennent des bottom sheets.
 - **Aucune image externe** : tous les sprites (sol, mobilier, bonshommes, phare, barques…) sont dessinés par le code dans un **atlas unique**, soit un seul lot de rendu. Les polices sont auto-hébergées via `@fontsource` : Pixelify Sans, Silkscreen, Space Grotesk, Caveat.
 
+## Le moteur d'agents (Phase 3)
+
+Tout travail est une **tâche** exécutée par une **boucle d'agent** : appel à Claude avec le prompt de l'agent (règles communes,
+identité, équipe, mémoire d'entreprise — mis en cache), ses outils autorisés et l'historique de la tâche ; l'agent appelle des outils ;
+les résultats repartent au modèle ; jusqu'à `finish_task`.
+
+- **Par pas** : chaque appel à `/api/engine/tick` exécute au plus 8 pas (40 s max) ; l'historique est enregistré dans `task_runs`,
+  une tâche peut donc durer plusieurs ticks. Réservation atomique (`claim_tasks`, `FOR UPDATE SKIP LOCKED`) : deux ticks ne prennent
+  jamais la même tâche. Limites : 12 itérations d'outils par tâche, délégation sur 3 niveaux, 24 h maximum.
+- **Marius orchestre** : une mission arrive → il la découpe avec `plan_mission` (sous-tâches, agents, dépendances), le plan s'affiche dans
+  la fiche de la mission, les agents se retrouvent dans La Criée, chacun part sur sa sous-tâche, puis Marius reprend la main avec tous
+  les livrables et écrit la synthèse (Journal + fiche de la mission).
+- **Les agents se parlent** : `ask_agent` (question → réponse immédiate du collègue), `delegate_task` (confie une tâche, attend ou non
+  son livrable), `request_meeting`. Chaque échange est enregistré dans `agent_messages` et joué en bulles dans la ville.
+- **Les fondateurs restent maîtres** : `ask_founder` dépose une question en Douane, la tâche reprend avec la réponse ;
+  `propose_company_memory_update` ne s'applique qu'une fois validé en Douane.
+- **Modèles** : Opus 5.5 pour Marius, Sonnet 5.5 pour la rédaction, Haiku 5.5 pour le tri ; réflexion adaptative, effort par niveau,
+  cache de prompt. Pour Opus et Sonnet, le **repli côté serveur en cas de refus** est activé (`fallbacks: "default"`) : si le modèle
+  décline une requête, l'API la rejoue sur un modèle adapté dans le même appel.
+- **Budget** : chaque appel est compté dans `usage` (€). À 80 % du budget du jour : alerte dans le Journal. À 100 % : seuls Lucie,
+  Diane, Rémi (et les agents marqués « critiques ») continuent, les autres rentrent chez eux.
+- **Sécurité** : mails, pages et documents lus sont encadrés dans `<contenu_externe>` — des données, jamais des ordres ; un agent
+  qui y trouve des instructions les signale au Journal et n'agit pas.
+- **Sans clé API Anthropic**, le moteur tourne en **mode simulé** : même circuit (plan, réunion, échanges, livrables, synthèse),
+  textes marqués « simulé », coût nul. Pratique pour tester la Phase 3 sans dépenser.
+
+**Qui fait tourner le moteur ?** En attendant `pg_cron` (Phase 5) : l'onglet ouvert le relance toutes les 20 s tant qu'il y a du travail,
+l'envoi d'une mission le déclenche aussitôt, et le bouton *Faire avancer le moteur* (Réglages → Affichage & tests) le lance à la main.
+Un cron Vercel quotidien (`vercel.json`) sert de filet de sécurité. `/api/engine/tick` accepte `Authorization: Bearer CRON_SECRET`
+ou la session d'un fondateur.
+
+**Test d'intégration** (Postgres local avec les migrations et le seed appliqués) :
+```bash
+DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
+```
+Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
+la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
+
 ## Ce qu'apporte la Phase 2
 
 - **Base Supabase** : 14 tables (pôles, agents, missions, tâches + exécutions, échanges entre agents, Douane, règles d'autonomie,
@@ -105,7 +144,11 @@ src/data/                     seed, catalogue vivant (catalog.ts), dépôt démo
 src/lib/supabase/             clients navigateur / serveur / service_role, lignes ↔ objets
 src/sync/live.ts              chargement initial + abonnements Realtime + banc d'essai
 src/store/world.ts            état « réel » (agents, bulles, Douane, journal, tâches, missions)
-src/sim/director.ts           démo : moteur simulé · direct : ne joue que les bulles, écrit missions et décisions
+src/sim/director.ts           démo locale (sans Supabase) · en direct : joue les bulles, écrit missions et décisions
+src/engine/                   moteur d'agents : tick, boucle par pas, prompts, modèles et coûts, accès base (Supabase / Postgres)
+src/engine/tools/             un fichier par outil (schéma zod + exécution)
+app/api/engine/tick           exécution des pas (CRON_SECRET ou session) · app/api/cron/daily : filet quotidien
+app/api/agents/[id]/chat      chat direct avec un agent
 src/world/                    PixiJS : Game, layout de l'île, ciel, ambiance, couche DOM (étiquettes & bulles)
 src/world/sprites/            raster pixel art, atlas, bonshommes, mobilier, sol
 src/world/agents/             A*, contrôleur visuel des bonshommes
@@ -120,7 +163,7 @@ en direct, c'est Supabase Realtime. En Phase 3, le moteur d'agents (`/api/engine
 | Phase | À fournir |
 |---|---|
 | 2 | Projet Supabase (URL, clé anon, clé service_role), e-mail de Matheis pour l'allowlist (ajout possible dans Réglages) |
-| 3 | `ANTHROPIC_API_KEY` |
+| 3 | `ANTHROPIC_API_KEY` (sans clé : moteur simulé) et un `CRON_SECRET` (chaîne aléatoire) |
 | 4 | Client OAuth Google (Gmail + Agenda) autorisé sur `mjagency.officiel@gmail.com` |
 | 7 | `GOOGLE_PLACES_API_KEY` (Places API New) |
 | 8 | Domaine Shopify + token Admin API (custom app) |
@@ -131,7 +174,7 @@ Toutes les variables sont listées dans `.env.example`. `MOCK_MODE=true` : tout 
 
 - [x] **Phase 1** — La ville vivante (mock)
 - [x] Phase 2 — Supabase + Auth + temps réel
-- [ ] Phase 3 — Le moteur d'agents
+- [x] Phase 3 — Le moteur d'agents
 - [ ] Phase 4 — La Douane + Gmail + Agenda
 - [ ] Phase 5 — Routines + récap quotidien
 - [ ] Phase 6 — Finance

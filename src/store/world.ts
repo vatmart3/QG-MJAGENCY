@@ -272,6 +272,9 @@ export const world = {
   setChatter(on: boolean): void {
     set({ chatterEnabled: on });
   },
+  setChats(agentId: string, list: ChatMessage[]): void {
+    set((s) => ({ chats: { ...s.chats, [agentId]: list } }));
+  },
   pushChat(agentId: string, m: ChatMessage): void {
     set((s) => ({ chats: { ...s.chats, [agentId]: [...(s.chats[agentId] ?? []), m] } }));
   },

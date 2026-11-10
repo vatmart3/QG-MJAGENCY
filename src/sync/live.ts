@@ -119,6 +119,7 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
     async insertMission(texte, cible) {
       const { error } = await sb.from("missions").insert({ demandeur: email, texte, cible, statut: "nouvelle" });
       if (error) throw new Error(traduireErreur(error.message));
+      void kickEngine();
       await adapter.log({ type: "mission", titre: `Nouvelle mission pour ${catalogStore.getState().agents.find((a) => a.id === cible)?.nom ?? cible}`, contenu: texte, agentId: cible, poleId: agentRows.get(cible)?.pole_id });
     },
     async decideApproval(id, d) {
@@ -132,11 +133,21 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
       await adapter.log({ type: "validation", titre: `${verbe} : ${data?.titre ?? "élément de la Douane"}`, contenu: d.motif ? `Motif : ${d.motif}` : undefined, agentId: data?.agent_id ?? undefined });
       if (d.regle) await adapter.log({ type: "decision", titre: `Règle d'autonomie ajoutée : « ${d.regle.type} » pour ${d.regle.agentId}`, agentId: d.regle.agentId });
     },
+    chat: (agentId, text) => sendChat(agentId, text),
     async log(e) {
       await sb.from("journal").insert({ type: e.type, titre: e.titre.slice(0, 300), contenu: e.contenu ?? null, agent_id: e.agentId ?? null, pole_id: e.poleId ?? null });
     },
   };
   getDirector().start("live", adapter);
+
+  // le moteur avance tant qu'il y a du travail (en attendant pg_cron, Phase 5)
+  const pinger = setInterval(() => {
+    const w = world.get();
+    const busy =
+      w.tasks.some((t) => ["queued", "running", "waiting_tool", "waiting_founder"].includes(t.status)) ||
+      w.missions.some((m) => m.status === "nouvelle" || m.status === "planification" || m.status === "en_cours");
+    if (busy) void kickEngine();
+  }, 20_000);
 
   // ---- temps réel
   const channel: RealtimeChannel = sb
@@ -202,10 +213,64 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
   return {
     ok: true,
     stop: () => {
+      clearInterval(pinger);
       void sb.removeChannel(channel);
       getDirector().stop();
     },
   };
+}
+
+// ------------------------------------------------------------------ moteur
+let inFlight = false;
+
+/** Fait avancer le moteur d'agents (un « tick » côté serveur). */
+export async function kickEngine(): Promise<void> {
+  if (inFlight) return;
+  inFlight = true;
+  uiStore.setState((s) => ({ moteur: { ...s.moteur, enCours: true } }));
+  try {
+    const res = await fetch("/api/engine/tick", { method: "POST" });
+    const data = (await res.json().catch(() => ({}))) as { moteur?: "anthropic" | "mock"; error?: string; erreurs?: string[] };
+    uiStore.setState({
+      moteur: {
+        kind: data.moteur ?? uiStore.getState().moteur.kind,
+        dernier: Date.now(),
+        erreur: res.ok ? (data.erreurs?.[0] ?? null) : (data.error ?? `Erreur ${res.status}`),
+        enCours: false,
+      },
+    });
+  } catch (e) {
+    uiStore.setState((s) => ({ moteur: { ...s.moteur, enCours: false, erreur: e instanceof Error ? e.message : "Réseau indisponible" } }));
+  } finally {
+    inFlight = false;
+  }
+}
+
+/** Chat direct (fiche agent) : historique et envoi. */
+export async function loadChat(agentId: string): Promise<void> {
+  const res = await fetch(`/api/agents/${agentId}/chat`);
+  if (!res.ok) return;
+  const data = (await res.json()) as { messages: { role: "fondateur" | "agent"; contenu: string }[] };
+  world.setChats(agentId, data.messages.map((m) => ({ from: m.role, text: m.contenu, at: Date.now() })));
+}
+
+export async function sendChat(agentId: string, text: string): Promise<void> {
+  world.pushChat(agentId, { from: "fondateur", text, at: Date.now() });
+  world.say(agentId, "Je regarde ça…", 2000);
+  try {
+    const res = await fetch(`/api/agents/${agentId}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text }) });
+    const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string };
+    world.pushChat(agentId, { from: "agent", text: res.ok ? (data.reply ?? "…") : `(Je n'ai pas pu répondre : ${data.error ?? res.status})`, at: Date.now() });
+  } catch {
+    world.pushChat(agentId, { from: "agent", text: "(Réseau indisponible, réessaie.)", at: Date.now() });
+  }
+}
+
+/** Dépense IA du jour (€), table usage. */
+export async function spentToday(sb: SupabaseClient): Promise<number> {
+  const day = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris" }).format(new Date());
+  const { data } = await sb.from("usage").select("cout_estime").gte("date", day);
+  return (data ?? []).reduce((s: number, r: { cout_estime: number | string }) => s + Number(r.cout_estime), 0);
 }
 
 // ------------------------------------------------------------------ banc d'essai (Réglages → Temps réel)

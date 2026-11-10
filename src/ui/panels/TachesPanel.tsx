@@ -34,7 +34,7 @@ export function TachesPanel() {
                 <div className="flex items-start justify-between gap-2">
                   <span className="text-sm font-semibold">{m.text}</span>
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${m.status === "terminee" ? "bg-moss/15 text-moss" : "bg-ink/8"}`}>
-                    {m.status === "planification" ? "Planification" : m.status === "en_cours" ? "En cours" : "Terminée"}
+                    {{ nouvelle: "Reçue", planification: "Planification", en_cours: "En cours", terminee: "Terminée", annulee: "Abandonnée" }[m.status]}
                   </span>
                 </div>
                 {m.plan.length > 0 && (

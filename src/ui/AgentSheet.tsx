@@ -28,6 +28,11 @@ export function AgentSheet() {
   const [msg, setMsg] = useState("");
   const chatEnd = useRef<HTMLDivElement>(null);
 
+  const conn = useUI((s) => s.conn);
+  useEffect(() => {
+    if (id && conn === "direct") void import("@/sync/live").then(({ loadChat }) => loadChat(id));
+  }, [id, conn]);
+
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [chat?.length]);
