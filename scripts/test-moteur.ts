@@ -234,7 +234,8 @@ async function scenarioRoutines() {
   const clem0 = await q("select 1 from public.tasks where agent_id = 'clemence'");
   check(clem0.length === 0, "le stand-up attend son heure (08:30)");
 
-  // 08:31 : stand-up dans La Criée
+  // 08:31 : stand-up dans La Criée (la nuit a pu renvoyer des agents chez eux : ils reviennent d'abord)
+  await run("2026-11-10T07:05:00Z", 6);
   await tick(db, llm, { now: () => new Date("2026-11-10T07:31:00Z"), services: demoServices, maxSteps: 0 });
   const enReunion = await q<{ id: string }>("select id from public.agents where etat = 'meeting'");
   const bulles = await q("select 1 from public.agent_messages where type = 'bavardage'");
@@ -346,6 +347,27 @@ async function scenarioFinance() {
   check(fisc.length >= 1, "Agathe prévient de l'échéance URSSAF à 7 jours (une seule fois)");
 }
 
+async function scenarioNuit() {
+  console.log("\n— La nuit : les agents rentrent chez eux, Lucie et Jade restent de garde");
+  await reset();
+  await q("update public.routines set actif = true where id = 'rt_nuit'");
+  const run = async (iso: string, n: number) => {
+    for (let i = 0; i < n; i++) await tick(db, llm, { now: () => new Date(iso), services: demoServices, maxSteps: 0 });
+  };
+  await run("2026-11-10T20:30:00Z", 8);
+  const off = await q<{ id: string }>("select id from public.agents where actif and etat = 'offline' and offline_raison = 'nuit'");
+  const garde = await q<{ id: string; etat: string }>("select id, etat from public.agents where id in ('lucie', 'jade')");
+  const actifs = await q<{ n: string }>("select count(*) as n from public.agents where actif");
+  check(off.length === Number(actifs[0]!.n) - 2 && garde.every((g) => g.etat !== "offline"), `21 h 30 : ${off.length} agents rentrés, Lucie et Jade de garde`);
+  await q("insert into public.tasks (agent_id, cree_par, titre, statut) values ('bastien', 'test', 'Tâche de nuit', 'queued')");
+  await tick(db, llm, { now: () => new Date("2026-11-10T21:00:00Z"), services: demoServices });
+  const [b] = await q<{ etat: string; offline_raison: string | null }>("select etat, offline_raison from public.agents where id = 'bastien'");
+  check(b?.offline_raison === null, "une tâche la nuit réveille l'agent concerné");
+  await run("2026-11-11T07:30:00Z", 8);
+  const reste = await q("select 1 from public.agents where etat = 'offline' and offline_raison = 'nuit'");
+  check(reste.length === 0, "8 h 30 : tout le monde est revenu");
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -356,6 +378,7 @@ async function scenarioFinance() {
     await scenarioAutonome();
     await scenarioRoutines();
     await scenarioFinance();
+    await scenarioNuit();
   } catch (e) {
     console.error(e);
     failures++;

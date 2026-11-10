@@ -632,6 +632,7 @@ export const ROUTINES: Routine[] = [
   R({ id: "rt_point_18h", nom: "Point de fin de journée", agentId: "diane", heure: "18:00", promptTache: "Fais un point court : ce qui est fait, ce qui attend une validation." , actif: false }),
   R({ id: "rt_plan_contenu", nom: "Plan de contenu de la semaine", agentId: "chloe", heure: "08:00", jours: [1], promptTache: "Prépare le plan de contenu Instagram / TikTok de la semaine." , actif: false }),
   R({ id: "rt_rapport_hebdo", nom: "Rapport hebdo", agentId: "diane", heure: "17:00", jours: [5], promptTache: "Rédige le rapport hebdo (KPIs, finances avec Héloïse, pipeline, veille avec Gabin)." , actif: false }),
+  R({ id: "rt_nuit", nom: "Nuit au port", agentId: "clemence", mode: "intervalle", intervalleMinutes: 5, plageDebut: "20:00", plageFin: "08:00", promptTache: "Les agents sans tâche rentrent chez eux la nuit ; Lucie et Jade restent de garde. Une tâche réveille l'agent concerné. Aucun crédit utilisé." }),
   R({ id: "rt_abonnements", nom: "Factures des abonnements", agentId: "bastien", heure: "08:00", jourDuMois: 1, promptTache: "Prépare la facture de chaque abonnement actif du mois (envoi après validation en Douane)." }),
   R({ id: "rt_fiscal", nom: "Échéances fiscales", agentId: "agathe", heure: "08:05", promptTache: "Préviens 7 jours avant chaque échéance fiscale et au passage des seuils de TVA." }),
   R({ id: "rt_cloture", nom: "Clôture du mois", agentId: "heloise", heure: "09:00", jourDuMois: 1, promptTache: "Clôture le mois : CA, encaissements, cotisations estimées (avec Agathe), prévisionnel." }),

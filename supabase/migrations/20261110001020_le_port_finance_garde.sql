@@ -75,3 +75,8 @@ $$;
 -- fonction de déclencheur : jamais appelable directement
 revoke all on function public.paiement_statut() from public, anon, authenticated;
 revoke all on function public.exiger_fondateur() from public, anon;
+
+-- nuit au port (routine réglable : les agents sans tâche rentrent chez eux, Lucie et Jade de garde)
+insert into public.routines (id, nom, agent_id, mode, heure, intervalle_minutes, plage_debut, plage_fin, jours, prompt_tache, actif)
+values ('rt_nuit', 'Nuit au port', 'clemence', 'intervalle', '20:00', 5, '20:00', '08:00', '{}', 'Les agents sans tâche rentrent chez eux la nuit ; Lucie et Jade restent de garde. Une tâche réveille l''agent concerné. Aucun crédit utilisé.', true)
+on conflict (id) do nothing;

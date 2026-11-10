@@ -56,5 +56,8 @@ export const LIMITS = {
   maxTokens: 8_000,
 };
 
+/** La nuit (heure de Paris), les agents sans tâche rentrent chez eux ; ceux de garde restent au port. */
+export const NUIT = { debut: process.env.NUIT_DEBUT || "20:00", fin: process.env.NUIT_FIN || "08:00", deGarde: ["lucie", "jade"], parPassage: 8 };
+
 /** Agents qui continuent même quand le budget du jour est épuisé (§7.6). */
 export const CRITICAL_FALLBACK = ["lucie", "diane", "remi"];

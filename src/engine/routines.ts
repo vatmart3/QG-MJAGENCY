@@ -46,7 +46,7 @@ export function dueBefore(r: ERoutine, now: Date): Date | null {
 export async function runRoutines(db: EngineDb, services: Services, team: EAgent[], now: Date): Promise<string[]> {
   const lancees: string[] = [];
   for (const r of await db.activeRoutines()) {
-    if (ROUTINES_PLUS_TARD[r.id]) continue;
+    if (ROUTINES_PLUS_TARD[r.id] || r.id === "rt_nuit") continue;
     if (!team.some((a) => a.id === r.agent_id && a.actif)) continue;
     const before = dueBefore(r, now);
     if (!before) continue;
@@ -62,6 +62,7 @@ export async function runRoutines(db: EngineDb, services: Services, team: EAgent
  * À la demande, le compte rendu reste dans LE PORT (onglet Rapports) : aucun mail n'est envoyé.
  */
 export async function launchRoutine(db: EngineDb, services: Services, team: EAgent[], r: ERoutine, now: Date, par: string | null): Promise<boolean> {
+  if (r.id === "rt_nuit") return false;
   const agent = team.find((a) => a.id === r.agent_id && a.actif);
   if (!agent) return false;
   if (r.id === "rt_tri_mails") return (await triInbox(db, services, agent.id)) > 0;

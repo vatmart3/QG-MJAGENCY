@@ -57,12 +57,12 @@ export function RoutinesTab() {
                 <span className={`min-w-0 flex-1 ${r.actif ? "" : "opacity-60"}`}>
                   <span className="block truncate font-medium">{r.nom}</span>
                   <span className="block truncate text-[11px] opacity-70">
-                    {agents.find((a) => a.id === r.agentId)?.nom ?? "—"} · {PLUS_TARD[r.id] ? `arrive en phase ${PLUS_TARD[r.id]}` : r.actif ? horaire(r) : "à la demande"}
+                    {agents.find((a) => a.id === r.agentId)?.nom ?? "—"} · {r.id === "rt_nuit" ? `de ${r.plageDebut} à ${r.plageFin} · Lucie et Jade de garde` : PLUS_TARD[r.id] ? `arrive en phase ${PLUS_TARD[r.id]}` : r.actif ? horaire(r) : "à la demande"}
                   </span>
                 </span>
               </ListRow>
             </div>
-            {live && !PLUS_TARD[r.id] && <LaunchButton id={r.id} />}
+            {live && !PLUS_TARD[r.id] && r.id !== "rt_nuit" && <LaunchButton id={r.id} />}
           </div>
         ))}
       </div>

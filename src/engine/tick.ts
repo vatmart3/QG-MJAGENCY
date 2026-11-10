@@ -1,5 +1,5 @@
 import { formatInTimeZone } from "date-fns-tz";
-import { LIMITS } from "./config";
+import { LIMITS, NUIT } from "./config";
 import { demoServices } from "@/integrations/demo";
 import type { Services } from "@/integrations/types";
 import { deliverReports, runRoutines } from "./routines";
@@ -150,6 +150,30 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
       relax.map((a) => a.id),
       { etat: "idle", interlocuteur: null },
     );
+  });
+
+  // 6 bis. la nuit : les agents sans tâche rentrent par le ponton (quelques-uns à chaque passage),
+  // Lucie et Jade restent de garde ; le matin, tout le monde revient. Une tâche réveille l'agent concerné.
+  await safe("nuit", async () => {
+    // routine « Nuit au port » (Réglages → Routines) : horaires modifiables, désactivable
+    const r = await db.routine("rt_nuit");
+    const debut = (r?.plage_debut ?? NUIT.debut).slice(0, 5);
+    const fin = (r?.plage_fin ?? NUIT.fin).slice(0, 5);
+    const hm = formatInTimeZone(now, "Europe/Paris", "HH:mm");
+    const nuit = (r?.actif ?? true) && (debut > fin ? hm >= debut || hm < fin : hm >= debut && hm < fin);
+    if (nuit) {
+      const partants = team.filter((a) => a.actif && !NUIT.deGarde.includes(a.id) && !a.tache_courante_id && (a.etat === "idle" || a.etat === "done")).slice(0, NUIT.parPassage);
+      await db.updateAgents(
+        partants.map((a) => a.id),
+        { etat: "offline", offline_raison: "nuit", interlocuteur: null },
+      );
+    } else {
+      const revenants = team.filter((a) => a.etat === "offline" && a.offline_raison === "nuit").slice(0, NUIT.parPassage);
+      await db.updateAgents(
+        revenants.map((a) => a.id),
+        { etat: "idle", offline_raison: null },
+      );
+    }
   });
 
   // 7. pas d'agents
