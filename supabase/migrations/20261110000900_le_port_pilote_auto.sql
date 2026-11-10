@@ -1,5 +1,5 @@
 -- LE PORT — pilote automatique (Supabase uniquement : pg_cron + pg_net + Vault).
--- Toutes les 2 minutes, la base appelle /api/engine/tick avec un jeton généré ici, jamais affiché :
+-- Chaque minute, la base appelle /api/engine/tick avec un jeton généré ici, jamais affiché :
 -- les agents trient, répondent et envoient même quand aucune page n'est ouverte.
 -- Le serveur vérifie le jeton via public.le_port_cron_token() (réservée à service_role).
 
@@ -55,4 +55,5 @@ $$;
 revoke all on function public.le_port_battement() from public, anon, authenticated;
 
 select cron.unschedule(jobid) from cron.job where jobname = 'le-port-moteur';
-select cron.schedule('le-port-moteur', '*/2 * * * *', 'select public.le_port_battement()');
+-- chaque minute : pg_net échoue une fois sur deux en HTTP/2 avec Vercel, on obtient ainsi un passage ~toutes les 2 min
+select cron.schedule('le-port-moteur', '* * * * *', 'select public.le_port_battement()');
