@@ -5,6 +5,7 @@ import { useCatalog } from "@/data/catalog";
 import { getRepo } from "@/data/repo";
 import type { Settings } from "@/data/types";
 import { firstError, settingsSchema } from "@/lib/schemas";
+import { browserSupabase } from "@/lib/supabase/client";
 import { useUI } from "@/store/ui";
 import { world } from "@/store/world";
 import { Field, SaveBar, Toggle, inputCls, useSaver } from "./fields";
@@ -53,6 +54,37 @@ function EmailList({ value, onChange, protect, label }: { value: string[]; onCha
         </button>
       </div>
     </div>
+  );
+}
+
+/** Choisir ou changer son mot de passe (connexion sans attendre de mail). */
+function PasswordBox() {
+  const [pwd, setPwd] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const saver = useSaver();
+  const save = () => {
+    if (pwd.length < 10) return saver.fail("10 caractères minimum.");
+    if (pwd !== pwd2) return saver.fail("Les deux mots de passe ne sont pas identiques.");
+    void saver.run(async () => {
+      const sb = browserSupabase();
+      if (!sb) throw new Error("Supabase n'est pas configuré.");
+      const { error } = await sb.auth.updateUser({ password: pwd });
+      if (error) throw new Error(error.message);
+      setPwd("");
+      setPwd2("");
+    }, "Mot de passe enregistré ✓ — tu peux te connecter avec");
+  };
+  return (
+    <Field label="Mon mot de passe" hint="Pour te connecter sans attendre de mail. 10 caractères minimum.">
+      <div className="grid grid-cols-2 gap-2">
+        <input type="password" autoComplete="new-password" className={inputCls} value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="Nouveau mot de passe" aria-label="Nouveau mot de passe" />
+        <input type="password" autoComplete="new-password" className={inputCls} value={pwd2} onChange={(e) => setPwd2(e.target.value)} placeholder="Confirmer" aria-label="Confirmer le mot de passe" />
+      </div>
+      <button type="button" onClick={save} disabled={saver.status === "saving"} className="mt-2 rounded-full border border-ink/15 px-3 py-1.5 text-[13px]">
+        Enregistrer le mot de passe
+      </button>
+      {saver.message && <span className={`ml-2 text-[12px] ${saver.status === "error" ? "text-phare" : "text-moss"}`}>{saver.message}</span>}
+    </Field>
   );
 }
 
@@ -107,6 +139,7 @@ export function AccesTab() {
         </Field>
       </div>
       <SaveBar saver={saver} onSave={save} />
+      {conn !== "demo" && <PasswordBox />}
       {conn !== "demo" && (
         <form action="/api/auth/signout" method="post" className="pt-1">
           <p className="mb-2 text-[12px] text-ink-soft">Connecté : {me}</p>
