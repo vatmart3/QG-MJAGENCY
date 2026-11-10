@@ -17,7 +17,7 @@ const LABEL: Record<(typeof CATEGORIES)[number], string> = {
 export const labelEmail = defineTool({
   name: "label_email",
   description:
-    "Classe un mail trié : catégorie, résumé d'une ligne, urgence (0 normal, 1 important, 2 urgent), libellé « LE PORT/… » dans Gmail. action=repondre crée une tâche de réponse pour Noé (ou l'agent indiqué) ; action=transmettre crée une tâche pour l'agent du bon pôle ; action=aucune pour l'info, la pub ou le spam.",
+    "Classe un mail trié : catégorie, résumé d'une ligne, urgence (0 normal, 1 important, 2 urgent), libellé « LE PORT/… » dans Gmail. action=repondre crée une tâche de réponse pour Noé ; action=transmettre confie le dossier au bon pôle (devis → Victor, facture → Bastien, site en panne → Atelier Tech) ET Noé répond quand même au client ; action=aucune pour l'info, la pub ou le spam.",
   schema: z.object({
     id: z.string().min(1).max(200),
     categorie: z.enum(CATEGORIES),
@@ -59,7 +59,7 @@ export const labelEmail = defineTool({
           `Résumé de ${ctx.agent.nom} : ${input.resume}`,
           input.consigne ? `Consigne : ${input.consigne}` : "",
           input.action === "repondre"
-            ? "Lis le mail avec read_email, puis prépare la réponse avec send_email (repondre_a = l'id du mail) : elle passera par La Douane. Vouvoie le client, signe au nom de MJAGENCY."
+            ? "Lis le mail avec read_email, puis RÉPONDS avec send_email (repondre_a = l'id du mail) — jamais un simple brouillon. Vouvoie le client ; la signature MJAGENCY est ajoutée automatiquement."
             : "Lis le mail avec read_email si besoin, fais le nécessaire, puis rends ton compte rendu.",
         ]
           .filter(Boolean)
@@ -71,6 +71,25 @@ export const labelEmail = defineTool({
       taskId = t.id;
       await ctx.db.insertMessage({ from_agent: ctx.agent.id, to_agent: cible.id, task_id: t.id, type: "delegation", contenu: `${titre}\n\n${input.resume}`, resume_bulle: bulle(`${cible.nom}, un mail pour toi : ${objet}`) });
       suite = ` Tâche créée pour ${cible.nom}.`;
+    }
+    // un client ou un prospect confié à un autre pôle reçoit quand même une réponse de Noé (accusé de réception)
+    const noe = findAgent(ctx.team, "noe");
+    if (input.action === "transmettre" && (input.categorie === "client" || input.categorie === "prospect") && noe && taskId && input.agent_id !== "noe") {
+      const pole = findAgent(ctx.team, input.agent_id ?? "")?.nom ?? "l'équipe";
+      await ctx.db.insertTask({
+        agent_id: noe.id,
+        cree_par: ctx.agent.id,
+        titre: `Répondre : ${objet}`.slice(0, 200),
+        description: [
+          `Mail id=${input.id} de ${de}.`,
+          `Résumé de ${ctx.agent.nom} : ${input.resume}`,
+          `Le dossier est confié à ${pole}. Réponds tout de suite avec send_email (repondre_a = l'id du mail) : remercie, montre que la demande est bien comprise, dis ce qui va se passer et quand (ex. « vous recevrez notre proposition sous 48 h »). Ne donne aucun prix. Vouvoie le client.`,
+        ].join("\n"),
+        priorite: input.urgence === 2 ? 5 : 3,
+        profondeur: Math.min(3, ctx.task.profondeur + 1),
+        statut: "queued",
+      });
+      suite += ` Noé répond au client pendant que ${pole} s'en occupe.`;
     }
     await ctx.db.updateEmail(input.id, { categorie: input.categorie, resume: input.resume, urgence: input.urgence, statut: "trie", task_id: taskId });
     if (input.urgence === 2) await ctx.db.insertJournal({ type: "alerte", titre: `📬 Mail urgent : ${objet}`.slice(0, 300), contenu: `${de}\n${input.resume}`, agent_id: ctx.agent.id, pole_id: ctx.agent.pole_id });

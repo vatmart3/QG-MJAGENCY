@@ -290,7 +290,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "noe", nom: "Noé", pole: "accueil", role: "Réponses aux mails",
     personnalite: "Chaleureux, clair, vouvoie toujours les clients.",
-    modele: "worker", outils: [...COMMUNS, "read_email", "search_emails", "create_email_draft", "send_email"],
+    modele: "worker", outils: [...COMMUNS, "read_email", "search_emails", "send_email"],
     autonomie: 0, critique: false, sortant: true,
     routines: [],
     taches: ["Réponse à la boulangerie Marceau", "Brouillon : demande de devis vitrine", "Réponse au fournisseur NFC"],
@@ -298,7 +298,7 @@ export const AGENTS: AgentDef[] = [
   A({
     id: "firmin", nom: "Firmin", pole: "accueil", role: "Suivi des relances",
     personnalite: "Patient, poli, tenace.",
-    modele: "light", outils: [...COMMUNS, "search_emails", "read_email", "create_email_draft", "send_email"],
+    modele: "light", outils: [...COMMUNS, "search_emails", "read_email", "send_email"],
     autonomie: 0, critique: false, sortant: true,
     routines: ["14:00 — relances des mails sans réponse"],
     taches: ["Relance : 4 mails sans réponse depuis 5 j", "Relance douce au Domaine de la Plagette"],
@@ -621,7 +621,7 @@ const R = (r: Partial<Routine> & Pick<Routine, "id" | "nom" | "agentId" | "promp
 
 /** Routines (§8), fuseau Europe/Paris. Le tri et les relances tournent seuls ; les récaps sont lancés à la demande (économie de crédits). */
 export const ROUTINES: Routine[] = [
-  R({ id: "rt_tri_mails", nom: "Tri des nouveaux mails", agentId: "lucie", mode: "intervalle", intervalleMinutes: 15, plageDebut: "08:00", plageFin: "20:00", promptTache: "Trie les nouveaux mails de la boîte officielle, résume-les et crée les tâches pour les bons pôles." }),
+  R({ id: "rt_tri_mails", nom: "Tri des nouveaux mails", agentId: "lucie", mode: "intervalle", intervalleMinutes: 5, plageDebut: "07:00", plageFin: "22:00", promptTache: "Trie les nouveaux mails de la boîte officielle, résume-les et crée les tâches pour les bons pôles." }),
   R({ id: "rt_sante_sites", nom: "Santé des sites clients", agentId: "jade", heure: "07:00", promptTache: "Vérifie que chaque site client répond (HTTP, temps de réponse, SSL, expiration du domaine) et alerte en cas de souci." }),
   R({ id: "rt_echues", nom: "Factures échues → relances", agentId: "remi", heure: "07:15", promptTache: "Repère les factures échues et prépare les relances graduées (J+3, J+10, J+30 à valider)." }),
   R({ id: "rt_recap", nom: "Récap quotidien", agentId: "diane", heure: "07:30", promptTache: "Rédige et envoie le récap quotidien aux destinataires définis dans Réglages, puis archive-le dans le Journal." , actif: false }),

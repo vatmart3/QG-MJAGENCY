@@ -1,9 +1,10 @@
 import { formatInTimeZone } from "date-fns-tz";
 import type { ToolCtx } from "./types";
 
-/** Ce qui n'est jamais envoyé seul : prix, devis, engagements, paiement, juridique, identifiants. */
+/** Ce qui n'est jamais envoyé seul : un prix chiffré, un contrat, un paiement, le juridique, des identifiants.
+ *  (Parler d'un devis sans donner de prix est autorisé : « nous préparons votre devis ».) */
 export const SENSIBLE_RE =
-  /\d[\d\s.,]*\s?(€|euros?\b|eur\b|ht\b|ttc\b)|\bdevis\b|\bcontrat|\bsignatur|\bsigner\b|\bengag|rembours|résili|resili|mise en demeure|\bavocat|\brib\b|\biban\b|virement|mot de passe|\bfacture/i;
+  /\d[\d\s.,]*\s?(€|euros?\b|eur\b|ht\b|ttc\b)|\bcontrat|\bsignatur|\bsigner\b|rembours|résili|resili|mise en demeure|\bavocat|\brib\b|\biban\b|virement|mot de passe/i;
 
 export type AutoDecision = { auto: true; envoyerApres: Date } | { auto: false; raison: string | null };
 

@@ -211,7 +211,7 @@ async function scenarioAutonome() {
     check(after[0]?.execution_statut === "simule" && after[1]?.execution_statut === "annule", `après le délai : envoyé, et l'envoi bloqué est annulé (${after.map((a) => a.execution_statut).join(" / ")})`);
     const j = await q<{ titre: string }>("select titre from public.journal where titre like '⏱️%' or titre like '%mode autonome%'");
     check(j.length >= 3, "le Journal annonce l'envoi programmé puis l'envoi");
-    check(SENSIBLE_RE.test("Le site vitrine est à 890 € HT") && SENSIBLE_RE.test("je vous envoie le devis") && !SENSIBLE_RE.test("Merci, on vous rappelle jeudi."), "prix / devis / engagement → toujours en Douane");
+    check(SENSIBLE_RE.test("Le site vitrine est à 890 € HT") && SENSIBLE_RE.test("voici le contrat à signer") && !SENSIBLE_RE.test("Nous préparons votre devis, vous l'aurez sous 48 h.") && !SENSIBLE_RE.test("Merci, on vous rappelle jeudi."), "prix chiffré / contrat → Douane ; « nous préparons votre devis » part seul");
   } finally {
     await q(`update public.settings set autonomie = jsonb_set(autonomie, '{actif}', 'false')`);
   }
