@@ -20,14 +20,36 @@ export const lireTelegram = (v: unknown): ReglagesTelegram => {
   return { chats: o.chats ?? {}, appairages: o.appairages ?? {} };
 };
 
-export const tgConfigure = () => !!process.env.TELEGRAM_BOT_TOKEN;
+/**
+ * Jeton du bot nettoyé des erreurs de copier-coller fréquentes : espaces et retours à la ligne, guillemets,
+ * « bot » ajouté devant, adresse complète https://api.telegram.org/bot…/ collée à la place du jeton.
+ */
+export function nettoyerJeton(brut: string | undefined): string {
+  let t = (brut ?? "").trim().replace(/^["'`]+|["'`]+$/g, "").trim();
+  const dansUrl = t.match(/api\.telegram\.org\/bot([^/\s]+)/i);
+  if (dansUrl) t = dansUrl[1]!;
+  t = t.replace(/^bot(?=\d)/i, "").replace(/\s+/g, "");
+  return t;
+}
+
+export const jetonBot = () => nettoyerJeton(process.env.TELEGRAM_BOT_TOKEN);
+
+/** Diagnostic du jeton sans jamais l'afficher (forme attendue : 123456789:AAH…, environ 46 caractères). */
+export function diagnosticJeton(t = jetonBot()): string | null {
+  if (!t) return "TELEGRAM_BOT_TOKEN est vide dans Vercel.";
+  if (/^\d{6,12}:[A-Za-z0-9_-]{30,}$/.test(t)) return null;
+  const morceaux = [`il fait ${t.length} caractères`, t.includes(":") ? "il contient bien « : »" : "il ne contient pas de « : »", /^\d/.test(t) ? "il commence par des chiffres" : "il ne commence pas par des chiffres"];
+  return `Le jeton n'a pas la bonne forme (attendu : des chiffres, « : », puis environ 35 lettres — en tout ~46 caractères ; ${morceaux.join(", ")}). Recopie-le depuis @BotFather (/mybots → ton bot → API Token).`;
+}
+
+export const tgConfigure = () => !!jetonBot();
 
 /** Secret envoyé par Telegram dans l'en-tête X-Telegram-Bot-Api-Secret-Token (dérivé du jeton du bot). */
-export function secretWebhook(token = process.env.TELEGRAM_BOT_TOKEN ?? ""): string {
+export function secretWebhook(token = jetonBot()): string {
   return createHash("sha256").update(`leport-webhook:${token}`).digest("hex").slice(0, 48);
 }
 
-export function secretValide(entete: string | null, token = process.env.TELEGRAM_BOT_TOKEN): boolean {
+export function secretValide(entete: string | null, token = jetonBot()): boolean {
   if (!token || !entete) return false;
   const a = Buffer.from(secretWebhook(token));
   const b = Buffer.from(entete);
@@ -35,8 +57,10 @@ export function secretValide(entete: string | null, token = process.env.TELEGRAM
 }
 
 async function api<T>(methode: string, corps: Record<string, unknown>): Promise<T> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = jetonBot();
   if (!token) throw new Error("Telegram n'est pas configuré (TELEGRAM_BOT_TOKEN).");
+  const forme = diagnosticJeton(token);
+  if (forme) throw new Error(forme);
   const res = await fetch(`https://api.telegram.org/bot${token}/${methode}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -44,6 +68,8 @@ async function api<T>(methode: string, corps: Record<string, unknown>): Promise<
     signal: AbortSignal.timeout(10_000),
   });
   const j = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: T; description?: string };
+  if (res.status === 404 || res.status === 401)
+    throw new Error("Telegram ne reconnaît pas ce jeton (« Not Found ») : il a été mal copié ou régénéré. Recopie-le depuis @BotFather (/mybots → ton bot → API Token), remplace TELEGRAM_BOT_TOKEN dans Vercel, puis Redeploy.");
   if (!j.ok) throw new Error(`Telegram : ${j.description ?? `HTTP ${res.status}`}`);
   return j.result as T;
 }
