@@ -40,7 +40,7 @@
 <div class="cover">
   <h1>⚓ LE PORT</h1>
   <p class="sub">Quartier général IA de MJAGENCY · Compte rendu d'avancement</p>
-  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 4 terminées</b> · prochaine étape : Phase 5</p>
+  <p class="sub">Mis à jour le 10 novembre 2026 · <b>Phases 1 à 5 terminées</b> · prochaine étape : Phase 6 (Finance)</p>
   <div class="grid">
     <div class="box"><b>Site en ligne</b>https://qg-mjagency.vercel.app</div>
     <div class="box"><b>Code</b>GitHub · vatmart3/QG-MJAGENCY<br>branche <code>claude/practical-goodall-xeybyi</code></div>
@@ -56,8 +56,8 @@
   <tr><td>2</td><td>Supabase, connexion, temps réel</td><td><span class="tag ok">✓ Terminée</span></td><td>Données sauvegardées, accès réservé, tout est modifiable dans Réglages</td></tr>
   <tr><td>3</td><td>Le moteur d'agents (Claude)</td><td><span class="tag ok">✓ Terminée · testée en ligne</span></td><td>Les agents réfléchissent, se parlent et livrent pour de vrai</td></tr>
   <tr><td>4</td><td>Douane + Gmail + Agenda</td><td><span class="tag ok">✓ Terminée · Google à connecter</span></td><td>Lucie trie la boîte, Noé répond, Firmin relance, les mails partent après votre clic, Céleste gère l'agenda</td></tr>
-  <tr><td>5</td><td>Routines + récap quotidien</td><td><span class="tag next">→ Prochaine</span></td><td>Le moteur tourne seul, récap de 07:30 par mail</td></tr>
-  <tr><td>6</td><td>Finance</td><td><span class="tag no">À venir</span></td><td>Devis, factures, impayés</td></tr>
+  <tr><td>5</td><td>Pilote automatique + routines</td><td><span class="tag ok">✓ Terminée</span></td><td>Les agents travaillent LE PORT fermé ; récaps à la demande ; crédits réduits</td></tr>
+  <tr><td>6</td><td>Finance</td><td><span class="tag next">→ Prochaine</span></td><td>Devis, factures, impayés</td></tr>
   <tr><td>7</td><td>Prospection & commercial</td><td><span class="tag no">À venir</span></td><td>Recherche de prospects (Google Places), suivi des leads</td></tr>
   <tr><td>8</td><td>Autres pôles + finitions</td><td><span class="tag no">À venir</span></td><td>Shopify, derniers pôles, polish</td></tr>
 </table>
@@ -93,6 +93,14 @@
   <li><b>Mode simulé</b> sans clé API : le même circuit tourne, sans aucune dépense.</li>
 </ul>
 
+<h3>Phase 5 — Pilote automatique et économies</h3>
+<ul>
+  <li><b>Les agents travaillent LE PORT fermé</b> : Supabase réveille le moteur toutes les 2 min (jeton généré dans la base, rien à configurer).</li>
+  <li><b>Mode autonome</b> : réponses, relances et invitations partent seules après 5 min (bloquables) ; prix, devis, adresses jamais vues restent en Douane.</li>
+  <li><b>Routines</b> : tri des mails toutes les 15 min (8 h–20 h) et relances à 14 h tournent seuls ; récap, point et rapport hebdo <b>à la demande</b> (bouton dans Rapports ou ▶ dans Réglages → Routines).</li>
+  <li><b>Moins de crédits</b> : seul l'onglet « Principal » de Gmail est trié, notifications et newsletters rangées sans IA, Marius passe sur Sonnet, réflexion réduite. Un passage sans travail ne coûte rien.</li>
+</ul>
+
 <h3>Phase 4 — Douane, Gmail et Agenda</h3>
 <ul>
   <li><b>Connexion Google</b> depuis Réglages → Connexions & règles. L'accès est chiffré en base, révocable en un clic.</li>
@@ -126,9 +134,9 @@
   <tr><td>Adresse de Matheis dans l'allowlist</td><td><span class="tag todo">À vérifier</span></td><td>LE PORT → Réglages → Accès & budget</td></tr>
   <tr><td>Site URL = <code>https://qg-mjagency.vercel.app</code> et Redirect URL = <code>…/auth/callback</code></td><td><span class="tag todo">À vérifier</span></td><td>Supabase → Authentication → URL Configuration</td></tr>
   <tr><td>Désactiver « Allow new users to sign up »</td><td><span class="tag todo">Conseillé</span></td><td>Supabase → Authentication → Sign In / Providers</td></tr>
-  <tr><td>Client Google (Gmail + Agenda API, écran de consentement publié, URI de retour)</td><td><span class="tag todo">À faire</span></td><td>console.cloud.google.com avec mjagency.officiel@gmail.com</td></tr>
-  <tr><td><code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>ENCRYPTION_KEY</code> puis Redeploy</td><td><span class="tag todo">À faire</span></td><td>Vercel → Environment Variables</td></tr>
-  <tr><td>Connecter Google avec mjagency.officiel@gmail.com</td><td><span class="tag todo">À faire</span></td><td>LE PORT → Réglages → Connexions & règles</td></tr>
+  <tr><td>Client Google (Gmail + Agenda API, écran de consentement publié, URI de retour)</td><td><span class="tag ok">✓ Fait</span></td><td>console.cloud.google.com avec mjagency.officiel@gmail.com</td></tr>
+  <tr><td><code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>ENCRYPTION_KEY</code> puis Redeploy</td><td><span class="tag ok">✓ Fait</span></td><td>Vercel → Environment Variables</td></tr>
+  <tr><td>Connecter Google avec mjagency.officiel@gmail.com</td><td><span class="tag ok">✓ Fait</span></td><td>LE PORT → Réglages → Connexions & règles</td></tr>
   <tr><td>Supprimer les anciennes tables LE PORT du projet « MJAGENCY » (ancien compte)</td><td><span class="tag no">Optionnel</span></td><td>Uniquement sur votre accord</td></tr>
 </table>
 
@@ -158,6 +166,8 @@
   <tr><td>Parler à un agent précis</td><td><code>@Bastien relance les impayés</code>, ou clic sur l'agent → chat dans sa fiche</td></tr>
   <tr><td>Valider ce que les agents proposent</td><td>Onglet <b>Douane</b> : Envoyer / Modifier / Refuser / Toujours autoriser</td></tr>
   <tr><td>Voir ce qui s'est passé</td><td>Onglet <b>Journal</b></td></tr>
+  <tr><td>Avoir un récap de la journée</td><td>Onglet <b>Rapports</b> → « 📋 Demander un récap »</td></tr>
+  <tr><td>Couper / régler l'envoi automatique</td><td>Réglages → Connexions &amp; règles → 🤖 Mode autonome</td></tr>
   <tr><td>Lire / télécharger un compte rendu</td><td>Onglet <b>Rapports</b> → PDF, Tout (.zip) ou .md</td></tr>
   <tr><td>Voir qui travaille avec qui</td><td>Onglet <b>Flux</b> (en direct, ou une mission pour son schéma)</td></tr>
   <tr><td>Faire avancer le moteur à la main</td><td>Réglages → Affichage & tests → <b>⚙️ Faire avancer le moteur</b></td></tr>
@@ -178,11 +188,11 @@
   <tr><td>Les agents ne bougent plus</td><td>Le budget du jour est peut-être atteint (voir la jauge) : l'augmenter ou attendre le lendemain</td></tr>
 </table>
 
-<h2>6. Prochaine étape — Phase 5</h2>
+<h2>6. Prochaine étape — Phase 6 (Finance)</h2>
 <ul>
-  <li><b>Le moteur tourne seul</b>, même page fermée (pg_cron toutes les 2 min) : tri des mails, relances, envois validés.</li>
-  <li><b>Toutes les routines</b> du tableau Réglages → Routines s'exécutent à l'heure.</li>
-  <li><b>Récap quotidien de 07:30</b> envoyé par mail (HTML aux couleurs du Port) + archivé dans le Journal ; stand-up de 08:30 animé dans La Criée, point de 18 h, rapport hebdo.</li>
+  <li>Clients, devis et factures PDF conformes (numérotation, mentions légales, « TVA non applicable, art. 293 B du CGI »), avoirs, abonnements mensuels.</li>
+  <li>Import de l'existant (CSV), livre des recettes, exports comptables, suivi des paiements.</li>
+  <li>Impayés et relances graduées (Rémi), tableau Finances : CA, objectif, prévisionnel, cotisations estimées, calendrier fiscal.</li>
 </ul>
 
 </body>
