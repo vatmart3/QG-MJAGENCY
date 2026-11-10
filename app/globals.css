@@ -1,0 +1,275 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #2a2140;
+  --color-ink-soft: #5b5470;
+  --color-paper: #fbf7ef;
+  --color-paper-2: #f4eddf;
+  --color-paper-edge: #e6dac4;
+  --color-lavender: #b9b4f0;
+  --color-peach: #ffd9cf;
+  --color-phare: #d8433a;
+  --color-sea: #3f8fb8;
+  --color-moss: #2e9d62;
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-pixel: "Pixelify Sans", "Silkscreen", monospace;
+  --font-silk: "Silkscreen", "Pixelify Sans", monospace;
+  --font-hand: "Caveat", cursive;
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: #b7b3f2;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------------------------------------------------------------- ville : étiquettes & bulles */
+.world-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.overlay-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.pole-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 1px 0 rgba(42, 33, 64, 0.08),
+    0 6px 16px -6px rgba(42, 33, 64, 0.35);
+  border: 1px solid rgba(42, 33, 64, 0.08);
+  font-family: var(--font-pixel);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--color-ink);
+  will-change: transform;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+  cursor: pointer;
+}
+.pole-label:hover {
+  background: #fff;
+  box-shadow:
+    0 0 0 2px var(--pole),
+    0 8px 20px -6px rgba(42, 33, 64, 0.45);
+}
+.pole-label .pl-ico {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pole) 18%, white);
+  font-size: 13px;
+}
+.pole-label .pl-count {
+  font-family: var(--font-silk);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-soft);
+  padding-left: 6px;
+  border-left: 1px solid rgba(42, 33, 64, 0.12);
+}
+.pole-label.is-lieu {
+  background: rgba(255, 255, 255, 0.78);
+}
+.pole-label.is-alert .pl-count {
+  color: var(--color-phare);
+}
+.pole-label.is-alert .pl-ico {
+  animation: pl-pulse 1.1s ease-in-out infinite;
+}
+@keyframes pl-pulse {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-phare) 25%, transparent);
+  }
+}
+.overlay-layer[data-compact="1"] .pole-label .pl-name,
+.overlay-layer[data-compact="1"] .pole-label:not(.is-alert) .pl-count {
+  display: none;
+}
+.overlay-layer[data-medium="1"] .pole-label:not(.is-alert) .pl-count {
+  display: none;
+}
+.overlay-layer[data-medium="1"] .pole-label {
+  font-size: 12px;
+}
+.overlay-layer[data-compact="1"] .pole-label {
+  padding: 3px;
+  font-size: 11px;
+}
+.overlay-layer[data-compact="1"] .pole-label.is-alert {
+  padding-right: 8px;
+}
+
+.speech {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: 220px;
+  padding: 5px 9px 6px;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.25;
+  box-shadow:
+    0 0 0 1.5px var(--color-ink),
+    3px 3px 0 0 rgba(42, 33, 64, 0.18);
+  will-change: transform;
+  animation: bubble-in 0.22s var(--ease-out-quart) both;
+}
+.speech b {
+  display: block;
+  font-family: var(--font-silk);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pole);
+  margin-bottom: 1px;
+}
+.speech::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 8px;
+  height: 6px;
+  margin-left: -4px;
+  background: #fff;
+  clip-path: polygon(0 0, 100% 0, 25% 100%);
+  filter: drop-shadow(0 1.5px 0 var(--color-ink));
+}
+.speech.is-leaving {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+.overlay-layer[data-compact="1"] .speech {
+  font-size: 11px;
+  max-width: 180px;
+}
+
+.agent-tooltip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--color-ink);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.25;
+  box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.5);
+}
+.agent-tooltip small {
+  opacity: 0.7;
+  font-size: 11px;
+}
+.agent-tooltip em {
+  font-family: var(--font-hand);
+  font-style: normal;
+  font-size: 16px;
+  color: #ffd9a0;
+}
+
+/* ---------------------------------------------------------------- fiches papier */
+.paper {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.7), transparent 40%),
+    repeating-linear-gradient(0deg, transparent 0 27px, rgba(63, 143, 184, 0.07) 27px 28px),
+    var(--color-paper);
+  border: 1px solid var(--color-paper-edge);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 2px 0 var(--color-paper-edge),
+    0 24px 50px -18px rgba(42, 33, 64, 0.55),
+    0 6px 14px -6px rgba(42, 33, 64, 0.25);
+}
+.tape {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 92px;
+  height: 22px;
+  margin-left: -46px;
+  background: rgba(255, 214, 140, 0.65);
+  rotate: -2deg;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 10px 30px -12px rgba(42, 33, 64, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+.pixel {
+  image-rendering: pixelated;
+}
+
+.scroll-soft {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(42, 33, 64, 0.25) transparent;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speech,
+  .pole-label.is-alert .pl-ico {
+    animation: none;
+  }
+}

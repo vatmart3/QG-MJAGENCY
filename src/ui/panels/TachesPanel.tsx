@@ -1,0 +1,98 @@
+"use client";
+
+import { useState } from "react";
+import { AGENT_BY_ID, POLE_BY_ID } from "@/data/seed";
+import { formatParis } from "@/lib/paris";
+import { useWorld, type TaskItem } from "@/store/world";
+import { ui } from "@/store/ui";
+import { getGame } from "../gameRef";
+import { Portrait } from "../Portrait";
+import { DemoBadge, SectionTitle } from "../Sheet";
+import { RoutePanel } from "./RoutePanel";
+
+const TABS: { id: TaskItem["status"]; label: string }[] = [
+  { id: "running", label: "En cours" },
+  { id: "waiting_approval", label: "En Douane" },
+  { id: "done", label: "Terminées" },
+];
+
+export function TachesPanel() {
+  const tasks = useWorld((s) => s.tasks);
+  const missions = useWorld((s) => s.missions);
+  const [tab, setTab] = useState<TaskItem["status"]>("running");
+  const list = tasks.filter((t) => t.status === tab);
+
+  return (
+    <RoutePanel title="Tâches" kicker="Ce que font les agents" icon="🗂️" accent="#3a7bd5">
+      {missions.length > 0 && (
+        <>
+          <SectionTitle>Missions des fondateurs</SectionTitle>
+          <ul className="space-y-2">
+            {missions.slice(0, 5).map((m) => (
+              <li key={m.id} className="rounded-2xl border border-paper-edge bg-white/60 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-semibold">{m.text}</span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${m.status === "terminee" ? "bg-moss/15 text-moss" : "bg-ink/8"}`}>
+                    {m.status === "planification" ? "Planification" : m.status === "en_cours" ? "En cours" : "Terminée"}
+                  </span>
+                </div>
+                {m.plan.length > 0 && (
+                  <ul className="mt-2 space-y-0.5 text-[13px] text-ink-soft">
+                    {m.plan.map((p) => (
+                      <li key={p.agentId}>
+                        ▸ <b className="text-ink">{AGENT_BY_ID[p.agentId]?.nom}</b> — {p.title}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {m.synthese && <p className="mt-2 font-hand text-lg leading-tight">{m.synthese}</p>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <div className="mt-4 flex gap-1 rounded-full bg-ink/5 p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`flex-1 rounded-full px-3 py-1.5 text-[13px] font-medium transition ${tab === t.id ? "bg-white shadow-sm" : "text-ink-soft hover:text-ink"}`}
+          >
+            {t.label} <span className="font-silk text-[9px]">{tasks.filter((x) => x.status === t.id).length}</span>
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex justify-end">
+        <DemoBadge />
+      </div>
+      <ul className="mt-1 divide-y divide-paper-edge">
+        {list.slice(0, 60).map((t) => {
+          const a = AGENT_BY_ID[t.agentId];
+          return (
+            <li key={t.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  getGame()?.flyToAgent(t.agentId);
+                  ui.selectAgent(t.agentId);
+                }}
+                className="flex w-full items-center gap-3 py-2 text-left"
+              >
+                <Portrait agentId={t.agentId} size={1.25} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{t.title}</span>
+                  <span className="block text-[11px] text-ink-soft">
+                    {a?.nom} · {POLE_BY_ID[a?.pole ?? ""]?.court} · {formatParis(t.updatedAt, "HH:mm")}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+        {!list.length && <li className="py-6 text-center text-sm text-ink-soft">Rien ici pour le moment.</li>}
+      </ul>
+    </RoutePanel>
+  );
+}
