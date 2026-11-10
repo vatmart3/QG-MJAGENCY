@@ -86,6 +86,8 @@ export interface Approval {
   demo?: boolean;
   /** destinataires jamais vus dans la boîte : validation obligatoire */
   jamaisVue?: string[];
+  /** pourquoi le mode autonome n'a pas envoyé seul */
+  raison?: string;
 }
 
 export type ExecutionStatut = "a_faire" | "en_cours" | "fait" | "echec" | "simule" | "annule";
@@ -103,6 +105,8 @@ export interface DouaneItem {
   erreur?: string;
   decidedAt: number;
   par?: string;
+  /** mode autonome : heure d'envoi prévue (bloquable d'ici là) */
+  envoyerApres?: number;
 }
 
 export interface JournalEntry {

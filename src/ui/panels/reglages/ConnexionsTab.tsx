@@ -35,6 +35,7 @@ export function ConnexionsTab() {
     return <p className="text-sm text-ink-soft">Mode démo : branche Supabase pour connecter Google. Les agents utilisent une boîte mail et un agenda de démonstration.</p>;
   return (
     <div className="space-y-4">
+      <AutonomeCard />
       <GoogleCard />
       <RulesCard />
       <CourrierCard />
@@ -292,6 +293,113 @@ function KeyMaker() {
         </div>
       )}
       {key && <p className="mt-1 text-[11px] text-ink-soft">Créée sur ton appareil, envoyée nulle part. Colle-la dans Vercel (ENCRYPTION_KEY) puis redéploie. Garde-la : si elle change, il faudra reconnecter Google.</p>}
+    </div>
+  );
+}
+
+interface Autonomie {
+  actif: boolean;
+  types: string[];
+  delai_minutes: number;
+  plafond_jour: number;
+}
+
+const TYPES_AUTO: { id: string; label: string }[] = [
+  { id: "email", label: "Réponses aux mails (Noé)" },
+  { id: "relance", label: "Relances (Firmin)" },
+  { id: "rdv", label: "Invitations à un RDV (Céleste)" },
+];
+
+/** Mode autonome : les agents envoient sans attendre de clic, avec un délai pour bloquer et des garde-fous. */
+function AutonomeCard() {
+  const [a, setA] = useState<Autonomie | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
+  useEffect(() => {
+    const sb = browserSupabase();
+    if (!sb) return;
+    void sb
+      .from("settings")
+      .select("autonomie")
+      .eq("id", 1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) setMsg({ ok: false, t: "Mode autonome indisponible : applique la migration 0800." });
+        else setA({ actif: false, types: ["email", "relance", "rdv"], delai_minutes: 5, plafond_jour: 30, ...((data?.autonomie as Partial<Autonomie>) ?? {}) });
+      });
+  }, []);
+  const save = async (next: Autonomie) => {
+    setA(next);
+    const sb = browserSupabase();
+    if (!sb) return;
+    const { error } = await sb.from("settings").update({ autonomie: next }).eq("id", 1);
+    setMsg(error ? { ok: false, t: error.message } : { ok: true, t: "Enregistré ✓" });
+  };
+  if (!a) return msg ? <p className="text-[12px] text-phare">{msg.t}</p> : null;
+  return (
+    <div className={`rounded-2xl border p-3 ${a.actif ? "border-moss/40 bg-moss/5" : "border-paper-edge bg-white/60"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-bold">🤖 Mode autonome</h4>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={a.actif}
+          onClick={() => void save({ ...a, actif: !a.actif })}
+          className={`relative h-7 w-12 shrink-0 rounded-full transition ${a.actif ? "bg-moss" : "bg-ink/20"}`}
+          aria-label="Activer le mode autonome"
+        >
+          <span className={`absolute top-1 size-5 rounded-full bg-white shadow transition-all ${a.actif ? "left-6" : "left-1"}`} />
+        </button>
+      </div>
+      <p className="mt-1 text-[12.5px] text-ink-soft">
+        {a.actif
+          ? `Activé : les agents envoient seuls. Chaque envoi part ${a.delai_minutes ? `${a.delai_minutes} min après` : "dès"} sa préparation — tu peux le bloquer d'ici là dans la Douane (« Décidé récemment »).`
+          : "Désactivé : tout ce qui sort attend ton clic dans la Douane."}
+      </p>
+      <div className={`mt-3 space-y-2 ${a.actif ? "" : "pointer-events-none opacity-50"}`}>
+        <div className="flex flex-wrap gap-1.5">
+          {TYPES_AUTO.map((t) => {
+            const on = a.types.includes(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => void save({ ...a, types: on ? a.types.filter((x) => x !== t.id) : [...a.types, t.id] })}
+                className={`rounded-full border px-2.5 py-1 text-[12px] ${on ? "border-moss bg-moss/15 text-moss" : "border-ink/15 text-ink-soft"}`}
+              >
+                {on ? "✓ " : ""}
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-[12.5px]">
+          <label className="flex items-center gap-1.5">
+            Délai pour bloquer
+            <select className="rounded-full border border-ink/15 bg-white px-2 py-1" value={a.delai_minutes} onChange={(e) => void save({ ...a, delai_minutes: Number(e.target.value) })}>
+              {[0, 2, 5, 10, 30, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m ? `${m} min` : "aucun"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5">
+            Maximum par jour
+            <select className="rounded-full border border-ink/15 bg-white px-2 py-1" value={a.plafond_jour} onChange={(e) => void save({ ...a, plafond_jour: Number(e.target.value) })}>
+              {[10, 20, 30, 50, 100].map((n) => (
+                <option key={n} value={n}>
+                  {n} envois
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+      <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-[11.5px] text-ink-soft">
+        Restent toujours en Douane : prix, devis, contrats, paiements, factures, mise en demeure ; adresses avec qui l&apos;agence n&apos;a jamais échangé (prospection à froid) ;
+        réponses à un mail classé spam ; tout ce qu&apos;un agent marque « sensible » ; au-delà du maximum par jour.
+      </p>
+      {msg && <p className={`mt-2 text-[12px] ${msg.ok ? "text-moss" : "text-phare"}`}>{msg.t}</p>}
     </div>
   );
 }

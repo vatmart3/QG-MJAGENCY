@@ -136,6 +136,10 @@ la question aux fondateurs via la Douane, le plafond de budget, et deux ticks si
 - **La Douane envoie vraiment** : « Envoyer » / « Modifier » (texte et objet) → le moteur envoie via Gmail au passage
   suivant (lancé aussitôt), avec réservation atomique (jamais deux envois). Suivi dans « Décidé récemment » : envoyé,
   simulé, échec. « Refuser » : le motif est gardé en note par l'agent. Signature MJAGENCY automatique (Réglages).
+- **Mode autonome** (Réglages → *Connexions & règles*) : les réponses aux mails, relances et invitations partent seules,
+  après un délai réglable (5 min par défaut) pendant lequel un fondateur peut **bloquer** l'envoi depuis la Douane, avec un
+  maximum d'envois automatiques par jour. Restent toujours en Douane : prix/devis/contrats/paiements/factures (détectés dans
+  le texte ou marqués `sensible` par l'agent), adresses jamais vues, réponses à un mail classé spam. Migration `…0800`.
 - **Règles d'autonomie** (« Toujours autoriser ce type ») : listées et révocables dans Réglages ; un envoi
   automatique n'a lieu que vers une adresse déjà connue de la boîte, jamais vers une adresse jamais vue.
 - Migration `…0700_le_port_google.sql` : `integrations`, `emails`, `engine_kv`, suivi d'exécution des validations.

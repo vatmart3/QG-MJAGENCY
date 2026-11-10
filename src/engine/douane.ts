@@ -6,10 +6,13 @@ import type { EApproval, EngineDb } from "./db";
  * invitations (Google Agenda). Un envoi refusé est annulé et l'agent garde le motif en note.
  * Réservation atomique (a_faire → en_cours) : deux ticks n'envoient jamais deux fois le même mail.
  */
-export async function executeApprovals(db: EngineDb, services: Services): Promise<{ faits: number; echecs: number }> {
+export async function executeApprovals(db: EngineDb, services: Services, now = new Date()): Promise<{ faits: number; echecs: number }> {
   let faits = 0;
   let echecs = 0;
   for (const a of await db.approvalsToExecute()) {
+    // mode autonome : on laisse le délai aux fondateurs pour bloquer l'envoi
+    const apres = typeof a.payload.envoyer_apres === "string" ? new Date(a.payload.envoyer_apres) : null;
+    if (a.statut !== "refuse" && apres && apres > now) continue;
     if (!(await db.claimApprovalExecution(a.id))) continue;
     if (a.statut === "refuse") {
       await db.finishApprovalExecution(a.id, "annule", { motif: a.motif ?? null });
@@ -19,7 +22,7 @@ export async function executeApprovals(db: EngineDb, services: Services): Promis
     try {
       const r = await executeOne(a, services);
       await db.finishApprovalExecution(a.id, r.demo ? "simule" : "fait", r.execution);
-      await db.insertJournal({ type: "action", titre: r.titre.slice(0, 300), contenu: r.contenu, agent_id: a.agent_id });
+      await db.insertJournal({ type: "action", titre: `${r.titre}${a.decide_par === "mode autonome" ? " · mode autonome" : ""}`.slice(0, 300), contenu: r.contenu, agent_id: a.agent_id });
       const repondre = typeof a.payload.repondre_a === "string" ? a.payload.repondre_a : null;
       if (repondre) await db.updateEmail(repondre, { statut: "traite" }).catch(() => undefined);
       faits++;

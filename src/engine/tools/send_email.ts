@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { decisionAutonome, heureParis } from "./autonomie";
 import { defineTool } from "./types";
 import { isInternal, parseRecipients, withSignature } from "./mail_common";
 
@@ -9,13 +10,14 @@ import { isInternal, parseRecipients, withSignature } from "./mail_common";
 export const sendEmail = defineTool({
   name: "send_email",
   description:
-    "Prépare l'envoi d'un mail depuis la boîte de l'agence. Il part en Douane pour validation par un fondateur (sauf règle d'autonomie). La signature MJAGENCY est ajoutée automatiquement : ne signe pas de ton nom. Pour répondre, indique repondre_a (id du mail reçu) : le fil est conservé.",
+    "Envoie un mail depuis la boîte de l'agence. Selon les réglages des fondateurs, il part tout seul (mode autonome, après quelques minutes) ou attend leur validation en Douane. Ce qui touche aux prix, devis, contrats, paiements ou engagements passe toujours en Douane : mets sensible=true dans ce cas. La signature MJAGENCY est ajoutée automatiquement : ne signe pas de ton nom. Pour répondre, indique repondre_a (id du mail reçu) : le fil est conservé.",
   schema: z.object({
     a: z.string().min(3).max(500).describe("destinataire(s), séparés par des virgules"),
     objet: z.string().min(1).max(200),
     corps: z.string().min(1).max(20_000).describe("texte du mail, sans signature"),
     repondre_a: z.string().max(200).optional(),
     type: z.enum(["email", "relance"]).optional().describe("relance pour un suivi de mail sans réponse"),
+    sensible: z.boolean().optional().describe("true si le mail engage l'agence (prix, délai promis, contrat, juridique) : validation obligatoire"),
   }),
   async run(ctx, input) {
     const dest = parseRecipients(input.a);
@@ -54,19 +56,42 @@ export const sendEmail = defineTool({
       return { content: `Mail envoyé directement (règle d'autonomie active), id ${r.id}${mb.kind === "demo" ? " — DÉMO, rien n'est parti" : ""}.`, etape: "Mail envoyé (règle)" };
     }
 
+    // mode autonome : envoi différé de quelques minutes (les fondateurs peuvent le bloquer), sauf cas sensibles
+    const origine = input.repondre_a ? await ctx.db.email(input.repondre_a) : null;
+    const d = await decisionAutonome(ctx, type, { texte: `${objet}\n${input.corps}`, sensible: input.sensible, jamaisVue, origineSpam: origine?.categorie === "spam" });
+    const titre = `${type === "relance" ? "Relance" : "Mail"} : ${objet}`.slice(0, 200);
+    const payload = { kind: "email", ...mail, repondre_a: input.repondre_a ?? null, demo: mb.kind === "demo", jamais_vue: jamaisVue };
+    if (d.auto) {
+      await ctx.db.insertApproval({
+        agent_id: ctx.agent.id,
+        task_id: ctx.task.id,
+        type_action: type,
+        titre,
+        destinataire: mail.a,
+        objet,
+        apercu: corps,
+        payload: { ...payload, envoyer_apres: d.envoyerApres.toISOString() },
+        statut: "approuve",
+        decide_par: "mode autonome",
+        execution_statut: "a_faire",
+      });
+      await ctx.db.insertJournal({ type: "action", titre: `⏱️ ${ctx.agent.nom} envoie à ${heureParis(d.envoyerApres)} : ${objet} → ${mail.a}`.slice(0, 300), contenu: corps.slice(0, 1500), agent_id: ctx.agent.id, pole_id: ctx.agent.pole_id });
+      return { content: `Mail programmé : il part automatiquement à ${heureParis(d.envoyerApres)} (mode autonome).${mb.kind === "demo" ? " DÉMO : rien ne partira vraiment." : ""}`, etape: "Programme un envoi" };
+    }
+
     await ctx.db.insertApproval({
       agent_id: ctx.agent.id,
       task_id: ctx.task.id,
       type_action: type,
-      titre: `${type === "relance" ? "Relance" : "Mail"} : ${objet}`.slice(0, 200),
+      titre,
       destinataire: mail.a,
       objet,
       apercu: corps,
-      payload: { kind: "email", ...mail, repondre_a: input.repondre_a ?? null, demo: mb.kind === "demo", jamais_vue: jamaisVue },
+      payload: { ...payload, raison_douane: d.raison },
       execution_statut: "a_faire",
     });
     await ctx.db.updateAgent(ctx.agent.id, { etat: "waiting_approval", interlocuteur: null });
-    const note = jamaisVue.length ? ` Adresse jamais vue (${jamaisVue.join(", ")}) : validation obligatoire.` : regle ? "" : " Il partira dès qu'un fondateur aura cliqué « Envoyer ».";
+    const note = d.raison ? ` Validation obligatoire : ${d.raison}.` : regle ? "" : " Il partira dès qu'un fondateur aura cliqué « Envoyer ».";
     return { content: `Mail déposé en Douane.${note}`, etape: "Dépose un mail en Douane" };
   },
 });

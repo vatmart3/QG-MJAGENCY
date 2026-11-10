@@ -337,6 +337,15 @@ export async function loadMissionFlux(missionId: string): Promise<MissionFluxDat
   return { tasks: rows.map(taskFromRow), events: events.sort((a, b) => a.at - b.at) };
 }
 
+// ------------------------------------------------------------------ mode autonome
+/** Bloque un envoi programmé (mode autonome) avant son départ. */
+export async function blockAutoSend(id: string, par: string): Promise<void> {
+  const sb = liveSb;
+  if (!sb) return;
+  const { error } = await sb.from("approvals").update({ statut: "refuse", motif: `Bloqué par ${par} avant l'envoi`, decide_par: par, decide_le: new Date().toISOString() }).eq("id", id).eq("execution_statut", "a_faire");
+  if (error) throw new Error(traduireErreur(error.message));
+}
+
 // ------------------------------------------------------------------ moteur
 let inFlight = false;
 

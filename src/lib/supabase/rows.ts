@@ -239,6 +239,7 @@ export const approvalFromRow = (r: ApprovalRow): Approval => ({
   createdAt: ms(r.cree_le),
   delivered: true,
   demo: r.payload?.demo === true,
+  raison: typeof r.payload?.raison_douane === "string" ? r.payload.raison_douane : undefined,
   jamaisVue: Array.isArray(r.payload?.jamais_vue) && (r.payload.jamais_vue as string[]).length ? (r.payload.jamais_vue as string[]) : undefined,
 });
 
@@ -257,6 +258,7 @@ export const douaneFromRow = (r: ApprovalRow): DouaneItem | null =>
         erreur: r.execution?.erreur,
         decidedAt: ms(r.decide_le ?? r.cree_le),
         par: r.decide_par ?? undefined,
+        envoyerApres: typeof r.payload?.envoyer_apres === "string" ? ms(r.payload.envoyer_apres) : undefined,
       };
 
 export const journalFromRow = (r: JournalRow): JournalEntry => ({

@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { EAgent, EApproval, EEmail, EMission, ERun, ETask, EngineDb } from "./db";
+import { AUTONOMIE_DEFAUT, lireAutonomie, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
 
 /**
  * Implémentation Postgres directe du moteur (tests d'intégration en local,
@@ -52,10 +52,10 @@ export function pgEngineDb(pool: Pool): EngineDb {
 
   return {
     async settings() {
-      const [s] = await q<{ budget_jour: string; budget_mois: string; bavardage_actif: boolean; signataire: string; allowlist_emails: string[]; contraintes_agenda: { jeremy?: string; matheis?: string } }>("select * from public.settings where id = 1");
+      const [s] = await q<{ budget_jour: string; budget_mois: string; bavardage_actif: boolean; signataire: string; allowlist_emails: string[]; contraintes_agenda: { jeremy?: string; matheis?: string }; autonomie: unknown }>("select * from public.settings where id = 1");
       return s
-        ? { budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), bavardage_actif: s.bavardage_actif, signataire: s.signataire, allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {} }
-        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {} };
+        ? { budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), bavardage_actif: s.bavardage_actif, signataire: s.signataire, allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {}, autonomie: lireAutonomie(s.autonomie) }
+        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {}, autonomie: AUTONOMIE_DEFAUT };
     },
     poles: () => q("select id, nom from public.poles"),
     memory: () => q("select cle, contenu from public.company_memory order by cle"),
@@ -143,6 +143,10 @@ export function pgEngineDb(pool: Pool): EngineDb {
       return (await q("update public.approvals set execution_statut = 'en_cours' where id = $1 and execution_statut = 'a_faire' returning id", [id])).length > 0;
     },
     finishApprovalExecution: (id, statut, execution) => update("approvals", "id = $1", [id], { execution_statut: statut, execution, execute_le: new Date().toISOString() }),
+    async countAutoSendsSince(iso) {
+      const [r] = await q<{ n: string }>("select count(*) as n from public.approvals where decide_par in ('mode autonome', 'règle d''autonomie') and cree_le >= $1", [iso]);
+      return Number(r?.n ?? 0);
+    },
     async hasAutonomyRule(agentId, type) {
       return (await q("select 1 from public.autonomy_rules where agent_id = $1 and type_action = $2 and actif limit 1", [agentId, type])).length > 0;
     },

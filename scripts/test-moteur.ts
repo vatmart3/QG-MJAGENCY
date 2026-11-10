@@ -8,6 +8,7 @@ import { pgEngineDb } from "@/engine/db-pg";
 import { MockLLM } from "@/engine/llm";
 import { tick } from "@/engine/tick";
 import { demoServices } from "@/integrations/demo";
+import { SENSIBLE_RE } from "@/engine/tools/autonomie";
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
 const pool = new Pool({ connectionString: url });
@@ -178,6 +179,36 @@ async function scenarioCourrier() {
   check(rapportsFirmin.length === 1 && !!lireRapport(rapportsFirmin[0]!.resultat?.rapport), "Firmin rend son compte rendu");
 }
 
+async function scenarioAutonome() {
+  console.log("\n— Mode autonome : les agents envoient seuls, avec délai et garde-fous");
+  await reset();
+  await q("delete from public.emails; delete from public.engine_kv; delete from public.agent_notes; delete from public.autonomy_rules;");
+  await q("update public.routines set actif = true where id = 'rt_tri_mails'");
+  await q(`update public.settings set autonomie = '{"actif": true, "types": ["email", "relance", "rdv"], "delai_minutes": 5, "plafond_jour": 30}'::jsonb`);
+  try {
+    const run = async (iso: string, n = 6) => {
+      for (let i = 0; i < n; i++) await tick(db, llm, { now: () => new Date(iso), services: demoServices });
+    };
+    await run("2026-11-10T09:00:00Z");
+    const aps = await q<{ id: string; statut: string; decide_par: string; execution_statut: string; payload: { envoyer_apres?: string } }>("select * from public.approvals where type_action = 'email' order by cree_le");
+    check(aps.length === 2 && aps.every((a) => a.statut === "approuve" && a.decide_par === "mode autonome" && !!a.payload.envoyer_apres), "les réponses de Noé partent seules (programmées, sans clic)");
+    check(aps.every((a) => a.execution_statut === "a_faire"), "rien ne part avant le délai de 5 min");
+    // un fondateur bloque la seconde pendant le délai
+    await q("update public.approvals set statut = 'refuse', motif = 'Bloqué' where id = $1", [aps[1]!.id]);
+    await run("2026-11-10T09:02:00Z", 1);
+    const [early] = await q<{ execution_statut: string }>("select execution_statut from public.approvals where id = $1", [aps[0]!.id]);
+    check(early?.execution_statut === "a_faire", "à 2 min, l'envoi attend encore");
+    await run("2026-11-10T09:07:00Z", 1);
+    const after = await q<{ execution_statut: string }>("select execution_statut from public.approvals where type_action = 'email' order by cree_le");
+    check(after[0]?.execution_statut === "simule" && after[1]?.execution_statut === "annule", `après le délai : envoyé, et l'envoi bloqué est annulé (${after.map((a) => a.execution_statut).join(" / ")})`);
+    const j = await q<{ titre: string }>("select titre from public.journal where titre like '⏱️%' or titre like '%mode autonome%'");
+    check(j.length >= 3, "le Journal annonce l'envoi programmé puis l'envoi");
+    check(SENSIBLE_RE.test("Le site vitrine est à 890 € HT") && SENSIBLE_RE.test("je vous envoie le devis") && !SENSIBLE_RE.test("Merci, on vous rappelle jeudi."), "prix / devis / engagement → toujours en Douane");
+  } finally {
+    await q(`update public.settings set autonomie = jsonb_set(autonomie, '{actif}', 'false')`);
+  }
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -185,6 +216,7 @@ async function scenarioCourrier() {
     await scenarioBudget();
     await scenarioConcurrence();
     await scenarioCourrier();
+    await scenarioAutonome();
   } catch (e) {
     console.error(e);
     failures++;

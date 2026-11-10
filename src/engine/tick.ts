@@ -118,7 +118,7 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
 
   // 4 bis. envois validés en Douane (mails, invitations), puis courrier à trier / relancer
   await safe("douane", async () => {
-    const r = await executeApprovals(db, services);
+    const r = await executeApprovals(db, services, now);
     report.envois = r.faits;
   });
   await safe("courrier", async () => {

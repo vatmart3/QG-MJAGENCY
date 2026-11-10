@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { decisionAutonome, heureParis } from "./autonomie";
 import { defineTool } from "./types";
 import { parisLabel, parisLocal, parseParis } from "./agenda_common";
 import { isInternal, parseRecipients } from "./mail_common";
@@ -31,6 +32,10 @@ export const createEvent = defineTool({
       await ctx.db.insertJournal({ type: "action", titre: `📅 RDV ajouté à l'agenda : ${input.titre}`.slice(0, 300), contenu: `${quand}${input.lieu ? ` · ${input.lieu}` : ""}`, agent_id: ctx.agent.id, pole_id: ctx.agent.pole_id });
       return { content: `Rendez-vous ajouté (${quand})${cal.kind === "demo" ? " — agenda de DÉMONSTRATION" : ""}, id ${r.id}.`, etape: "Ajoute un RDV" };
     }
+    const mb = await ctx.services.mailbox();
+    const vues = await Promise.all(externes.map((x) => mb.hasExchangedWith(x).catch(() => false)));
+    const d = await decisionAutonome(ctx, "rdv", { texte: `${input.titre}\n${input.description ?? ""}`, jamaisVue: externes.filter((_, i) => !vues[i]) });
+    const apercu = [`📅 ${quand}`, input.lieu ? `📍 ${input.lieu}` : "", `Invités : ${invites.join(", ")}`, input.description ? `\n${input.description}` : ""].filter(Boolean).join("\n");
     await ctx.db.insertApproval({
       agent_id: ctx.agent.id,
       task_id: ctx.task.id,
@@ -38,10 +43,15 @@ export const createEvent = defineTool({
       titre: `Invitation : ${input.titre}`.slice(0, 200),
       destinataire: externes.join(", "),
       objet: input.titre,
-      apercu: [`📅 ${quand}`, input.lieu ? `📍 ${input.lieu}` : "", `Invités : ${invites.join(", ")}`, input.description ? `\n${input.description}` : ""].filter(Boolean).join("\n"),
-      payload: { kind: "event", ...event, demo: cal.kind === "demo" },
+      apercu,
+      payload: { kind: "event", ...event, demo: cal.kind === "demo", ...(d.auto ? { envoyer_apres: d.envoyerApres.toISOString() } : { raison_douane: d.raison }) },
       execution_statut: "a_faire",
+      ...(d.auto ? { statut: "approuve" as const, decide_par: "mode autonome" } : {}),
     });
+    if (d.auto) {
+      await ctx.db.insertJournal({ type: "action", titre: `⏱️ ${ctx.agent.nom} envoie l'invitation à ${heureParis(d.envoyerApres)} : ${input.titre}`.slice(0, 300), contenu: apercu, agent_id: ctx.agent.id, pole_id: ctx.agent.pole_id });
+      return { content: `Invitation programmée : elle part automatiquement à ${heureParis(d.envoyerApres)} (mode autonome).`, etape: "Programme une invitation" };
+    }
     await ctx.db.updateAgent(ctx.agent.id, { etat: "waiting_approval", interlocuteur: null });
     return { content: `Invitation déposée en Douane (invités extérieurs : ${externes.join(", ")}). Elle partira dès qu'un fondateur aura validé.`, etape: "Dépose une invitation en Douane" };
   },

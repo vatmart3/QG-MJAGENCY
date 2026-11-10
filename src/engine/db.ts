@@ -124,7 +124,19 @@ export interface ESettings {
   signataire: string;
   allowlist_emails: string[];
   contraintes_agenda: { jeremy?: string; matheis?: string };
+  autonomie: Autonomie;
 }
+
+/** Mode autonome : les agents envoient sans attendre la Douane (envoi différé et annulable). */
+export interface Autonomie {
+  actif: boolean;
+  types: string[];
+  delai_minutes: number;
+  plafond_jour: number;
+}
+
+export const AUTONOMIE_DEFAUT: Autonomie = { actif: false, types: ["email", "relance", "rdv"], delai_minutes: 5, plafond_jour: 30 };
+export const lireAutonomie = (v: unknown): Autonomie => ({ ...AUTONOMIE_DEFAUT, ...((v && typeof v === "object" ? v : {}) as Partial<Autonomie>) });
 
 export interface EngineDb {
   settings(): Promise<ESettings>;
@@ -166,6 +178,8 @@ export interface EngineDb {
   finishApprovalExecution(id: string, statut: ExecutionStatut, execution: Record<string, unknown>): Promise<void>;
   /** règle « Toujours autoriser » active pour cet agent et ce type d'action */
   hasAutonomyRule(agentId: string, type: string): Promise<boolean>;
+  /** envois partis sans clic d'un fondateur (règle ou mode autonome) depuis… */
+  countAutoSendsSince(iso: string): Promise<number>;
 
   kvGet<T = unknown>(cle: string): Promise<T | null>;
   kvSet(cle: string, valeur: unknown): Promise<void>;
@@ -215,10 +229,10 @@ const parseTask = (t: ETask): ETask => ({ ...t, etapes: Array.isArray(t.etapes) 
 export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
   return {
     async settings() {
-      const s = ok(await sb.from("settings").select("budget_jour, budget_mois, bavardage_actif, signataire, allowlist_emails, contraintes_agenda").eq("id", 1).maybeSingle());
+      const s = ok(await sb.from("settings").select("*").eq("id", 1).maybeSingle());
       return s
-        ? { ...s, budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {} }
-        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {} };
+        ? { ...s, budget_jour: Number(s.budget_jour), budget_mois: Number(s.budget_mois), allowlist_emails: s.allowlist_emails ?? [], contraintes_agenda: s.contraintes_agenda ?? {}, autonomie: lireAutonomie(s.autonomie) }
+        : { budget_jour: 3, budget_mois: 60, bavardage_actif: true, signataire: "L'équipe MJAGENCY", allowlist_emails: [], contraintes_agenda: {}, autonomie: AUTONOMIE_DEFAUT };
     },
     async poles() {
       return rows(await sb.from("poles").select("id, nom"));
@@ -315,6 +329,11 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     },
     async finishApprovalExecution(id, statut, execution) {
       ok(await sb.from("approvals").update({ execution_statut: statut, execution, execute_le: new Date().toISOString() }).eq("id", id));
+    },
+    async countAutoSendsSince(iso) {
+      const r = await sb.from("approvals").select("id", { count: "exact", head: true }).in("decide_par", ["mode autonome", "règle d'autonomie"]).gte("cree_le", iso);
+      if (r.error) throw new Error(r.error.message);
+      return r.count ?? 0;
     },
     async hasAutonomyRule(agentId, type) {
       const r = rows(await sb.from("autonomy_rules").select("id").eq("agent_id", agentId).eq("type_action", type).eq("actif", true).limit(1));

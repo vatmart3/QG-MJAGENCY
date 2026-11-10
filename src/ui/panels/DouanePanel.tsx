@@ -7,7 +7,9 @@ import { formatParis } from "@/lib/paris";
 import { getDirector } from "@/sim/director";
 import Link from "next/link";
 import { useWorld, type Approval, type DouaneItem } from "@/store/world";
+import { useNow } from "../hooks";
 import { Portrait } from "../Portrait";
+import { useUI } from "@/store/ui";
 import { DemoBadge } from "../Sheet";
 import { RoutePanel } from "./RoutePanel";
 
@@ -85,10 +87,11 @@ function ApprovalCard({ ap }: { ap: Approval }) {
         </div>
       </header>
 
-      {(ap.demo || ap.jamaisVue) && (
+      {(ap.demo || ap.jamaisVue || ap.raison) && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {ap.demo && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">DÉMO · Google non connecté, rien ne partira vraiment</span>}
           {ap.jamaisVue && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">⚠️ Adresse jamais vue : {ap.jamaisVue.join(", ")}</span>}
+          {ap.raison && !ap.jamaisVue && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">À valider : {ap.raison}</span>}
         </div>
       )}
       {ap.subject &&
@@ -181,13 +184,23 @@ const EXEC: Record<NonNullable<DouaneItem["execution"]>, { label: string; cls: s
 /** Ce qui a été décidé récemment, et si c'est bien parti. */
 function Historique() {
   const items = useWorld((s) => s.douaneHistorique);
+  const me = useUI((s) => s.userEmail);
+  const now = useNow(15_000);
+  const [bloques, setBloques] = useState<string[]>([]);
   if (!items.length) return null;
   return (
     <section className="mt-6">
       <h4 className="mb-1.5 font-silk text-[10px] tracking-wider text-ink-soft uppercase">Décidé récemment</h4>
       <ul className="divide-y divide-paper-edge rounded-2xl border border-paper-edge bg-white/60">
         {items.slice(0, 20).map((d) => {
-          const st = d.statut === "refuse" ? { label: "Refusé", cls: "bg-ink/8 text-ink-soft" } : d.execution ? EXEC[d.execution] : { label: "✓ Validé", cls: "bg-moss/15 text-moss" };
+          const programme = d.statut !== "refuse" && d.execution === "a_faire" && !!d.envoyerApres && d.envoyerApres > now && !bloques.includes(d.id);
+          const st = programme
+            ? { label: `⏱️ Part à ${formatParis(d.envoyerApres!, "HH:mm")}`, cls: "bg-sky-100 text-sky-700" }
+            : d.statut === "refuse"
+              ? { label: d.par && d.par !== "mode autonome" && d.execution === "annule" ? "Bloqué / refusé" : "Refusé", cls: "bg-ink/8 text-ink-soft" }
+              : d.execution
+                ? EXEC[d.execution]
+                : { label: "✓ Validé", cls: "bg-moss/15 text-moss" };
           return (
             <li key={d.id} className="flex items-center gap-2.5 px-3 py-2">
               <Portrait agentId={d.agentId} size={1} />
@@ -196,11 +209,23 @@ function Historique() {
                 <span className="block truncate text-[11px] text-ink-soft">
                   {d.to ? `→ ${d.to} · ` : ""}
                   {formatParis(d.decidedAt, "d MMM HH:mm")}
-                  {d.par === "règle d'autonomie" ? " · règle d'autonomie" : ""}
+                  {d.par === "règle d'autonomie" ? " · règle d'autonomie" : d.par === "mode autonome" ? " · mode autonome" : ""}
                 </span>
                 {d.erreur && <span className="block text-[11px] text-phare">{d.erreur}</span>}
               </span>
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+              {programme && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBloques((b) => [...b, d.id]);
+                    void import("@/sync/live").then(({ blockAutoSend }) => blockAutoSend(d.id, me ?? "un fondateur")).catch(() => setBloques((b) => b.filter((x) => x !== d.id)));
+                  }}
+                  className="shrink-0 rounded-full border border-phare/30 px-2 py-0.5 text-[11px] text-phare"
+                >
+                  Bloquer
+                </button>
+              )}
             </li>
           );
         })}
