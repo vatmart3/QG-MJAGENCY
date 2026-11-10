@@ -85,6 +85,9 @@ export interface EMission {
   statut: "nouvelle" | "planification" | "en_cours" | "terminee" | "annulee";
   synthese: string | null;
   cree_le: string;
+  /** numéro WhatsApp du fondateur si la mission est venue de WhatsApp */
+  whatsapp?: string | null;
+  whatsapp_envoye_le?: string | null;
 }
 
 export interface EApproval {
@@ -183,6 +186,8 @@ export interface EngineDb {
   newMissions(): Promise<EMission[]>;
   mission(id: string): Promise<EMission | null>;
   updateMission(id: string, patch: Partial<EMission>): Promise<void>;
+  /** missions venues de WhatsApp, terminées ou annulées, dont le résultat n'est pas encore renvoyé */
+  missionsWhatsApp(): Promise<EMission[]>;
 
   insertTask(row: Partial<ETask> & { titre: string }): Promise<ETask>;
   updateTask(id: string, patch: Partial<ETask>): Promise<void>;
@@ -307,6 +312,9 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     },
     async agentsToRelax(before) {
       return rows(await sb.from("agents").select("*").in("etat", ["done", "talking", "meeting"]).lt("maj_le", before));
+    },
+    async missionsWhatsApp() {
+      return rows(await sb.from("missions").select("*").not("whatsapp", "is", null).is("whatsapp_envoye_le", null).in("statut", ["terminee", "annulee"]).limit(10));
     },
     async newMissions() {
       return rows(await sb.from("missions").select("*").eq("statut", "nouvelle").order("cree_le"));

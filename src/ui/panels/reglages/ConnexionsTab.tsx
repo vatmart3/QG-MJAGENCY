@@ -8,6 +8,7 @@ import { browserSupabase } from "@/lib/supabase/client";
 import { useUI } from "@/store/ui";
 import { Portrait } from "../../Portrait";
 import { TelephoneCard } from "./TelephoneCard";
+import { WhatsAppCard } from "./WhatsAppCard";
 
 interface Status {
   configure: { client: boolean; cle: boolean; serveur: boolean };
@@ -40,6 +41,7 @@ export function ConnexionsTab() {
       <GoogleCard />
       <RulesCard />
       <CourrierCard />
+      <WhatsAppCard />
       <TelephoneCard />
     </div>
   );

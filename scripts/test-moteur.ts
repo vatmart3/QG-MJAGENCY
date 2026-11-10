@@ -23,6 +23,8 @@ import { surveillerBoutique } from "@/boutique/surveillance";
 import { executeApprovals } from "@/engine/douane";
 import { kpis, kpisTexte } from "@/engine/kpis";
 import { notifierFondateurs } from "@/engine/notifications";
+import { createHmac } from "node:crypto";
+import { interpreter, messagesEntrants, normNumero, signatureValide } from "@/integrations/whatsapp";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -490,6 +492,43 @@ async function scenarioAtelierBoutique() {
   check(recues.length === 2 && recues[0]!.url === "/douane" && recues[1]!.titre.includes("Site test"), `notifications : Douane + alerte, une seule fois (${recues.map((r) => r.titre).join(" | ")})`);
 }
 
+async function scenarioWhatsApp() {
+  console.log("\n— Missions par WhatsApp (sans IA côté réception)");
+  await reset();
+  const agents = (await db.agents()).map((a) => ({ id: a.id, nom: a.nom }));
+  const c1 = interpreter("Prépare une offre de lancement pour les cartes NFC", agents);
+  const c2 = interpreter("@victor devis site vitrine pour La Marée", agents);
+  const c3 = interpreter("Céleste : bloque mardi matin", agents);
+  const c4 = interpreter("Point", agents);
+  check(c1.type === "mission" && c1.cible === null && c2.type === "mission" && c2.cible === "victor" && c2.texte.startsWith("devis") && c3.type === "mission" && c3.cible === "celeste" && c4.type === "point", "messages compris : mission (Marius), @victor, « Céleste : », point");
+  check(normNumero("06 12 34 56 78") === "33612345678" && normNumero("+33 6 12 34 56 78") === "33612345678", "numéros normalisés (33612345678)");
+  const corps = JSON.stringify({ entry: [{ changes: [{ field: "messages", value: { messages: [{ id: "wamid.1", from: "33612345678", type: "text", text: { body: "Salut" } }] } }] }] });
+  const sig = "sha256=" + createHmac("sha256", "secret-test").update(corps).digest("hex");
+  check(signatureValide(corps, sig, "secret-test") && !signatureValide(corps, sig, "autre") && !signatureValide(corps + " ", sig, "secret-test"), "signature de Meta vérifiée (un message falsifié est refusé)");
+  check(messagesEntrants(JSON.parse(corps))[0]?.texte === "Salut", "message entrant lu");
+
+  // mission venue de WhatsApp → résultat renvoyé une fois
+  await q("insert into public.missions (demandeur, texte, cible, whatsapp, whatsapp_msg_id) values ('jeremyvatuonepro@gmail.com', 'Prépare une offre de lancement pour les cartes NFC', 'marius', '33612345678', 'wamid.test')");
+  let doublon = false;
+  try {
+    await q("insert into public.missions (demandeur, texte, cible, whatsapp, whatsapp_msg_id) values ('x', 'y', 'marius', '33612345678', 'wamid.test')");
+  } catch {
+    doublon = true;
+  }
+  check(doublon, "un message reçu deux fois ne crée qu'une mission");
+  const envois: { a: string; t: string }[] = [];
+  const wa = { ...demoServices, whatsapp: async (a: string, t: string) => void envois.push({ a, t }) };
+  for (let i = 0; i < 14; i++) {
+    await tick(db, llm, { services: wa });
+    if (envois.some((e) => e.t.includes("Mission terminée"))) break;
+  }
+  await tick(db, llm, { services: wa });
+  const fins = envois.filter((e) => e.t.includes("Mission terminée"));
+  check(fins.length === 1 && fins[0]!.a === "33612345678" && fins[0]!.t.length > 60, `résultat renvoyé sur WhatsApp, une seule fois (${envois.length} message(s))`);
+  const [nuit] = await q<{ actif: boolean }>("select actif from public.routines where id = 'rt_nuit'");
+  check(nuit !== undefined, "routine de nuit présente (coupée en production)");
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -503,6 +542,7 @@ async function scenarioAtelierBoutique() {
     await scenarioNuit();
     await scenarioCommercial();
     await scenarioAtelierBoutique();
+    await scenarioWhatsApp();
   } catch (e) {
     console.error(e);
     failures++;

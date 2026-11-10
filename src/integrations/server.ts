@@ -4,6 +4,7 @@ import { decrypt, encrypt, hasEncryptionKey } from "@/lib/crypto";
 import { demoCalendar, demoMailbox } from "./demo";
 import { boutiqueDepuisEnv } from "@/boutique/shopify";
 import { envoyerPush } from "@/lib/push";
+import { envoyerWhatsApp, waConfigure } from "./whatsapp";
 import { demoPlaces, googlePlaces } from "./places";
 import { GoogleAuthError, GoogleClient, gmailMailbox, googleCalendar, hasGoogleOAuth } from "./google";
 import type { Calendar, Documents, Mailbox, Services } from "./types";
@@ -85,6 +86,7 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
     places: async () => (process.env.GOOGLE_PLACES_API_KEY ? googlePlaces(process.env.GOOGLE_PLACES_API_KEY) : demoPlaces()),
     boutique: async () => boutiqueDepuisEnv(),
     notifier: (n) => envoyerPush(admin, n),
+    ...(waConfigure() ? { whatsapp: (a: string, t: string) => envoyerWhatsApp(a, t) } : {}),
     async mailbox(): Promise<Mailbox> {
       const c = await getClient();
       return c ? guard(gmailMailbox(c), markError) : demoMailbox();

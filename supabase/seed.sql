@@ -87,7 +87,7 @@ insert into public.company_memory (id, cle, contenu) values
 on conflict (id) do nothing;
 
 insert into public.routines (id, nom, agent_id, mode, heure, intervalle_minutes, plage_debut, plage_fin, jours, jour_du_mois, prompt_tache, actif) values
-  ('rt_tri_mails', 'Tri des nouveaux mails', 'lucie', 'intervalle', '08:00', 5, '07:00', '22:00', '{}'::smallint[], null, 'Trie les nouveaux mails de la boîte officielle, résume-les et crée les tâches pour les bons pôles.', true),
+  ('rt_tri_mails', 'Tri des nouveaux mails', 'lucie', 'intervalle', '08:00', 5, '00:00', '23:59', '{}'::smallint[], null, 'Trie les nouveaux mails de la boîte officielle, résume-les et crée les tâches pour les bons pôles.', true),
   ('rt_sante_sites', 'Santé des sites clients', 'jade', 'intervalle', '08:00', 60, '06:00', '23:00', '{}'::smallint[], null, 'Contrôle les sites clients (HTTP, temps de réponse, certificat SSL, expiration du domaine) et alerte en cas de souci. Sans IA.', true),
   ('rt_boutique', 'Surveillance de la boutique', 'yanis', 'intervalle', '08:00', 120, '08:00', '21:00', '{}'::smallint[], null, 'Nouvelles commandes, commandes en retard d''expédition, stocks bas : alertes dans le Journal. Sans IA.', true),
   ('rt_echues', 'Factures échues → relances', 'remi', 'fixe', '07:15', 15, '08:00', '20:00', '{}'::smallint[], null, 'Repère les factures échues et prépare les relances graduées (J+3, J+10, J+30 à valider).', true),
@@ -99,7 +99,7 @@ insert into public.routines (id, nom, agent_id, mode, heure, intervalle_minutes,
   ('rt_point_18h', 'Point de fin de journée', 'diane', 'fixe', '18:00', 15, '08:00', '20:00', '{}'::smallint[], null, 'Fais un point court : ce qui est fait, ce qui attend une validation.', false),
   ('rt_plan_contenu', 'Plan de contenu de la semaine', 'chloe', 'fixe', '08:00', 15, '08:00', '20:00', array[1]::smallint[], null, 'Prépare le plan de contenu Instagram / TikTok de la semaine.', false),
   ('rt_rapport_hebdo', 'Rapport hebdo', 'diane', 'fixe', '17:00', 15, '08:00', '20:00', array[5]::smallint[], null, 'Rédige le rapport hebdo (KPIs, finances avec Héloïse, pipeline, veille avec Gabin).', false),
-  ('rt_nuit', 'Nuit au port', 'clemence', 'intervalle', '08:00', 5, '20:00', '08:00', '{}'::smallint[], null, 'Les agents sans tâche rentrent chez eux la nuit ; Lucie et Jade restent de garde. Une tâche réveille l''agent concerné. Aucun crédit utilisé.', true),
+  ('rt_nuit', 'Nuit au port', 'clemence', 'intervalle', '08:00', 5, '20:00', '08:00', '{}'::smallint[], null, 'Les agents sans tâche rentrent chez eux la nuit ; Lucie et Jade restent de garde. Une tâche réveille l''agent concerné. Aucun crédit utilisé. Désactivée : les agents restent au port jour et nuit.', false),
   ('rt_abonnements', 'Factures des abonnements', 'bastien', 'fixe', '08:00', 15, '08:00', '20:00', '{}'::smallint[], 1, 'Prépare la facture de chaque abonnement actif du mois (envoi après validation en Douane).', true),
   ('rt_fiscal', 'Échéances fiscales', 'agathe', 'fixe', '08:05', 15, '08:00', '20:00', '{}'::smallint[], null, 'Préviens 7 jours avant chaque échéance fiscale et au passage des seuils de TVA.', true),
   ('rt_cloture', 'Clôture du mois', 'heloise', 'fixe', '09:00', 15, '08:00', '20:00', '{}'::smallint[], 1, 'Clôture le mois : CA, encaissements, cotisations estimées (avec Agathe), prévisionnel.', true)

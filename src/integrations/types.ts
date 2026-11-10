@@ -92,6 +92,8 @@ export interface Services {
   boutique(): Promise<import("@/boutique/shopify").Boutique>;
   /** notification push sur le téléphone des fondateurs (absent en DÉMO) ; renvoie le nombre d'envois */
   notifier?(n: { titre: string; corps: string; url: string; tag?: string }): Promise<number>;
+  /** message WhatsApp à un fondateur (absent si WhatsApp n'est pas configuré) */
+  whatsapp?(a: string, texte: string): Promise<void>;
 }
 
 /** Extrait l'adresse d'un en-tête « Nom <adresse> ». */

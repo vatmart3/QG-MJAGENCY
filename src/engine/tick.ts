@@ -5,7 +5,7 @@ import type { Services } from "@/integrations/types";
 import { deliverReports, runRoutines } from "./routines";
 import type { EngineDb } from "./db";
 import { executeApprovals } from "./douane";
-import { notifierFondateurs } from "./notifications";
+import { notifierFondateurs, whatsappFondateurs } from "./notifications";
 import type { LLM } from "./llm";
 import { isCritical, resumeWaiting, runStep, type Shared, type StepResult } from "./loop";
 
@@ -134,6 +134,7 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
   });
   await safe("notifications", async () => {
     await notifierFondateurs(db, services, now);
+    await whatsappFondateurs(db, services, now);
   });
 
   // 5. tâches de plus de 24 h

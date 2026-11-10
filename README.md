@@ -120,6 +120,18 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
 
+## Missions par WhatsApp, port ouvert 24 h/24
+
+- **WhatsApp Business (API Cloud de Meta)** : un fondateur écrit une mission au numéro du port → Marius (ou « @victor … »,
+  « Céleste : … ») la prend ; « point », « douane », « aide » répondent tout de suite, sans IA. Le **résultat de la
+  mission revient dans la conversation**, et une question d'un agent pendant la mission y est signalée.
+  Webhook `/api/whatsapp` (signature `X-Hub-Signature-256` vérifiée, doublons ignorés), numéros autorisés dans
+  Réglages → Connexions → WhatsApp. Variables : `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`,
+  `WHATSAPP_VERIFY_TOKEN`. Les vocaux ne sont pas encore compris.
+- **Plus de nuit** : la routine `rt_nuit` est coupée (réactivable dans Réglages → Routines), le pilote automatique tourne
+  toutes les minutes 24 h/24 et le tri des mails jour et nuit. Un passage sans travail ne consomme aucun crédit.
+- Migration `…1300`.
+
 ## Atelier, boutique, veille et finitions (Phase 8)
 
 Onglet **Atelier** : sites clients, boutique, chiffres. Tout ce qui suit tourne **sans IA** sauf la recherche web.

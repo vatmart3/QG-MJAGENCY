@@ -86,6 +86,9 @@ export function pgEngineDb(pool: Pool): EngineDb {
     async agentsToRelax(before) {
       return (await q("select * from public.agents where etat in ('done','talking','meeting') and maj_le < $1", [before])).map(normAgent);
     },
+    async missionsWhatsApp() {
+      return (await q("select * from public.missions where whatsapp is not null and whatsapp_envoye_le is null and statut in ('terminee', 'annulee') limit 10")) as unknown as EMission[];
+    },
     async newMissions() {
       return (await q("select * from public.missions where statut = 'nouvelle' order by cree_le")) as unknown as EMission[];
     },
