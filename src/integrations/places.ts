@@ -22,7 +22,7 @@ export interface Place {
 }
 
 export interface Places {
-  kind: "google" | "osm" | "demo";
+  kind: "google" | "osm" | "web" | "demo";
   search(query: string, max: number): Promise<Place[]>;
 }
 
@@ -204,6 +204,75 @@ export function osmPlaces(): Places {
         }
       }
       throw derniere instanceof Error ? new Error((derniere as Error).name === "TimeoutError" ? "OpenStreetMap ne répond pas (serveur lent)" : (derniere as Error).message) : new Error("OpenStreetMap ne répond pas.");
+    },
+  };
+}
+
+// ------------------------------------------------------------------ recherche web (Claude, ≈ 1 centime la recherche)
+/**
+ * Hugo cherche les commerces sur Internet (outil de recherche web d'Anthropic, modèle le moins cher) et rend une
+ * liste structurée ; Inès visite ensuite leur site pour trouver l'e-mail. Rien n'est inventé : champ vide si inconnu.
+ */
+const SYSTEME_ANNUAIRE =
+  "Tu cherches des commerces locaux réels pour une agence web. Utilise la recherche web (2 recherches au plus). Réponds UNIQUEMENT par un tableau JSON, sans texte autour : " +
+  '[{"nom":"","adresse":"","ville":"","site":"","telephone":"","email":"","instagram":""}]. ' +
+  "Un objet par commerce, au plus 12, commerces ouverts uniquement. « site » = le site officiel du commerce (jamais un annuaire, Pages Jaunes, TripAdvisor, Google Maps ni Facebook). N'invente rien : chaîne vide si tu ne sais pas.";
+
+const ANNUAIRES = /(pagesjaunes|tripadvisor|google\.|facebook\.com|instagram\.com|yelp|thefork|lafourchette|mappy|justacote|118712|societe\.com|pappers|infogreffe|linkedin|petitfute|booking|planity|treatwell|doctolib|leboncoin)/i;
+
+/** Lit la réponse JSON de la recherche (tolère un texte autour du tableau). */
+export function placesDepuisRecherche(texte: string, label: string, zone: string | null, max: number): Place[] {
+  const debut = texte.indexOf("[");
+  const fin = texte.lastIndexOf("]");
+  if (debut < 0 || fin <= debut) return [];
+  let brut: unknown;
+  try {
+    brut = JSON.parse(texte.slice(debut, fin + 1));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(brut)) return [];
+  const vu = new Set<string>();
+  const out: Place[] = [];
+  for (const o of brut as Record<string, unknown>[]) {
+    const str = (k: string) => (typeof o?.[k] === "string" ? (o[k] as string).trim() : "");
+    const nom = str("nom");
+    if (!nom || nom.length > 120) continue;
+    let site = httpUrl(str("site") || undefined);
+    if (site && ANNUAIRES.test(site)) site = undefined;
+    const domaine = site ? site.replace(/^https?:\/\/(www\.)?/i, "").split(/[/?#]/)[0]!.toLowerCase() : null;
+    const ville = str("ville") || zone || undefined;
+    const id = domaine ? `web:${domaine}` : `web:${sansAcc(`${nom}-${ville ?? ""}`).replace(/[^a-z0-9]+/g, "-")}`;
+    if (vu.has(id)) continue;
+    vu.add(id);
+    const email = str("email").toLowerCase();
+    out.push({
+      place_id: id,
+      nom,
+      adresse: str("adresse"),
+      ville,
+      telephone: str("telephone") || undefined,
+      site,
+      email: /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email) ? email : undefined,
+      instagram: insta(str("instagram") || undefined),
+      metier: label,
+    });
+  }
+  const rang = (p: Place) => (p.email ? 0 : p.site ? 1 : 2);
+  return out.sort((a, b) => rang(a) - rang(b)).slice(0, max);
+}
+
+export function webPlaces(
+  rechercher: (q: string, o: { systeme: string; maxTokens: number; maxRecherches: number }) => Promise<{ texte: string; recherches: number }>,
+): Places {
+  return {
+    kind: "web",
+    async search(query, max) {
+      const { metier, zone } = decouperRequete(query);
+      const n = sansAcc(metier);
+      const label = OSM_METIERS.find((d) => d.cles.some((c) => n.includes(sansAcc(c))))?.label ?? metier.charAt(0).toUpperCase() + metier.slice(1);
+      const r = await rechercher(`${metier} à ${zone ?? "Sète"} (Hérault, France) : liste de commerces avec leur site web officiel et leurs coordonnées.`, { systeme: SYSTEME_ANNUAIRE, maxTokens: 2500, maxRecherches: 2 });
+      return placesDepuisRecherche(r.texte, label, zone, Math.min(20, max));
     },
   };
 }

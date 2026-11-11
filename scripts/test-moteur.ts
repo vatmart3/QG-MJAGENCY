@@ -14,7 +14,7 @@ import { estAutomatique } from "@/engine/courrier";
 import { resumeFinance } from "@/finance/calc";
 import { noter, relancesDevis, trouverProspects, urlPublique } from "@/commercial/prospection";
 import { tacheSacha } from "@/commercial/taches";
-import { demoPlaces, placesDepuisOsm, requeteOverpass } from "@/integrations/places";
+import { demoPlaces, placesDepuisOsm, placesDepuisRecherche, requeteOverpass } from "@/integrations/places";
 import { sha256Hex } from "@/finance/pdf";
 import { surveillerSites } from "@/tech/surveillance";
 import { analyser, auditUrl } from "@/tech/audit";
@@ -697,6 +697,14 @@ async function scenarioOsm() {
   check(p.length === 2 && p[0]!.nom === "Au Bon Pain" && p[0]!.email === "contact@aubonpain.fr" && p[0]!.site === "https://aubonpain.fr" && p[0]!.instagram === "aubonpain_sete" && p[0]!.adresse === "4 Rue Gambetta, 34200 Sète" && p[0]!.place_id === "osm:node/2", "fiche lue (adresse, e-mail, site, Instagram), commerces fermés ou sans nom ignorés, joignables d'abord");
   const n = noter({ place_id: "x", nom: "Au Bon Pain", adresse: "", site: undefined, telephone: undefined }, null);
   check(!n.diagnostic.includes("peu d'avis") && n.score >= 55, `sans avis connus (OpenStreetMap) : pas de « peu d'avis » inventé, score ${n.score}`);
+  const web = placesDepuisRecherche(
+    'Voici la liste :\n```json\n[{"nom":"Boulangerie Gambetta","adresse":"4 rue Gambetta","ville":"Sète","site":"boulangerie-gambetta.fr","telephone":"04 67 00 00 00","email":"Contact@Boulangerie-Gambetta.fr","instagram":"@gambetta_sete"},{"nom":"Le Pain de Thau","site":"https://www.pagesjaunes.fr/pros/123","email":"pas-un-mail"},{"nom":"Boulangerie Gambetta bis","site":"https://www.boulangerie-gambetta.fr/contact"},{"nom":""}]\n```',
+    "Boulangerie",
+    "Sète",
+    10,
+  );
+  check(web.length === 2 && web[0]!.email === "contact@boulangerie-gambetta.fr" && web[0]!.site === "https://boulangerie-gambetta.fr" && web[0]!.instagram === "gambetta_sete" && web[1]!.nom === "Le Pain de Thau" && !web[1]!.site && !web[1]!.email && web[0]!.place_id === "web:boulangerie-gambetta.fr", "recherche web : liste lue, annuaires écartés (Pages Jaunes), doublons et mails invalides ignorés");
+  check(placesDepuisRecherche("Désolé, rien trouvé.", "X", null, 5).length === 0, "réponse sans liste → aucun prospect inventé");
   const enPanne = { kind: "osm" as const, search: async () => Promise.reject(new Error("OpenStreetMap ne répond pas (serveur lent)")) };
   const t0 = Date.now();
   const rp = await trouverProspects(db, enPanne, await db.commercial.prospection(), 10);

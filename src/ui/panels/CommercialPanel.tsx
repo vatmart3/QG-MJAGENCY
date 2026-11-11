@@ -113,11 +113,11 @@ function Prospects({ d, reload }: { d: Data; reload: () => void }) {
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [source, setSource] = useState<"google" | "osm" | null>(null);
+  const [source, setSource] = useState<"google" | "osm" | "web" | null>(null);
   useEffect(() => {
     void fetch("/api/commercial/status")
       .then((r) => r.json())
-      .then((x: { source?: "google" | "osm" }) => setSource(x.source ?? null))
+      .then((x: { source?: "google" | "osm" | "web" }) => setSource(x.source ?? null))
       .catch(() => setSource(null));
   }, []);
   const list = useMemo(
@@ -189,7 +189,7 @@ function Prospects({ d, reload }: { d: Data; reload: () => void }) {
         </select>
       </div>
       <p className="mt-2 text-[11.5px] text-ink-soft">
-        {source === "osm" ? "Source : OpenStreetMap (gratuit, © les contributeurs d'OpenStreetMap) — sans note Google. " : source === "google" ? "Source : Google Places (avec les avis). " : ""}Hugo cherche chaque matin de semaine à 10 h, Inès note (sans IA). Coche les commerces à contacter : seule l&apos;écriture des messages par Sacha utilise l&apos;IA.
+        {source === "web" ? "Source : recherche sur Internet (≈ 1 centime la recherche) — sans note Google. " : source === "osm" ? "Source : OpenStreetMap (gratuit, © les contributeurs d'OpenStreetMap) — sans note Google. " : source === "google" ? "Source : Google Places (avec les avis). " : ""}Hugo cherche chaque matin de semaine à 10 h, Inès note (sans IA). Coche les commerces à contacter : seule l&apos;écriture des messages par Sacha utilise l&apos;IA.
       </p>
       <Msg m={msg} />
       <ul className="mt-3 space-y-2">

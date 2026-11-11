@@ -6,7 +6,9 @@ import { boutiqueDepuisEnv } from "@/boutique/shopify";
 import { envoyerPush } from "@/lib/push";
 import { envoyerTelegram, tgConfigure } from "./telegram";
 import { envoyerWhatsApp, waConfigure } from "./whatsapp";
-import { googlePlaces, osmPlaces } from "./places";
+import { costEur, COUT_RECHERCHE_EUR } from "@/engine/config";
+import { llmFromEnv } from "@/engine/llm";
+import { googlePlaces, osmPlaces, webPlaces } from "./places";
 import { GoogleAuthError, GoogleClient, gmailMailbox, googleCalendar, hasGoogleOAuth } from "./google";
 import type { Calendar, Documents, Mailbox, Services } from "./types";
 
@@ -84,8 +86,19 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
   };
   return {
     documents: storageDocuments(admin),
-    // Google Places si une clé est configurée (avec les avis), sinon OpenStreetMap (gratuit, sans clé)
-    places: async () => (process.env.GOOGLE_PLACES_API_KEY ? googlePlaces(process.env.GOOGLE_PLACES_API_KEY) : osmPlaces()),
+    // Google Places si une clé est configurée (avec les avis) ; sinon Hugo cherche sur Internet (recherche web de
+    // Claude, ≈ 1 centime) ; OpenStreetMap en dernier recours (ses serveurs refusent souvent les hébergeurs cloud)
+    places: async () => {
+      if (process.env.GOOGLE_PLACES_API_KEY) return googlePlaces(process.env.GOOGLE_PLACES_API_KEY);
+      const llm = llmFromEnv();
+      if (llm.kind !== "anthropic") return osmPlaces();
+      return webPlaces(async (q, o) => {
+        const r = await llm.search(q, o);
+        const cout = costEur(r.model, r.usage) + r.recherches * COUT_RECHERCHE_EUR;
+        await admin.from("usage").insert({ agent_id: "hugo", modele: `${r.model} + recherche web`, tokens_in: r.usage.input + r.usage.cacheRead + r.usage.cacheWrite, tokens_out: r.usage.output, cout_estime: Math.round(cout * 100_000) / 100_000 });
+        return r;
+      });
+    },
     boutique: async () => boutiqueDepuisEnv(),
     notifier: (n) => envoyerPush(admin, n),
     ...(waConfigure() ? { whatsapp: (a: string, t: string) => envoyerWhatsApp(a, t) } : {}),

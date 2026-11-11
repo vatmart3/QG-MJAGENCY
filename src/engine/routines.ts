@@ -82,7 +82,10 @@ export async function launchRoutine(db: EngineDb, services: Services, team: EAge
   if (r.id === "rt_cloture") return clotureMois(db, now);
   if (r.id === "rt_fiscal") return (await alertesFiscales(db, now)) > 0;
   // commercial : recherche + notation des prospects, relances de devis (sans IA)
-  if (r.id === "rt_leads") return (await trouverProspects(db, await services.places(), await db.commercial.prospection())).crees > 0;
+  if (r.id === "rt_leads") {
+    const cfg = await db.commercial.prospection();
+    return (await trouverProspects(db, await services.places(), cfg, cfg.par_jour, 25_000)).crees > 0;
+  }
   if (r.id === "rt_relances_devis") return (await relancesDevis(db, formatInTimeZone(now, TZ, "yyyy-MM-dd"))) > 0;
   // pilote commercial : Sacha écrit aux meilleurs prospects, relance unique sans IA
   if (r.id === "rt_prospection_auto") return !!(await tacheProspectionAuto(db, now));

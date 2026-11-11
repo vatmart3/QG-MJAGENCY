@@ -42,7 +42,14 @@ export interface LLM {
   readonly kind: "anthropic" | "mock";
   create(req: LLMRequest): Promise<LLMResponse>;
   /** recherche web (outil serveur d'Anthropic) : réponse courte et sourcée */
-  search(question: string): Promise<Recherche>;
+  search(question: string, o?: OptionsRecherche): Promise<Recherche>;
+}
+
+export interface OptionsRecherche {
+  /** consigne à la place de la consigne par défaut (ex. réponse en JSON) */
+  systeme?: string;
+  maxTokens?: number;
+  maxRecherches?: number;
 }
 
 const SYSTEME_RECHERCHE =
@@ -79,14 +86,14 @@ export class AnthropicLLM implements LLM {
     };
   }
 
-  search(question: string): Promise<Recherche> {
+  search(question: string, o?: OptionsRecherche): Promise<Recherche> {
     // le moins cher d'abord (Haiku), Sonnet si Haiku n'a pas la recherche web
-    return rechercheAnthropic(this.client, question, [MODELS.light, MODELS.worker]);
+    return rechercheAnthropic(this.client, question, [MODELS.light, MODELS.worker], o);
   }
 }
 
 // ------------------------------------------------------------------ recherche web
-async function rechercheAnthropic(client: Anthropic, question: string, models: string[]): Promise<Recherche> {
+async function rechercheAnthropic(client: Anthropic, question: string, models: string[], o: OptionsRecherche = {}): Promise<Recherche> {
   let lastErr: unknown;
   for (const model of models) {
     try {
@@ -98,10 +105,10 @@ async function rechercheAnthropic(client: Anthropic, question: string, models: s
       for (let i = 0; i < 3; i++) {
         const res = await client.beta.messages.create({
           model,
-          max_tokens: 2000,
-          system: SYSTEME_RECHERCHE,
+          max_tokens: o.maxTokens ?? 2000,
+          system: o.systeme ?? SYSTEME_RECHERCHE,
           messages,
-          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3, user_location: { type: "approximate", city: "Sète", region: "Occitanie", country: "FR", timezone: "Europe/Paris" } }],
+          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: o.maxRecherches ?? 3, user_location: { type: "approximate", city: "Sète", region: "Occitanie", country: "FR", timezone: "Europe/Paris" } }],
           output_config: { effort: "low" },
         });
         usage.input += res.usage.input_tokens;
@@ -252,7 +259,8 @@ function mockFinance(m: MockMeta, messages: Msg[]): Anthropic.Beta.BetaContentBl
 export class MockLLM implements LLM {
   readonly kind = "mock" as const;
 
-  async search(question: string): Promise<Recherche> {
+  async search(question: string, o?: OptionsRecherche): Promise<Recherche> {
+    if (o?.systeme?.includes("JSON")) return { texte: "[]", sources: [], recherches: 0, model: "simulé", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
     return {
       texte: `Recherche simulée sur « ${question.slice(0, 80)} » : ajoute une clé API Anthropic pour une vraie recherche sur le web.\n- Tendance (exemple) : les commerces locaux misent sur les avis Google et les fiches à jour.\n- Exemple : plusieurs agences de l'Hérault proposent des sites vitrines à partir de 900 € HT.`,
       sources: [{ titre: "Source de démonstration", url: "https://exemple.example/veille" }],
