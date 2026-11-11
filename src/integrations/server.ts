@@ -4,7 +4,7 @@ import { decrypt, encrypt, hasEncryptionKey } from "@/lib/crypto";
 import { demoCalendar, demoMailbox } from "./demo";
 import { boutiqueDepuisEnv } from "@/boutique/shopify";
 import { envoyerPush } from "@/lib/push";
-import { envoyerTelegram, tgConfigure } from "./telegram";
+import { envoyerTelegram, majWebhook, tgConfigure } from "./telegram";
 import { envoyerWhatsApp, waConfigure } from "./whatsapp";
 import { costEur, COUT_RECHERCHE_EUR } from "@/engine/config";
 import { llmFromEnv } from "@/engine/llm";
@@ -106,7 +106,13 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
     boutique: async () => boutiqueDepuisEnv(),
     notifier: (n) => envoyerPush(admin, n),
     ...(waConfigure() ? { whatsapp: (a: string, t: string) => envoyerWhatsApp(a, t) } : {}),
-    ...(tgConfigure() ? { telegram: (c: string, t: string, s: boolean) => envoyerTelegram(c, t, s) } : {}),
+    ...(tgConfigure()
+      ? {
+          telegram: (c: string, t: string, s: boolean) => envoyerTelegram(c, t, s),
+          telegramBoutons: (c: string, t: string, b: import("./telegram").Boutons) => envoyerTelegram(c, t, false, b),
+          telegramWebhook: () => majWebhook(),
+        }
+      : {}),
     async mailbox(): Promise<Mailbox> {
       const c = await getClient();
       return c ? guard(gmailMailbox(c), markError) : demoMailbox();

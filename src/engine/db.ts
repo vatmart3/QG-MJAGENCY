@@ -265,6 +265,8 @@ export interface EngineDb {
   dernierMailRecu(adresse: string, depuisIso: string): Promise<EEmail | null>;
   updateEmail(id: string, patch: Partial<EEmail>): Promise<void>;
   approval(id: string): Promise<EApproval | null>;
+  /** décision prise hors de l'application (bouton Telegram) : seulement si la demande attend encore ; renvoie la demande décidée, sinon null */
+  deciderSiEnAttente(id: string, statut: "approuve" | "refuse", par: string, motif?: string | null): Promise<EApproval | null>;
   /** mises à jour de mémoire validées en Douane et pas encore appliquées */
   pendingMemoryApprovals(): Promise<EApproval[]>;
   markApprovalApplied(id: string, payload: Record<string, unknown>): Promise<void>;
@@ -426,6 +428,10 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     },
     async approval(id) {
       return ok(await sb.from("approvals").select("*").eq("id", id).maybeSingle());
+    },
+    async deciderSiEnAttente(id, statut, par, motif) {
+      const r = rows<EApproval>(await sb.from("approvals").update({ statut, decide_par: par, decide_le: new Date().toISOString(), ...(motif ? { motif } : {}) }).eq("id", id).eq("statut", "en_attente").select("*"));
+      return r[0] ?? null;
     },
     async pendingMemoryApprovals() {
       const list: EApproval[] = rows(await sb.from("approvals").select("*").eq("type_action", "memoire").in("statut", ["approuve", "modifie"]));

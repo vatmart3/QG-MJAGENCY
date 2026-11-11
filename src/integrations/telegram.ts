@@ -77,14 +77,92 @@ async function api<T>(methode: string, corps: Record<string, unknown>): Promise<
 /** Échappe le texte pour le mode HTML de Telegram. */
 export const html = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** Envoie un message (HTML simple : <b>, <i>). `silencieux` : arrive sans sonnerie. */
-export async function envoyerTelegram(chat: string, texteHtml: string, silencieux = false): Promise<void> {
-  await api("sendMessage", { chat_id: chat, text: texteHtml.slice(0, 4000), parse_mode: "HTML", disable_notification: silencieux, link_preview_options: { is_disabled: true } });
+/** Boutons sous un message : lignes de { texte, data } (data ≤ 64 octets, renvoyé par Telegram au clic). */
+export type Boutons = { texte: string; data: string }[][];
+const clavier = (b: Boutons) => ({ inline_keyboard: b.map((l) => l.map((x) => ({ text: x.texte, callback_data: x.data }))) });
+
+/** Envoie un message (HTML simple : <b>, <i>). `silencieux` : arrive sans sonnerie. `boutons` : boutons sous le message. */
+export async function envoyerTelegram(chat: string, texteHtml: string, silencieux = false, boutons?: Boutons): Promise<void> {
+  await api("sendMessage", { chat_id: chat, text: texteHtml.slice(0, 4000), parse_mode: "HTML", disable_notification: silencieux, link_preview_options: { is_disabled: true }, ...(boutons?.length ? { reply_markup: clavier(boutons) } : {}) });
 }
 
+/** Petite bulle affichée en haut de l'écran après un clic sur un bouton. */
+export const repondreBouton = (id: string, texte: string) => api<boolean>("answerCallbackQuery", { callback_query_id: id, text: texte.slice(0, 190) });
+/** Remplace le texte d'un message déjà envoyé (et retire ses boutons). */
+export const modifierMessage = (chat: string, messageId: number, texteHtml: string) =>
+  api<unknown>("editMessageText", { chat_id: chat, message_id: messageId, text: texteHtml.slice(0, 4000), parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+
+/** Ce que le bot reçoit : les messages et les clics sur les boutons. */
+const RECUS = ["message", "callback_query"];
 export const botInfo = () => api<{ username: string; first_name: string }>("getMe", {});
-export const webhookInfo = () => api<{ url: string; last_error_message?: string; pending_update_count: number }>("getWebhookInfo", {});
-export const installerWebhook = (url: string) => api<boolean>("setWebhook", { url, secret_token: secretWebhook(), allowed_updates: ["message"], drop_pending_updates: true });
+export const webhookInfo = () => api<{ url: string; last_error_message?: string; pending_update_count: number; allowed_updates?: string[] }>("getWebhookInfo", {});
+export const installerWebhook = (url: string) => api<boolean>("setWebhook", { url, secret_token: secretWebhook(), allowed_updates: RECUS, drop_pending_updates: true });
+
+/**
+ * Un bot branché avant l'arrivée des boutons ne reçoit que les messages : on lui ajoute les clics, à la même adresse,
+ * sans perdre les messages en attente. Renvoie false si aucun webhook n'est installé.
+ */
+export async function majWebhook(): Promise<boolean> {
+  const info = await webhookInfo();
+  if (!info.url) return false;
+  if (!info.allowed_updates || RECUS.every((u) => info.allowed_updates!.includes(u))) return true;
+  await api<boolean>("setWebhook", { url: info.url, secret_token: secretWebhook(), allowed_updates: RECUS });
+  return true;
+}
+
+// ------------------------------------------------------------------ la Douane dans Telegram
+const VERBE: Record<string, string> = {
+  email: "veut envoyer ce mail",
+  facture: "veut envoyer cette facture",
+  devis: "veut envoyer ce devis",
+  relance: "veut envoyer cette relance",
+  rdv: "veut envoyer cette invitation",
+  question: "te pose une question",
+  memoire: "propose de mettre à jour la mémoire",
+  autre: "attend ton feu vert",
+};
+
+export interface DemandeDouane {
+  id: string;
+  type_action: string;
+  titre: string;
+  apercu: string;
+  destinataire?: string | null;
+  objet?: string | null;
+}
+
+/** Une demande de la Douane en message Telegram, avec les boutons Accepter / Refuser (Oui / Non pour une question). */
+export function carteDouane(a: DemandeDouane, agent: string | null): { texte: string; boutons: Boutons } {
+  const question = a.type_action === "question";
+  const texte = [
+    `${question ? "❓" : "🛂"} <b>${html(agent ?? "Un agent")}</b> ${VERBE[a.type_action] ?? VERBE.autre}${a.destinataire ? ` à <b>${html(a.destinataire)}</b>` : ""}`,
+    `<i>${html(a.titre)}</i>`,
+    a.objet ? `Objet : <b>${html(a.objet)}</b>` : "",
+    a.apercu ? `\n${html(a.apercu.length > 1500 ? `${a.apercu.slice(0, 1500)}…` : a.apercu)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const boutons: Boutons = [question ? [{ texte: "✅ Oui", data: `ok:${a.id}` }, { texte: "❌ Non", data: `non:${a.id}` }] : [{ texte: "✅ Accepter", data: `ok:${a.id}` }, { texte: "❌ Refuser", data: `non:${a.id}` }]];
+  return { texte, boutons };
+}
+
+export interface BoutonTelegram {
+  id: string;
+  chat: string;
+  messageId: number | null;
+  texte: string | null;
+  decision: "approuve" | "refuse";
+  approval: string;
+}
+
+/** Un clic sur un bouton Accepter / Refuser (chat privé seulement). */
+export function boutonTelegram(update: unknown): BoutonTelegram | null {
+  const u = update as { callback_query?: { id: string; data?: string; message?: { message_id: number; text?: string; chat: { id: number; type: string } } } };
+  const c = u.callback_query;
+  const d = c?.data?.match(/^(ok|non):([0-9a-f-]{36})$/i);
+  if (!c || !d || !c.message?.chat || c.message.chat.type !== "private") return null;
+  return { id: c.id, chat: String(c.message.chat.id), messageId: c.message.message_id ?? null, texte: c.message.text ?? null, decision: d[1]!.toLowerCase() === "ok" ? "approuve" : "refuse", approval: d[2]!.toLowerCase() };
+}
 
 export interface MessageTelegram {
   chat: string;
@@ -106,7 +184,7 @@ export const AIDE_TELEGRAM = [
   "• Une mission, tout simplement : « Prépare une offre pour les restaurants de Sète » → Marius organise l'équipe.",
   "• Pour un agent précis : « @victor devis site vitrine pour La Marée » ou « Victor : … ».",
   "• /point → ce qui tourne au port en ce moment.",
-  "• /douane → ce qui attend ta validation.",
+  "• /douane → ce qui attend ta validation, avec les boutons Accepter / Refuser.",
   "• /calme → seulement l'important · /tout → chaque action des agents.",
   "Je te renvoie le résultat ici quand la mission est terminée.",
 ].join("\n");

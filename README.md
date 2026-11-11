@@ -187,6 +187,11 @@ images »). Migration `…1800`.
   `/tout` ou `/calme` (seulement l'important) dans le bot. Même contenu en notification push (réglage général).
 - **Missions** : on écrit au bot (« @victor … » pour un agent précis), `/point`, `/douane`, `/aide` ; résultat et
   questions des agents renvoyés dans la conversation. Migration `…1400`.
+- **La Douane au bout du doigt** : chaque nouvelle demande (mail, devis, facture, invitation, question d'un agent)
+  arrive avec les boutons **✅ Accepter / ❌ Refuser** (Oui / Non pour une question) ; `/douane` renvoie les demandes en
+  attente avec leurs boutons. Décision atomique (double clic ou décision déjà prise ailleurs : rien de plus), notée au
+  Journal, envoi au passage suivant du moteur. Pour modifier un texte : dans le QG. Un bot branché avant reçoit les
+  clics tout seul (webhook mis à jour au premier passage du moteur, sans rien refaire).
 
 ## Missions par WhatsApp, port ouvert 24 h/24
 

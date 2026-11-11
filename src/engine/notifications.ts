@@ -1,6 +1,6 @@
-import { html } from "@/integrations/telegram";
+import { carteDouane, html } from "@/integrations/telegram";
 import type { Services } from "@/integrations/types";
-import type { EngineDb } from "./db";
+import type { EApproval, EngineDb } from "./db";
 
 const CLE = "push.dernier";
 
@@ -10,6 +10,8 @@ export interface Nouvelle {
   pole: string | null;
   texte: string;
   url: string;
+  /** demande de la Douane : envoyée sur Telegram avec les boutons Accepter / Refuser */
+  demande?: EApproval;
 }
 
 /** Retire « Noé — » ou « (Noé) » du titre quand le nom de l'agent est déjà affiché. */
@@ -39,7 +41,7 @@ export async function nouvellesDuPort(db: EngineDb, depuis: string, jusqua: stri
   }
   for (const d of attente.filter((x) => !!x.cree_le && new Date(x.cree_le).getTime() > t0 && new Date(x.cree_le).getTime() <= t1 && !x.payload.envoyer_apres)) {
     const a = agent(d.agent_id);
-    out.push({ important: true, agent: a?.nom ?? null, pole: pole(a?.pole_id), texte: `🛂 attend ta validation : ${sansNom(d.titre, a?.nom ?? null)}`, url: "/douane" });
+    out.push({ important: true, agent: a?.nom ?? null, pole: pole(a?.pole_id), texte: `🛂 attend ta validation : ${sansNom(d.titre, a?.nom ?? null)}`, url: "/douane", demande: d });
   }
   return out;
 }
@@ -51,6 +53,7 @@ export async function nouvellesDuPort(db: EngineDb, depuis: string, jusqua: stri
  */
 export async function notifierFondateurs(db: EngineDb, services: Services, now = new Date()): Promise<number> {
   if (!services.notifier && !services.telegram) return 0;
+  await brancherBoutons(db, services, now);
   const memo = await db.kvGet<{ le?: string }>(CLE);
   // premier passage : on part de maintenant (pas d'avalanche avec l'historique)
   if (!memo?.le) {
@@ -63,8 +66,17 @@ export async function notifierFondateurs(db: EngineDb, services: Services, now =
   let n = 0;
 
   if (services.telegram) {
+    // les demandes de la Douane arrivent une par une, avec leurs boutons (5 par passage au plus, le reste dans /douane)
+    const cartes = services.telegramBoutons ? nouvelles.filter((x) => x.demande).slice(0, 5) : [];
     for (const [chat, c] of Object.entries(canaux.telegram)) {
-      const liste = c.niveau === "tout" ? nouvelles : nouvelles.filter((x) => x.important);
+      for (const x of cartes) {
+        const { texte, boutons } = carteDouane(x.demande!, x.agent);
+        await services.telegramBoutons!(chat, texte, boutons).then(
+          () => n++,
+          () => undefined,
+        );
+      }
+      const liste = (c.niveau === "tout" ? nouvelles : nouvelles.filter((x) => x.important)).filter((x) => !cartes.includes(x));
       if (!liste.length) continue;
       const lignes = liste.slice(0, 15).map((x) => (x.agent ? `<b>${html(x.agent)}</b>${x.pole ? ` <i>(${html(x.pole)})</i>` : ""} — ${html(x.texte)}` : `⚓ ${html(x.texte)}`));
       if (liste.length > 15) lignes.push(`… et ${liste.length - 15} autre(s) dans le Journal.`);
@@ -88,6 +100,15 @@ export async function notifierFondateurs(db: EngineDb, services: Services, now =
     }
   }
   return n;
+}
+
+/** Une fois : le bot apprend à recevoir les clics sur les boutons (nouvel essai toutes les heures en cas d'échec). */
+async function brancherBoutons(db: EngineDb, services: Services, now: Date): Promise<void> {
+  if (!services.telegramWebhook) return;
+  const m = await db.kvGet<{ v?: number; le?: string }>("telegram.boutons");
+  if (m?.v === 1 || (m?.le && now.getTime() - new Date(m.le).getTime() < 3600_000)) return;
+  const ok = await services.telegramWebhook().catch(() => false);
+  await db.kvSet("telegram.boutons", ok ? { v: 1 } : { le: now.toISOString() });
 }
 
 /**
@@ -129,7 +150,7 @@ export async function retoursMissions(db: EngineDb, services: Services, now = ne
     const [t] = await db.tasks([a.task_id!]);
     const mission = t?.mission_id ? await db.mission(t.mission_id) : null;
     const suite = app ? `\n\nRéponds dans la Douane : ${app}/douane` : "";
-    if (mission?.telegram && services.telegram) await services.telegram(mission.telegram, `❓ <b>Question pendant ta mission</b>\n${html(a.titre)}\n\n${html(a.apercu.slice(0, 1500))}${suite}`, false).catch(() => undefined);
+    if (mission?.telegram && services.telegram && !services.telegramBoutons) await services.telegram(mission.telegram, `❓ <b>Question pendant ta mission</b>\n${html(a.titre)}\n\n${html(a.apercu.slice(0, 1500))}${suite}`, false).catch(() => undefined);
     if (mission?.whatsapp && services.whatsapp) await services.whatsapp(mission.whatsapp, `❓ *Question pendant ta mission*\n${a.titre}\n\n${a.apercu.slice(0, 1500)}${suite}`).catch(() => undefined);
   }
   if (questions.length) await db.kvSet("mobile.questions", { ids: [...deja].slice(-200) });

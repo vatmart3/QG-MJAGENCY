@@ -1,18 +1,52 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { supabaseEngineDb } from "@/engine/db";
 import { eur } from "@/finance/types";
-import { AIDE_TELEGRAM, envoyerTelegram, html, lireTelegram, messageTelegram, secretValide, type ReglagesTelegram } from "@/integrations/telegram";
+import { AIDE_TELEGRAM, boutonTelegram, carteDouane, envoyerTelegram, html, lireTelegram, messageTelegram, modifierMessage, repondreBouton, secretValide, type BoutonTelegram, type ReglagesTelegram } from "@/integrations/telegram";
 import { interpreter } from "@/integrations/whatsapp";
 import { adminSupabase } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-/** Messages du bot Telegram : appairage (/start CODE), missions, /point, /douane, /aide, /calme, /tout. Sans IA. */
+/**
+ * Clic sur « Accepter » / « Refuser » sous une demande de la Douane : même effet que dans l'application (le moteur
+ * envoie au passage suivant, dans la minute). Décision atomique : un double clic, ou une décision déjà prise dans le
+ * QG ou par l'autre fondateur, ne fait rien de plus.
+ */
+async function decider(b: BoutonTelegram, admin: NonNullable<ReturnType<typeof adminSupabase>>, tg: ReglagesTelegram): Promise<void> {
+  const bulle = (t: string) => repondreBouton(b.id, t).catch(() => undefined);
+  const chat = tg.chats[b.chat];
+  if (!chat) return void (await bulle("Ce compte Telegram n'est pas relié à LE PORT."));
+  const db = supabaseEngineDb(admin);
+  const a = await db.deciderSiEnAttente(b.approval, b.decision, chat.email, b.decision === "refuse" ? "Refusé depuis Telegram" : null);
+  const prenom = chat.email.split("@")[0];
+  if (!a) {
+    const deja = await db.approval(b.approval);
+    const etat = !deja ? "n'existe plus" : deja.statut === "refuse" ? "a déjà été refusée" : "a déjà été validée";
+    await bulle(`Cette demande ${etat}.`);
+    if (b.messageId && b.texte) await modifierMessage(b.chat, b.messageId, `${html(b.texte)}\n\n<i>Cette demande ${etat}${deja?.decide_par ? ` (${html(deja.decide_par.split("@")[0]!)})` : ""}.</i>`).catch(() => undefined);
+    return;
+  }
+  const question = a.type_action === "question";
+  const verbe = b.decision === "refuse" ? (question ? "Répondu non" : "Refusé") : question ? "Répondu oui" : "Validé";
+  await admin.from("journal").insert({ type: "validation", titre: `${verbe} : ${a.titre}`.slice(0, 300), contenu: `Depuis Telegram (${prenom}).`, agent_id: a.agent_id });
+  const suite = b.decision === "refuse" ? (question ? "L'agent continue sans." : "Rien ne part ; l'agent est prévenu.") : question ? "L'agent reprend son travail." : a.type_action === "memoire" || a.type_action === "autre" ? "C'est noté." : "Ça part dans la minute.";
+  await bulle(`${b.decision === "refuse" ? "❌" : "✅"} ${verbe}. ${suite}`);
+  if (b.messageId && b.texte) await modifierMessage(b.chat, b.messageId, `${html(b.texte)}\n\n<b>${b.decision === "refuse" ? "❌" : "✅"} ${verbe}</b> par ${html(prenom!)} — ${suite}`).catch(() => undefined);
+}
+
+/** Messages du bot Telegram : appairage (/start CODE), missions, /point, /douane, /aide, /calme, /tout, boutons de la Douane. Sans IA. */
 export async function POST(request: Request) {
   if (!secretValide(request.headers.get("x-telegram-bot-api-secret-token"))) return new Response("Refusé", { status: 401 });
   const admin = adminSupabase();
-  const m = messageTelegram(await request.json().catch(() => null));
+  const update = await request.json().catch(() => null);
+  const bouton = boutonTelegram(update);
+  if (admin && bouton) {
+    const { data } = await admin.from("settings").select("telegram").eq("id", 1).maybeSingle();
+    await decider(bouton, admin, lireTelegram(data?.telegram)).catch((e) => console.error("Telegram bouton", e));
+    return new Response("ok");
+  }
+  const m = messageTelegram(update);
   if (!admin || !m) return new Response("ok");
   const repondre = (t: string) => envoyerTelegram(m.chat, t).catch((e) => console.error("Telegram", e));
   const { data: s } = await admin.from("settings").select("telegram").eq("id", 1).maybeSingle();
@@ -71,9 +105,17 @@ export async function POST(request: Request) {
       ].join("\n\n"),
     );
   } else if (c.type === "douane") {
+    // chaque demande avec ses boutons (les 8 plus anciennes) ; pour modifier un texte, c'est dans le QG
     const attente = await db.pendingApprovals();
     const app = process.env.APP_URL?.replace(/\/$/, "");
-    await repondre(attente.length ? `🛂 <b>En Douane</b> (${attente.length}) :\n${attente.slice(0, 10).map((a) => `• ${html(a.titre)}`).join("\n")}${app ? `\n\nValider : ${app}/douane` : ""}` : "🛂 Rien n'attend ta validation. 👌");
+    if (!attente.length) await repondre("🛂 Rien n'attend ta validation. 👌");
+    else {
+      await repondre(`🛂 <b>En Douane : ${attente.length}</b>${attente.length > 8 ? " (voici les 8 plus anciennes)" : ""}. Accepte ou refuse en un clic${app ? ` ; pour modifier un texte : ${app}/douane` : " ; pour modifier un texte, ouvre le QG"}.`);
+      for (const a of attente.slice(0, 8)) {
+        const { texte: t, boutons } = carteDouane(a, team.find((x) => x.id === a.agent_id)?.nom ?? null);
+        await envoyerTelegram(m.chat, t, true, boutons).catch((e) => console.error("Telegram", e));
+      }
+    }
   } else {
     const cible = c.cible ?? "marius";
     const { error } = await admin.from("missions").insert({ demandeur: chat.email, texte: c.texte.slice(0, 4000), cible, statut: "nouvelle", telegram: m.chat, telegram_msg_id: m.id });

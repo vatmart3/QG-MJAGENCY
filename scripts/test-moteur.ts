@@ -25,7 +25,7 @@ import { kpis, kpisTexte } from "@/engine/kpis";
 import { notifierFondateurs } from "@/engine/notifications";
 import { createHmac } from "node:crypto";
 import { interpreter, messagesEntrants, normNumero, signatureValide } from "@/integrations/whatsapp";
-import { messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
+import { boutonTelegram, carteDouane, messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
 import { autoriseClaude, jouerPas, prendreTaches } from "@/engine/claude-worker";
 import { toolByName } from "@/engine/tools";
 import { jetonDesinscription, jetonValide, lirePilote, prochainCreneau, relancesProspects, reponsesProspects, tacheOptimisation, tacheProspectionAuto } from "@/commercial/pilote";
@@ -506,6 +506,27 @@ async function scenarioAtelierBoutique() {
   await notifierFondateurs(db, avecPush, new Date(Date.now() + 1000));
   const sonnent = tg.slice(1);
   check(sonnent.length === 2 && sonnent.every((x) => !x.silencieux) && sonnent.some((x) => x.chat === "222") && recues.length === 1 && recues[0]!.url === "/douane" && recues[0]!.corps.includes("Jade"), `Douane + alerte : sonnerie pour les deux comptes, une notification push groupée, une seule fois (${recues.map((r) => r.titre).join(" | ")})`);
+
+  // la Douane dans Telegram : chaque demande arrive avec ses boutons, un clic décide (une seule fois)
+  const cartes: { chat: string; t: string; b: { texte: string; data: string }[][] }[] = [];
+  let webhookMaj = 0;
+  const avecBoutons = { ...avecPush, telegramBoutons: async (chat: string, t: string, b: { texte: string; data: string }[][]) => void cartes.push({ chat, t, b }), telegramWebhook: async () => (webhookMaj++, true) };
+  await new Promise((r) => setTimeout(r, 20));
+  const [dem] = await q<{ id: string }>("insert into public.approvals (agent_id, type_action, titre, apercu, destinataire, objet, statut, cree_le) values ('noe', 'email', 'Réponse à La Marée', 'Bonjour, voici le devis <b>', 'contact@lamaree.fr', 'Votre devis', 'en_attente', now() + interval '1500 milliseconds') returning id");
+  await new Promise((r) => setTimeout(r, 10));
+  const avant = tg.length;
+  await notifierFondateurs(db, avecBoutons, new Date(Date.now() + 2000));
+  await notifierFondateurs(db, avecBoutons, new Date(Date.now() + 3000));
+  const c111 = cartes.find((c) => c.chat === "111");
+  check(cartes.length === 2 && !!c111 && c111.t.includes("<b>Noé</b> veut envoyer ce mail à <b>contact@lamaree.fr</b>") && c111.t.includes("&lt;b&gt;") && c111.b[0]![0]!.data === `ok:${dem!.id}` && c111.b[0]![1]!.data === `non:${dem!.id}` && tg.length === avant && webhookMaj === 1, `nouvelle demande en Douane → une carte avec Accepter / Refuser sur chaque téléphone, une seule fois, sans doublon dans le résumé`);
+  const clic = boutonTelegram({ callback_query: { id: "cb1", data: `ok:${dem!.id}`, message: { message_id: 9, text: "carte", chat: { id: 111, type: "private" } } } });
+  check(clic?.decision === "approuve" && clic.approval === dem!.id && boutonTelegram({ callback_query: { id: "x", data: "ok:pas-un-id", message: { message_id: 1, chat: { id: 1, type: "private" } } } }) === null, "le clic est lu (et un bouton inconnu ignoré)");
+  const d1 = await db.deciderSiEnAttente(dem!.id, "approuve", "jeremyvatuonepro@gmail.com");
+  const d2 = await db.deciderSiEnAttente(dem!.id, "refuse", "matheis@example.com", "non");
+  const [apres] = await q<{ statut: string; decide_par: string; execution_statut: string | null }>("select statut, decide_par, execution_statut from public.approvals where id = $1", [dem!.id]);
+  check(!!d1 && d2 === null && apres?.statut === "approuve" && apres.decide_par === "jeremyvatuonepro@gmail.com", "Accepter depuis Telegram valide la demande ; un second clic (ou l'autre fondateur) ne change plus rien");
+  const qc = carteDouane({ id: dem!.id, type_action: "question", titre: "Budget ?", apercu: "On part sur 1 690 € ?" }, "Victor");
+  check(qc.texte.startsWith("❓ <b>Victor</b> te pose une question") && qc.boutons[0]!.map((x) => x.texte).join(" ") === "✅ Oui ❌ Non", "une question d'agent : boutons Oui / Non");
   await pool.query(`update public.settings set telegram = '{"chats": {}, "appairages": {}}', notifications = '{"niveau": "tout"}' where id = 1`);
 }
 

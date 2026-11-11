@@ -168,6 +168,10 @@ export function pgEngineDb(pool: Pool): EngineDb {
     async insertApproval(row) {
       return String((await insert("approvals", row as Record<string, unknown>)).id);
     },
+    async deciderSiEnAttente(id, statut, par, motif) {
+      const [a] = await q("update public.approvals set statut = $2, decide_par = $3, decide_le = now(), motif = coalesce($4, motif) where id = $1 and statut = 'en_attente' returning *", [id, statut, par, motif ?? null]);
+      return (a as unknown as EApproval) ?? null;
+    },
     async approval(id) {
       const [a] = await q("select * from public.approvals where id = $1", [id]);
       return (a as unknown as EApproval) ?? null;

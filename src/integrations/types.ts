@@ -96,6 +96,10 @@ export interface Services {
   whatsapp?(a: string, texte: string): Promise<void>;
   /** message Telegram (HTML simple) à un chat relié ; `silencieux` : sans sonnerie */
   telegram?(chat: string, texteHtml: string, silencieux: boolean): Promise<void>;
+  /** message Telegram avec des boutons (demandes de la Douane : Accepter / Refuser) */
+  telegramBoutons?(chat: string, texteHtml: string, boutons: import("./telegram").Boutons): Promise<void>;
+  /** s'assure que le bot reçoit les clics sur les boutons (bots branchés avant leur arrivée) */
+  telegramWebhook?(): Promise<boolean>;
 }
 
 /** Extrait l'adresse d'un en-tête « Nom <adresse> ». */
