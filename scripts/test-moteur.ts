@@ -12,7 +12,7 @@ import { SENSIBLE_RE } from "@/engine/tools/autonomie";
 import { launchRoutine } from "@/engine/routines";
 import { estAutomatique } from "@/engine/courrier";
 import { resumeFinance } from "@/finance/calc";
-import { noter, relancesDevis, trouverProspects, urlPublique } from "@/commercial/prospection";
+import { enrichirLeads, noter, relancesDevis, trouverProspects, urlPublique } from "@/commercial/prospection";
 import { tacheSacha } from "@/commercial/taches";
 import { demoPlaces, placesDepuisOsm, placesDepuisRecherche, requeteOverpass } from "@/integrations/places";
 import { sha256Hex } from "@/finance/pdf";
@@ -705,6 +705,15 @@ async function scenarioOsm() {
   );
   check(web.length === 2 && web[0]!.email === "contact@boulangerie-gambetta.fr" && web[0]!.site === "https://boulangerie-gambetta.fr" && web[0]!.instagram === "gambetta_sete" && web[1]!.nom === "Le Pain de Thau" && !web[1]!.site && !web[1]!.email && web[0]!.place_id === "web:boulangerie-gambetta.fr", "recherche web : liste lue, annuaires écartés (Pages Jaunes), doublons et mails invalides ignorés");
   check(placesDepuisRecherche("Désolé, rien trouvé.", "X", null, 5).length === 0, "réponse sans liste → aucun prospect inventé");
+  // coordonnées retrouvées pour les prospects sans e-mail (une seule recherche par commerce)
+  await pool.query("set session_replication_role = replica; delete from public.leads; set session_replication_role = origin;");
+  await q("insert into public.leads (place_id, nom, ville, telephone, score, source) values ('web:a', 'Boulangerie Dekker', 'Mèze', '04 67 00 00 01', 58, 'places'), ('web:b', 'Le Fournil de Léo', 'Marseillan', '04 67 00 00 02', 58, 'places')");
+  let appels = 0;
+  const avecContacts = { kind: "web" as const, search: async () => [], enrichir: async () => (appels++, [{ nom: "Boulangerie Dekker", email: "contact@dekker.fr", instagram: "dekker_meze" }, { nom: "Le Fournil de Léo" }]) };
+  const ne = await enrichirLeads(db, avecContacts);
+  const ne2 = await enrichirLeads(db, avecContacts);
+  const dk = await db.commercial.leadParEmail("contact@dekker.fr");
+  check(ne === 1 && ne2 === 0 && appels === 1 && dk?.instagram === "dekker_meze" && dk.score === 65, "coordonnées retrouvées (e-mail, Instagram), score mis à jour, jamais recherchées deux fois");
   const enPanne = { kind: "osm" as const, search: async () => Promise.reject(new Error("OpenStreetMap ne répond pas (serveur lent)")) };
   const t0 = Date.now();
   const rp = await trouverProspects(db, enPanne, await db.commercial.prospection(), 10);

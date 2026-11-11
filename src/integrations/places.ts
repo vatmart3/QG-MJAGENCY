@@ -24,6 +24,8 @@ export interface Place {
 export interface Places {
   kind: "google" | "osm" | "web" | "demo";
   search(query: string, max: number): Promise<Place[]>;
+  /** cherche l'e-mail, l'Instagram ou le site de commerces qui n'en ont pas (une recherche pour tout le lot) */
+  enrichir?(items: { nom: string; ville?: string | null; telephone?: string | null }[]): Promise<{ nom: string; email?: string; instagram?: string; site?: string }[]>;
 }
 
 const FIELDS = [
@@ -262,6 +264,11 @@ export function placesDepuisRecherche(texte: string, label: string, zone: string
   return out.sort((a, b) => rang(a) - rang(b)).slice(0, max);
 }
 
+const SYSTEME_CONTACTS =
+  "Tu retrouves les coordonnées publiques de commerces locaux pour une agence web. Utilise la recherche web (2 recherches au plus). Réponds UNIQUEMENT par un tableau JSON, sans texte autour : " +
+  '[{"nom":"","email":"","instagram":"","site":""}] — un objet par commerce de la liste, avec exactement le même « nom ». ' +
+  "email = adresse publique du commerce (affichée sur sa page, ses réseaux ou un annuaire) ; instagram = identifiant du compte du commerce ; site = site officiel (jamais un annuaire ni Facebook). N'invente rien : chaîne vide si tu ne trouves pas.";
+
 export function webPlaces(
   rechercher: (q: string, o: { systeme: string; maxTokens: number; maxRecherches: number }) => Promise<{ texte: string; recherches: number }>,
 ): Places {
@@ -273,6 +280,27 @@ export function webPlaces(
       const label = OSM_METIERS.find((d) => d.cles.some((c) => n.includes(sansAcc(c))))?.label ?? metier.charAt(0).toUpperCase() + metier.slice(1);
       const r = await rechercher(`${metier} à ${zone ?? "Sète"} (Hérault, France) : liste de commerces avec leur site web officiel et leurs coordonnées.`, { systeme: SYSTEME_ANNUAIRE, maxTokens: 2500, maxRecherches: 2 });
       return placesDepuisRecherche(r.texte, label, zone, Math.min(20, max));
+    },
+    async enrichir(items) {
+      if (!items.length) return [];
+      const liste = items.slice(0, 8).map((i) => `- ${i.nom}${i.ville ? ` (${i.ville})` : ""}${i.telephone ? ` · tél. ${i.telephone}` : ""}`);
+      const r = await rechercher(`Trouve l'e-mail public, le compte Instagram et le site de ces commerces :\n${liste.join("\n")}`, { systeme: SYSTEME_CONTACTS, maxTokens: 2000, maxRecherches: 2 });
+      const debut = r.texte.indexOf("[");
+      const fin = r.texte.lastIndexOf("]");
+      if (debut < 0 || fin <= debut) return [];
+      try {
+        const brut = JSON.parse(r.texte.slice(debut, fin + 1)) as Record<string, unknown>[];
+        return (Array.isArray(brut) ? brut : []).flatMap((o) => {
+          const s = (k: string) => (typeof o?.[k] === "string" ? (o[k] as string).trim() : "");
+          if (!s("nom")) return [];
+          const email = s("email").toLowerCase();
+          let site = httpUrl(s("site") || undefined);
+          if (site && ANNUAIRES.test(site)) site = undefined;
+          return [{ nom: s("nom"), email: /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email) ? email : undefined, instagram: insta(s("instagram") || undefined), site }];
+        });
+      } catch {
+        return [];
+      }
     },
   };
 }

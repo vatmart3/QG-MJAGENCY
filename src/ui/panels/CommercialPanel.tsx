@@ -165,6 +165,21 @@ function Prospects({ d, reload }: { d: Data; reload: () => void }) {
         >
           🔎 Trouver des prospects
         </button>
+        <button
+          type="button"
+          disabled={busy}
+          className={btn}
+          title="Une recherche sur Internet pour retrouver l'e-mail, l'Instagram ou le site des prospects qui n'en ont pas (≈ 1 à 2 centimes)"
+          onClick={() =>
+            void run(async () => {
+              const r = await api<{ trouves: number }>("/api/commercial/prospects", { enrichir: true });
+              reload();
+              return r.trouves ? `Coordonnées retrouvées pour ${r.trouves} commerce(s).` : "Aucune nouvelle coordonnée trouvée pour ces commerces (ils n'affichent pas d'e-mail en ligne) : téléphone ou visite.";
+            })
+          }
+        >
+          📇 Chercher les coordonnées
+        </button>
         {sel.length > 0 && (
           <button
             type="button"

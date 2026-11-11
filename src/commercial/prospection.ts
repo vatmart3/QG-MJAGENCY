@@ -1,5 +1,6 @@
 import type { EngineDb } from "@/engine/db";
 import type { Place, Places } from "@/integrations/places";
+import type { Lead } from "./db";
 
 /**
  * Prospection SANS IA : Hugo cherche (Google Places), Inès analyse le site et la fiche, note et choisit
@@ -198,7 +199,11 @@ export async function trouverProspects(db: EngineDb, places: Places, cfg: Prospe
       });
       if (ok) crees++;
     }
-    await db.kvSet("prospection.curseur", { i: i + 1 });
+      await db.kvSet("prospection.curseur", { i: i + 1 });
+  }
+  // commerces sans e-mail : une recherche de plus pour tout le lot (e-mail public, Instagram, site)
+  if (places.enrichir && crees && Date.now() - debut < budgetMs - 15_000) {
+    await enrichirLeads(db, places).catch((e) => erreurs.push(`coordonnées : ${e instanceof Error ? e.message : String(e)}`));
   }
   if (crees) {
     await db.insertMessage({ from_agent: "hugo", to_agent: "ines", type: "delegation", contenu: `${crees} nouveaux commerces à noter`, resume_bulle: `Inès, ${crees} nouveaux prospects pour toi !` });
@@ -246,5 +251,33 @@ export async function relancesDevis(db: EngineDb, today: string): Promise<number
     n++;
   }
   if (n) await db.insertJournal({ type: "action", titre: `📮 Margaux a préparé ${n} relance${n > 1 ? "s" : ""} de devis : à valider en Douane`, agent_id: "margaux", pole_id: "commercial" });
+  return n;
+}
+
+/** Complète les prospects récents sans e-mail (une recherche web pour 8 commerces), puis renote ceux qui changent. */
+export async function enrichirLeads(db: EngineDb, places: Places): Promise<number> {
+  if (!places.enrichir) return 0;
+  const sans = (await db.commercial.searchLeads({ statut: "nouveau", max: 40 })).filter((l) => !l.demo && !l.email && !(l.notes ?? "").includes("[coordonnées cherchées]")).slice(0, 8);
+  if (!sans.length) return 0;
+  const trouves = await places.enrichir(sans.map((l) => ({ nom: l.nom, ville: l.ville, telephone: l.telephone })));
+  const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  let n = 0;
+  for (const l of sans) {
+    const t = trouves.find((x) => norm(x.nom) === norm(l.nom) || norm(l.nom).includes(norm(x.nom)) || norm(x.nom).includes(norm(l.nom)));
+    const patch: Partial<Lead> = { notes: `${l.notes ?? ""} [coordonnées cherchées]`.trim() };
+    if (t?.email) patch.email = t.email;
+    if (t?.instagram && !l.instagram) patch.instagram = t.instagram;
+    if (t?.site && !l.site) {
+      patch.site = t.site;
+      const s = await scanSite(t.site);
+      const nn = noter({ place_id: l.place_id ?? "", nom: l.nom, adresse: l.adresse ?? "", site: t.site, telephone: l.telephone ?? undefined, metier: l.metier ?? undefined, email: patch.email ?? s.email }, s);
+      Object.assign(patch, { score: nn.score, angle: nn.angle, diagnostic: nn.diagnostic, email: patch.email ?? s.email ?? undefined, instagram: patch.instagram ?? s.instagram ?? undefined });
+    } else if (patch.email) {
+      patch.score = Math.min(100, l.score + 7);
+    }
+    if (patch.email || patch.instagram || patch.site) n++;
+    await db.commercial.updateLead(l.id, patch);
+  }
+  if (n) await db.insertJournal({ type: "action", titre: `📇 Inès a retrouvé les coordonnées de ${n} commerce${n > 1 ? "s" : ""}`, agent_id: "ines", pole_id: "prospection" });
   return n;
 }

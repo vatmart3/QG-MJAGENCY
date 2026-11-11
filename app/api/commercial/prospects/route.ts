@@ -1,4 +1,4 @@
-import { trouverProspects } from "@/commercial/prospection";
+import { enrichirLeads, trouverProspects } from "@/commercial/prospection";
 import { commercialCtx } from "@/commercial/server";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,8 @@ export async function POST(request: Request) {
   const c = await commercialCtx(request);
   if (!c.ok) return c.res;
   try {
-    const { max } = (await request.json().catch(() => ({}))) as { max?: number };
+    const { max, enrichir } = (await request.json().catch(() => ({}))) as { max?: number; enrichir?: boolean };
+    if (enrichir) return Response.json({ trouves: await enrichirLeads(c.db, await c.services.places()) });
     const cfg = await c.db.commercial.prospection();
     return Response.json(await trouverProspects(c.db, await c.services.places(), cfg, Math.min(20, Math.max(1, max ?? cfg.par_jour))));
   } catch (e) {

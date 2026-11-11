@@ -4,7 +4,7 @@ import { rapportEmailHtml } from "@/lib/email-html";
 import { lireRapport, rapportVersMarkdown } from "@/lib/rapport";
 import type { Services } from "@/integrations/types";
 import { alertesFiscales, clotureMois, facturerAbonnements, relancesImpayes } from "@/finance/automations";
-import { relancesDevis, trouverProspects } from "@/commercial/prospection";
+import { enrichirLeads, relancesDevis, trouverProspects } from "@/commercial/prospection";
 import { surveillerBoutique } from "@/boutique/surveillance";
 import { relancesProspects, tacheProspectionAuto } from "@/commercial/pilote";
 import { surveillerSites } from "@/tech/surveillance";
@@ -88,7 +88,11 @@ export async function launchRoutine(db: EngineDb, services: Services, team: EAge
   }
   if (r.id === "rt_relances_devis") return (await relancesDevis(db, formatInTimeZone(now, TZ, "yyyy-MM-dd"))) > 0;
   // pilote commercial : Sacha écrit aux meilleurs prospects, relance unique sans IA
-  if (r.id === "rt_prospection_auto") return !!(await tacheProspectionAuto(db, now));
+  if (r.id === "rt_prospection_auto") {
+    // d'abord retrouver les coordonnées des prospects sans e-mail, puis Sacha écrit
+    await enrichirLeads(db, await services.places()).catch(() => 0);
+    return !!(await tacheProspectionAuto(db, now));
+  }
   if (r.id === "rt_relances_prospects") return (await relancesProspects(db, now)) > 0;
   // Atelier Tech et boutique : contrôles et alertes, sans IA
   if (r.id === "rt_sante_sites") return (await surveillerSites(db, now)).controles > 0;
