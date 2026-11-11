@@ -89,15 +89,19 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
     // Google Places si une clé est configurée (avec les avis) ; sinon Hugo cherche sur Internet (recherche web de
     // Claude, ≈ 1 centime) ; OpenStreetMap en dernier recours (ses serveurs refusent souvent les hébergeurs cloud)
     places: async () => {
-      if (process.env.GOOGLE_PLACES_API_KEY) return googlePlaces(process.env.GOOGLE_PLACES_API_KEY);
       const llm = llmFromEnv();
-      if (llm.kind !== "anthropic") return osmPlaces();
-      return webPlaces(async (q, o) => {
-        const r = await llm.search(q, o);
-        const cout = costEur(r.model, r.usage) + r.recherches * COUT_RECHERCHE_EUR;
-        await admin.from("usage").insert({ agent_id: "hugo", modele: `${r.model} + recherche web`, tokens_in: r.usage.input + r.usage.cacheRead + r.usage.cacheWrite, tokens_out: r.usage.output, cout_estime: Math.round(cout * 100_000) / 100_000 });
-        return r;
-      });
+      const web =
+        llm.kind === "anthropic"
+          ? webPlaces(async (q, o) => {
+              const r = await llm.search(q, o);
+              const cout = costEur(r.model, r.usage) + r.recherches * COUT_RECHERCHE_EUR;
+              await admin.from("usage").insert({ agent_id: "hugo", modele: `${r.model} + recherche web`, tokens_in: r.usage.input + r.usage.cacheRead + r.usage.cacheWrite, tokens_out: r.usage.output, cout_estime: Math.round(cout * 100_000) / 100_000 });
+              return r;
+            })
+          : null;
+      // Google Maps pour trouver (avec notes et avis) ; la recherche web retrouve les e-mails manquants
+      if (process.env.GOOGLE_PLACES_API_KEY) return { ...googlePlaces(process.env.GOOGLE_PLACES_API_KEY), ...(web?.enrichir ? { enrichir: web.enrichir } : {}) };
+      return web ?? osmPlaces();
     },
     boutique: async () => boutiqueDepuisEnv(),
     notifier: (n) => envoyerPush(admin, n),
