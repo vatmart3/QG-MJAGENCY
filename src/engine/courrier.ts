@@ -1,4 +1,5 @@
 import type { Services } from "@/integrations/types";
+import { reponsesProspects } from "@/commercial/pilote";
 import type { EngineDb } from "./db";
 
 /**
@@ -27,7 +28,10 @@ export async function triInbox(db: EngineDb, services: Services, agentId = "luci
   // notifications automatiques : rangées directement, sans IA
   const autos = nouveaux.filter((m) => estAutomatique(m.de));
   for (const m of autos) await db.updateEmail(m.id, { categorie: "autre", resume: "Notification automatique (rangée sans IA).", urgence: 0, statut: "trie" });
-  const fresh = nouveaux.filter((m) => !estAutomatique(m.de));
+  // prospects qui répondent (pipeline) ou demandent « STOP » (désinscrits, sans réponse) : sans IA
+  const humains = nouveaux.filter((m) => !estAutomatique(m.de));
+  const { stops } = await reponsesProspects(db, humains);
+  const fresh = humains.filter((m) => !stops.includes(m.id));
   if (!fresh.length) return 0;
   await db.insertTask({
     agent_id: agentId,

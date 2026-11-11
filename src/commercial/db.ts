@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { num, type Ligne, type Quote } from "@/finance/types";
+import { lirePilote, type Pilote } from "./pilote-reglages";
 import { lireProspection, type Prospection } from "./prospection";
 
 export type LeadStatut = "nouveau" | "a_contacter" | "contacte" | "repondu" | "converti" | "ecarte";
@@ -29,6 +30,9 @@ export interface Lead {
   notes: string | null;
   client_id: string | null;
   cree_le: string;
+  /** pilote commercial : date du premier mail, de la relance */
+  contacte_le?: string | null;
+  relance_le?: string | null;
 }
 
 export interface Opportunity {
@@ -62,6 +66,17 @@ export interface CommercialDb {
   updateOpportunity(id: string, patch: Partial<Opportunity>): Promise<void>;
   quotesEnAttente(): Promise<Quote[]>;
   markQuoteRelance(id: string, niveau: number, le: string): Promise<void>;
+  /** pilote commercial (réglages) */
+  pilote(): Promise<Pilote>;
+  /** envois du pilote : combien créés depuis une date, et l'heure du dernier envoi programmé */
+  envoisPilote(depuisIso: string): Promise<{ aujourdhui: number; dernier: string | null }>;
+  leadsAProspecter(scoreMin: number, max: number): Promise<Lead[]>;
+  leadsARelancer(avantIso: string, max: number): Promise<Lead[]>;
+  leadParEmail(email: string): Promise<Lead | null>;
+  estDesinscrit(email: string): Promise<boolean>;
+  desinscrire(email: string, source: string): Promise<void>;
+  /** premier mail de prospection réellement envoyé à un prospect (objet, fil Gmail) */
+  premierEnvoiProspection(leadId: string): Promise<{ objet: string; threadId: string | null } | null>;
   /** chiffres pour les KPIs de Diane : prospects par statut, pipeline par étape */
   stats(): Promise<{ leads: Record<string, number>; pipeline: { etape: Etape; n: number; montant: number; maj_le: string }[] }>;
 }
@@ -131,6 +146,39 @@ export function supabaseCommercialDb(sb: SupabaseClient): CommercialDb {
     async markQuoteRelance(id, niveau, le) {
       const q = ok(await sb.from("quotes").select("relances").eq("id", id).maybeSingle());
       ok(await sb.from("quotes").update({ relances: [...((q?.relances as unknown[]) ?? []), { niveau, le }] }).eq("id", id));
+    },
+    async pilote() {
+      const s = ok(await sb.from("settings").select("pilote_commercial").eq("id", 1).maybeSingle());
+      return lirePilote(s?.pilote_commercial);
+    },
+    async envoisPilote(depuisIso) {
+      const r = (ok(await sb.from("approvals").select("cree_le, payload").eq("decide_par", "pilote commercial").gte("cree_le", new Date(Date.now() - 3 * 86400_000).toISOString()).limit(500)) ?? []) as { cree_le: string; payload: { envoyer_apres?: string } }[];
+      const dernier = r.map((x) => x.payload.envoyer_apres).filter((x): x is string => !!x).sort().pop() ?? null;
+      return { aujourdhui: r.filter((x) => x.cree_le >= depuisIso).length, dernier };
+    },
+    async leadsAProspecter(scoreMin, max) {
+      const r = ((ok(await sb.from("leads").select("*").eq("statut", "nouveau").eq("demo", false).not("email", "is", null).gte("score", scoreMin).order("score", { ascending: false }).limit(max * 3)) ?? []) as Record<string, unknown>[]).map(nLead);
+      if (!r.length) return [];
+      const stop = new Set(((ok(await sb.from("desinscrits").select("email").in("email", r.map((l) => (l.email ?? "").toLowerCase()))) ?? []) as { email: string }[]).map((x) => x.email));
+      return r.filter((l) => !stop.has((l.email ?? "").toLowerCase())).slice(0, max);
+    },
+    async leadsARelancer(avantIso, max) {
+      return ((ok(await sb.from("leads").select("*").eq("statut", "contacte").eq("demo", false).not("email", "is", null).lte("contacte_le", avantIso).is("relance_le", null).limit(max)) ?? []) as Record<string, unknown>[]).map(nLead);
+    },
+    async leadParEmail(email) {
+      const r = ok(await sb.from("leads").select("*").ilike("email", email.trim().replace(/[%_,()]/g, "")).limit(1));
+      return r?.[0] ? nLead(r[0] as Record<string, unknown>) : null;
+    },
+    async estDesinscrit(email) {
+      const r = ok(await sb.from("desinscrits").select("email").eq("email", email.trim().toLowerCase()).limit(1));
+      return (r ?? []).length > 0;
+    },
+    async desinscrire(email, source) {
+      ok(await sb.from("desinscrits").upsert({ email: email.trim().toLowerCase(), source }, { onConflict: "email", ignoreDuplicates: true }));
+    },
+    async premierEnvoiProspection(leadId) {
+      const r = (ok(await sb.from("approvals").select("objet, execution, execution_statut").eq("payload->>lead_id", leadId).eq("decide_par", "pilote commercial").eq("type_action", "email").in("execution_statut", ["fait", "simule"]).order("cree_le").limit(1)) ?? []) as { objet: string; execution: { threadId?: string } | null }[];
+      return r[0] ? { objet: r[0].objet, threadId: r[0].execution?.threadId ?? null } : null;
     },
     async stats() {
       const [l, o] = await Promise.all([sb.from("leads").select("statut").limit(5000), sb.from("opportunities").select("etape, montant, maj_le").limit(5000)]);

@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { CommercialDb, Lead, Opportunity } from "@/commercial/db";
 import { lireProspection } from "@/commercial/prospection";
+import { lirePilote } from "@/commercial/pilote-reglages";
 import type { FinanceDb } from "@/finance/db";
 import { lireBoutique } from "@/boutique/shopify";
 import { lireTelegram } from "@/integrations/telegram";
@@ -463,6 +464,34 @@ function pgCommercialDb(q: Q): CommercialDb {
     updateOpportunity: (id, patch) => upd("opportunities", id, patch as Record<string, unknown>),
     async quotesEnAttente() {
       return (await q("select * from public.quotes where statut in ('emis','envoye')")).map(pQuo);
+    },
+    async pilote() {
+      const [r] = await q<{ pilote_commercial: unknown }>("select pilote_commercial from public.settings where id = 1");
+      return lirePilote(r?.pilote_commercial);
+    },
+    async envoisPilote(depuisIso) {
+      const [r] = await q<{ n: string; dernier: Date | null }>("select count(*) filter (where cree_le >= $1) n, max((payload->>'envoyer_apres')::timestamptz) dernier from public.approvals where decide_par = 'pilote commercial' and cree_le >= now() - interval '3 days'", [depuisIso]);
+      return { aujourdhui: Number(r?.n ?? 0), dernier: r?.dernier ? new Date(r.dernier).toISOString() : null };
+    },
+    async leadsAProspecter(scoreMin, max) {
+      return (await q("select l.* from public.leads l where l.statut = 'nouveau' and not l.demo and l.email is not null and l.score >= $1 and not exists (select 1 from public.desinscrits d where d.email = lower(l.email)) order by l.score desc limit $2", [scoreMin, max])).map(nL);
+    },
+    async leadsARelancer(avantIso, max) {
+      return (await q("select * from public.leads where statut = 'contacte' and not demo and email is not null and contacte_le <= $1 and relance_le is null limit $2", [avantIso, max])).map(nL);
+    },
+    async leadParEmail(email) {
+      const [r] = await q("select * from public.leads where lower(email) = lower($1) limit 1", [email.trim()]);
+      return r ? nL(r) : null;
+    },
+    async estDesinscrit(email) {
+      return (await q("select 1 from public.desinscrits where email = lower($1)", [email.trim()])).length > 0;
+    },
+    async desinscrire(email, source) {
+      await q("insert into public.desinscrits (email, source) values (lower($1), $2) on conflict (email) do nothing", [email.trim(), source]);
+    },
+    async premierEnvoiProspection(leadId) {
+      const [r] = await q<{ objet: string; execution: { threadId?: string } | null }>("select objet, execution from public.approvals where payload->>'lead_id' = $1 and decide_par = 'pilote commercial' and type_action = 'email' and execution_statut in ('fait','simule') order by cree_le limit 1", [leadId]);
+      return r ? { objet: r.objet, threadId: r.execution?.threadId ?? null } : null;
     },
     async stats() {
       const leads: Record<string, number> = {};

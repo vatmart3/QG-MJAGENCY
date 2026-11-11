@@ -28,6 +28,7 @@ import { interpreter, messagesEntrants, normNumero, signatureValide } from "@/in
 import { messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
 import { autoriseClaude, jouerPas, prendreTaches } from "@/engine/claude-worker";
 import { toolByName } from "@/engine/tools";
+import { jetonDesinscription, jetonValide, lirePilote, prochainCreneau, relancesProspects, reponsesProspects, tacheProspectionAuto } from "@/commercial/pilote";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -186,7 +187,9 @@ async function scenarioCourrier() {
 
   // règle d'autonomie : « toujours autoriser » les mails de Noé → envoi direct vers une adresse connue
   await q("insert into public.autonomy_rules (agent_id, type_action, cree_par) values ('noe', 'email', 'test')");
-  await q("delete from public.emails where id = 'demo-mail-1'");
+  // le mail dont la réponse a été refusée n'a toujours pas de réponse : on le refait arriver (une seule réponse par mail)
+  const [sansReponse] = await q<{ id: string }>("select payload->>'repondre_a' as id from public.approvals where id = $1", [aps[1]!.id]);
+  await q("delete from public.emails where id = $1", [sansReponse?.id ?? "demo-mail-1"]);
   await run("2026-11-10T09:40:00Z");
   const auto = await q<{ statut: string; decide_par: string; execution_statut: string }>("select statut, decide_par, execution_statut from public.approvals where decide_par = 'règle d''autonomie'");
   check(auto.length === 1 && auto[0]!.execution_statut === "simule", "avec la règle, Noé envoie directement (adresse déjà connue)");
@@ -620,6 +623,58 @@ async function scenarioUneReponse() {
   check(!!rep["demo-mail-1"] && !rep["demo-mail-2"], "la boîte montre aux agents les mails « DÉJÀ RÉPONDU »");
 }
 
+async function scenarioPilote() {
+  console.log("\n— Pilote commercial : Sacha prospecte tout seul (étalé, plafonné, désinscription)");
+  await reset();
+  await pool.query("set session_replication_role = replica; delete from public.opportunities; delete from public.leads; delete from public.desinscrits; delete from public.approvals; set session_replication_role = origin;");
+  await q(`update public.settings set pilote_commercial = '{"actif": true, "mails_par_jour": 2, "score_min": 55, "relance_jours": 5, "debut": "09:00", "fin": "18:00", "ecart_minutes": 12}' where id = 1`);
+  const ins = async (nom: string, email: string, score: number, demo = false) =>
+    (await q<{ id: string }>("insert into public.leads (place_id, nom, email, score, angle, diagnostic, demo, source) values ($1, $2, $3, $4, 'Site vitrine', 'pas de site', $5, $6) returning id", [`p-${nom}`, nom, email, score, demo, demo ? "demo" : "places"]))[0]!.id;
+  const l1 = await ins("Boulangerie A", "contact@boulangerie-a.fr", 85);
+  const l2 = await ins("Fleuriste B", "bonjour@fleuriste-b.fr", 72);
+  const l3 = await ins("Garage C", "garage@garage-c.fr", 40);
+  await ins("Démo D", "demo@demo.example", 95, true);
+  const mardi = new Date("2026-11-10T09:30:00Z"); // 10 h 30 à Paris
+  const tid = await tacheProspectionAuto(db, mardi);
+  const [t] = await q<{ description: string; agent_id: string }>("select description, agent_id from public.tasks where id = $1", [tid]);
+  check(!!t && t.agent_id === "sacha" && t.description.includes("Boulangerie A") && t.description.includes("Fleuriste B") && !t.description.includes("Garage C") && !t.description.includes("Démo D"), "Sacha reçoit les 2 meilleurs prospects réels (score ≥ 55, jamais la démo)");
+
+  const send = toolByName("send_email")!;
+  const ctx = { db, llm, task: (await db.tasks([tid!]))[0]!, agent: (await db.agents()).find((a) => a.id === "sacha")!, run: null as never, team: await db.agents(), poles: new Map(), memory: [], now: mardi, settings: await db.settings(), services: demoServices } as unknown as Parameters<typeof send.run>[0];
+  const r1 = await send.run(ctx, { a: "contact@boulangerie-a.fr", objet: "Votre boulangerie sur Google", corps: "Bonjour, une idée pour vos avis Google…", type: "prospection" });
+  const r2 = await send.run(ctx, { a: "bonjour@fleuriste-b.fr", objet: "Vos bouquets en ligne", corps: "Bonjour, une idée pour votre fleuristerie…", type: "prospection" });
+  const r3 = await send.run(ctx, { a: "garage@garage-c.fr", objet: "Votre garage", corps: "Bonjour…", type: "prospection" });
+  const r4 = await send.run(ctx, { a: "demo@demo.example", objet: "x", corps: "y", type: "prospection" });
+  const r5 = await send.run(ctx, { a: "contact@boulangerie-a.fr", objet: "Encore", corps: "Bonjour", type: "prospection" });
+  const aps = await q<{ statut: string; decide_par: string | null; apercu: string; payload: { envoyer_apres?: string; lead_id?: string } }>("select statut, decide_par, apercu, payload from public.approvals order by cree_le");
+  const auto = aps.filter((a) => a.decide_par === "pilote commercial");
+  const e1 = new Date(auto[0]?.payload.envoyer_apres ?? 0).getTime();
+  const e2 = new Date(auto[1]?.payload.envoyer_apres ?? 0).getTime();
+  check(auto.length === 2 && e2 - e1 >= 12 * 60_000 && auto.every((a) => a.apercu.includes("/api/desinscription?e=") && a.apercu.includes("STOP")), `2 mails programmés tout seuls, étalés (${Math.round((e2 - e1) / 60_000)} min d'écart), avec lien de désinscription (${r1.content.slice(0, 40)}…)`);
+  check(aps.filter((a) => a.statut === "en_attente").length === 1 && r3.content.includes("plafond") && r4.content.includes("DÉMONSTRATION") && r5.content.includes("déjà été contacté"), "au-delà du plafond → Douane ; démo jamais contactée ; un seul premier mail par prospect");
+  void r2;
+  const samedi = prochainCreneau(null, new Date("2026-11-14T15:00:00Z"), lirePilote({}));
+  check(samedi.toISOString() === "2026-11-16T08:00:00.000Z", `le week-end, les envois attendent lundi 9 h (${samedi.toISOString()})`);
+
+  // réponses : un STOP désinscrit, une vraie réponse remonte dans le pipeline
+  await q("insert into public.emails (id, compte, de, objet, extrait, statut) values ('m-stop', 'test', 'Fleuriste B <bonjour@fleuriste-b.fr>', 'STOP', 'merci de ne plus me contacter', 'a_trier'), ('m-rep', 'test', 'Boulangerie A <contact@boulangerie-a.fr>', 'Re: Votre boulangerie sur Google', 'Oui ça m''intéresse', 'a_trier')");
+  const rr = await reponsesProspects(db, [{ id: "m-stop", de: "Fleuriste B <bonjour@fleuriste-b.fr>", objet: "STOP", extrait: "merci de ne plus me contacter" }, { id: "m-rep", de: "Boulangerie A <contact@boulangerie-a.fr>", objet: "Re: Votre boulangerie sur Google", extrait: "Oui ça m'intéresse" }]);
+  const st = Object.fromEntries((await q<{ id: string; statut: string }>("select id, statut from public.leads")).map((x) => [x.id, x.statut]));
+  const opp = await q("select 1 from public.opportunities where lead_id = $1", [l1]);
+  check(rr.reponses === 1 && rr.stops.length === 1 && st[l2] === "ecarte" && (await db.commercial.estDesinscrit("bonjour@fleuriste-b.fr")) && st[l1] === "repondu" && opp.length === 1, "« STOP » → désinscrit pour toujours ; une réponse → « a répondu » + affaire dans le pipeline");
+
+  // relance unique à J+5, sans IA, dans le fil du premier mail
+  await q("update public.leads set statut = 'contacte', contacte_le = now() - interval '6 days', relance_le = null where id = $1", [l3]);
+  await q("insert into public.approvals (agent_id, type_action, titre, apercu, objet, destinataire, payload, statut, decide_par, execution_statut, execution) values ('sacha', 'email', 'Prospection : Garage C', 'x', 'Votre garage', 'garage@garage-c.fr', $1, 'approuve', 'pilote commercial', 'fait', '{\"threadId\": \"th-1\"}')", [JSON.stringify({ kind: "email", lead_id: l3, prospection: true })]);
+  await q(`update public.settings set pilote_commercial = '{"actif": true, "mails_par_jour": 10, "score_min": 55, "relance_jours": 5}' where id = 1`);
+  const nr = await relancesProspects(db, new Date("2026-11-11T14:00:00Z"));
+  const nr2 = await relancesProspects(db, new Date("2026-11-11T14:05:00Z"));
+  const [rel] = await q<{ objet: string; payload: { threadId?: string } }>("select objet, payload from public.approvals where type_action = 'relance'");
+  check(nr === 1 && nr2 === 0 && rel?.objet === "Re: Votre garage" && rel.payload.threadId === "th-1", "relance unique à J+5, dans le même fil, sans IA");
+  check(jetonValide("contact@boulangerie-a.fr", jetonDesinscription("contact@boulangerie-a.fr")) && !jetonValide("autre@x.fr", jetonDesinscription("contact@boulangerie-a.fr")), "lien de désinscription signé (impossible de désinscrire quelqu'un d'autre)");
+  await q(`update public.settings set pilote_commercial = '{"actif": false}' where id = 1`);
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -636,6 +691,7 @@ async function scenarioUneReponse() {
     await scenarioWhatsApp();
     await scenarioCerveau();
     await scenarioUneReponse();
+    await scenarioPilote();
   } catch (e) {
     console.error(e);
     failures++;

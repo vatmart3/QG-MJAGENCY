@@ -120,6 +120,21 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
 
+## Pilote automatique : les agents travaillent seuls
+
+- **Prospection** (Commercial → Réglages → Pilote commercial, actif par défaut) : chaque jour de semaine, Hugo et
+  Inès trouvent et notent des commerces (10 h, sans IA), **Sacha écrit aux meilleurs** (10 h 30, `rt_prospection_auto`)
+  avec `send_email` `type=prospection` : les mails **partent tout seuls**, étalés (12 min d'écart, 9 h-18 h, jours
+  ouvrés), plafond quotidien (10 par défaut). Prix, contrat, engagement → Douane. Jamais de prospect de démo, un seul
+  premier mail par prospect. **Relance unique** à J+5, sans IA, dans le même fil (`rt_relances_prospects`).
+- **Règles de la prospection B2B** : identité de l'agence et **lien de désinscription** signé dans chaque mail
+  (`/api/desinscription`), réponse « STOP » détectée sans IA ; table `desinscrits`, jamais réécrits.
+- **Réponses** : un prospect qui répond passe « a répondu » et une affaire est créée dans le pipeline ; Lucie, Noé et
+  Victor prennent le relais.
+- **Création** : publications de la semaine (Chloé, lundi), article de blog (Lina, mercredi), veille (Gabin, lundi).
+  La publication sur les réseaux reste manuelle (les textes sont prêts dans Rapports).
+- Migration `…1700`.
+
 ## Une ville vivante (carte 78 × 78)
 
 - **Carte agrandie** : 6e colonne d'emplacements (c6r1…c6r5, pour de nouveaux pôles), phare à l'est, troisième pont.

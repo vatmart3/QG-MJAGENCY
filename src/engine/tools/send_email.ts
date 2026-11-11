@@ -1,6 +1,8 @@
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { z } from "zod";
-import { decisionAutonome, heureParis } from "./autonomie";
-import { defineTool } from "./types";
+import { piedProspection, prochainCreneau } from "@/commercial/pilote";
+import { decisionAutonome, heureParis, SENSIBLE_RE } from "./autonomie";
+import { defineTool, type ToolCtx, type ToolOutcome } from "./types";
 import { isInternal, parseRecipients, withSignature } from "./mail_common";
 
 /**
@@ -16,12 +18,13 @@ export const sendEmail = defineTool({
     objet: z.string().min(1).max(200),
     corps: z.string().min(1).max(20_000).describe("texte du mail, sans signature"),
     repondre_a: z.string().max(200).optional(),
-    type: z.enum(["email", "relance"]).optional().describe("relance pour un suivi de mail sans réponse"),
+    type: z.enum(["email", "relance", "prospection"]).optional().describe("relance pour un suivi de mail sans réponse ; prospection pour un premier mail à un prospect du CRM (pilote commercial)"),
     sensible: z.boolean().optional().describe("true si le mail engage l'agence (prix, délai promis, contrat, juridique) : validation obligatoire"),
   }),
   async run(ctx, input) {
     const dest = parseRecipients(input.a);
     if (!dest) return { content: "Adresse(s) de destinataire invalide(s).", isError: true };
+    if (input.type === "prospection") return envoyerProspection(ctx, dest, input);
     // une seule réponse par mail : un mail déjà traité ne reçoit jamais une deuxième réponse
     if ((input.type ?? "email") === "email") {
       if (!input.repondre_a && dest.length === 1 && !isInternal(dest[0]!, ctx.settings)) {
@@ -112,3 +115,57 @@ export const sendEmail = defineTool({
     return { content: `Mail déposé en Douane.${note}`, etape: "Dépose un mail en Douane" };
   },
 });
+
+/**
+ * Premier mail à un prospect du CRM (pilote commercial) : pied de désinscription ajouté, jamais de prospect de
+ * démonstration ni de désinscrit, un seul premier mail par prospect. Pilote actif et sous le plafond du jour →
+ * part tout seul au prochain créneau (étalé) ; sinon, ou s'il contient un prix / un engagement → Douane.
+ */
+async function envoyerProspection(ctx: ToolCtx, dest: string[], input: { objet: string; corps: string; sensible?: boolean }): Promise<ToolOutcome> {
+  if (dest.length !== 1) return { content: "Un mail de prospection = un seul destinataire.", isError: true };
+  const email = dest[0]!.toLowerCase();
+  const lead = await ctx.db.commercial.leadParEmail(email);
+  if (!lead) return { content: `${email} n'est pas un prospect du CRM : la prospection ne vise que les commerces trouvés par Hugo (create_lead d'abord).`, isError: true };
+  if (lead.demo) return { content: `${lead.nom} est un prospect de DÉMONSTRATION (adresse fictive) : rien n'est envoyé. Ajoute la clé Google Places pour de vrais prospects.`, etape: "Prospect de démo ignoré" };
+  if (await ctx.db.commercial.estDesinscrit(email)) return { content: `${lead.nom} a demandé à ne plus être contacté : rien n'est envoyé.`, etape: "Désinscrit : ignoré" };
+  if (["contacte", "repondu", "converti", "ecarte"].includes(lead.statut)) return { content: `${lead.nom} a déjà été contacté (statut ${lead.statut}) : un seul premier mail par prospect.`, etape: "Déjà contacté" };
+  const corps = withSignature(input.corps, ctx.settings) + piedProspection(email);
+  const p = await ctx.db.commercial.pilote();
+  const debutJour = fromZonedTime(`${formatInTimeZone(ctx.now, "Europe/Paris", "yyyy-MM-dd")}T00:00:00`, "Europe/Paris").toISOString();
+  const plan = await ctx.db.commercial.envoisPilote(debutJour);
+  const m = `${input.objet}\n${input.corps}`.match(SENSIBLE_RE);
+  const raison = !p.actif ? "pilote commercial désactivé" : plan.aujourdhui >= p.mails_par_jour ? `plafond de ${p.mails_par_jour} mails de prospection atteint aujourd'hui` : input.sensible ? "marqué sensible" : m ? `contient « ${m[0].trim().slice(0, 30)} » (prix ou engagement)` : null;
+  const payload = { kind: "email", a: email, objet: input.objet, corps, prospection: true, lead_id: lead.id };
+  if (!raison) {
+    const quand = prochainCreneau(plan.dernier ? new Date(plan.dernier) : null, ctx.now, p);
+    await ctx.db.insertApproval({
+      agent_id: ctx.agent.id,
+      task_id: ctx.task.id,
+      type_action: "email",
+      titre: `Prospection : ${lead.nom}`.slice(0, 200),
+      destinataire: email,
+      objet: input.objet,
+      apercu: corps,
+      payload: { ...payload, envoyer_apres: quand.toISOString() },
+      statut: "approuve",
+      decide_par: "pilote commercial",
+      execution_statut: "a_faire",
+    });
+    await ctx.db.commercial.updateLead(lead.id, { statut: "contacte", contacte_le: quand.toISOString() });
+    await ctx.db.insertJournal({ type: "action", titre: `📨 ${ctx.agent.nom} écrit à ${lead.nom} (envoi à ${heureParis(quand)})`.slice(0, 300), contenu: `${input.objet}\n\n${input.corps}`.slice(0, 1500), agent_id: ctx.agent.id, pole_id: ctx.agent.pole_id });
+    return { content: `Mail de prospection programmé : il part tout seul à ${heureParis(quand)}${formatInTimeZone(quand, "Europe/Paris", "yyyy-MM-dd") !== formatInTimeZone(ctx.now, "Europe/Paris", "yyyy-MM-dd") ? ` le ${formatInTimeZone(quand, "Europe/Paris", "dd/MM")}` : ""}.`, etape: `Programme : ${lead.nom}` };
+  }
+  await ctx.db.insertApproval({
+    agent_id: ctx.agent.id,
+    task_id: ctx.task.id,
+    type_action: "email",
+    titre: `Prospection : ${lead.nom}`.slice(0, 200),
+    destinataire: email,
+    objet: input.objet,
+    apercu: corps,
+    payload: { ...payload, raison_douane: raison },
+    execution_statut: "a_faire",
+  });
+  await ctx.db.commercial.updateLead(lead.id, { statut: "a_contacter" });
+  return { content: `Mail de prospection déposé en Douane (${raison}).`, etape: "Prospection en Douane" };
+}

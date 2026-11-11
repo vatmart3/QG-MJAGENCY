@@ -8,6 +8,7 @@ import { browserSupabase } from "@/lib/supabase/client";
 import { useUI } from "@/store/ui";
 import { api, pdfUrl } from "./finances/data";
 import { btn, btnDark, Card, input, Msg } from "./finances/ui";
+import { PiloteCard } from "./PiloteCard";
 import { RoutePanel } from "./RoutePanel";
 
 const ETAPES: { id: Etape; label: string; color: string }[] = [
@@ -452,6 +453,7 @@ function Reglages({ d, reload }: { d: Data; reload: () => void }) {
       .slice(0, 30);
   return (
     <div className="space-y-3">
+      <PiloteCard />
       <Card>
         <div className="grid grid-cols-2 gap-2 text-[12px]">
           <label>

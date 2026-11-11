@@ -6,6 +6,7 @@ import type { Services } from "@/integrations/types";
 import { alertesFiscales, clotureMois, facturerAbonnements, relancesImpayes } from "@/finance/automations";
 import { relancesDevis, trouverProspects } from "@/commercial/prospection";
 import { surveillerBoutique } from "@/boutique/surveillance";
+import { relancesProspects, tacheProspectionAuto } from "@/commercial/pilote";
 import { surveillerSites } from "@/tech/surveillance";
 import { relancesSansReponse, triInbox } from "./courrier";
 import type { EAgent, ERoutine, EngineDb } from "./db";
@@ -83,6 +84,9 @@ export async function launchRoutine(db: EngineDb, services: Services, team: EAge
   // commercial : recherche + notation des prospects, relances de devis (sans IA)
   if (r.id === "rt_leads") return (await trouverProspects(db, await services.places(), await db.commercial.prospection())).crees > 0;
   if (r.id === "rt_relances_devis") return (await relancesDevis(db, formatInTimeZone(now, TZ, "yyyy-MM-dd"))) > 0;
+  // pilote commercial : Sacha écrit aux meilleurs prospects, relance unique sans IA
+  if (r.id === "rt_prospection_auto") return !!(await tacheProspectionAuto(db, now));
+  if (r.id === "rt_relances_prospects") return (await relancesProspects(db, now)) > 0;
   // Atelier Tech et boutique : contrôles et alertes, sans IA
   if (r.id === "rt_sante_sites") return (await surveillerSites(db, now)).controles > 0;
   if (r.id === "rt_boutique") {
