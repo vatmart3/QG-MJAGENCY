@@ -9,10 +9,11 @@ const HEAD: Record<PropKind, number> = {
   coffee: 30, roundTable: 14, parasol: 46, sofa: 18, beanbag: 12, babyfoot: 18, pingpong: 16,
   pine: 52, tree: 46, bush: 16, lamp: 38, bollard: 12, crate: 16, barrel: 16, bench: 16, phare: 118,
   pile: 8, stampDesk: 20, bigScreen: 30, archive: 32, flowers: 10, railing: 12,
+  house: 62, treadmill: 22, weights: 22,
 };
 
-export function propKey(p: Pick<Prop, "kind" | "variant" | "facing" | "w" | "h">): string {
-  return `prop:${p.kind}:${p.variant ?? 0}:${p.facing ?? "-"}:${p.w ?? 1}x${p.h ?? 1}`;
+export function propKey(p: Pick<Prop, "kind" | "variant" | "facing" | "w" | "h" | "color">): string {
+  return `prop:${p.kind}:${p.variant ?? 0}:${p.facing ?? "-"}:${p.w ?? 1}x${p.h ?? 1}${p.color ? `:${p.color}` : ""}`;
 }
 
 export function propDefs(props: Prop[]): AtlasEntryDef[] {
@@ -375,6 +376,29 @@ function drawProp(p: Pen, prop: Prop, ox: number, oy: number): void {
     case "phare":
       drawPhare(p, cx, cy);
       break;
+    case "house":
+      drawHouse(p, ox, oy, prop.w ?? 3, prop.h ?? 3, prop.color ?? "#8a8fa3", v);
+      break;
+    case "treadmill": {
+      box(0.2, 0.15, 0.8, 0.95, 0, 4, rgb("#3d4157"));
+      box(0.28, 0.25, 0.72, 0.85, 4, 5, { top: rgb("#23263a"), left: rgb("#1b1d2c"), right: rgb("#15172a") });
+      // montants et console
+      box(0.22, 0.12, 0.3, 0.22, 4, 18, rgb("#9aa3b5"));
+      box(0.7, 0.12, 0.78, 0.22, 4, 18, rgb("#9aa3b5"));
+      box(0.22, 0.1, 0.78, 0.24, 18, 21, { top: rgb("#5ec2f2"), left: rgb("#3d4157"), right: rgb("#2f3346") });
+      break;
+    }
+    case "weights": {
+      box(0.15, 0.3, 0.85, 0.7, 0, 3, rgb("#7f5532"));
+      box(0.2, 0.42, 0.8, 0.58, 3, 14, rgb("#9aa3b5"));
+      // disques de couleur
+      for (const [u, col] of [[0.3, "#d8433a"], [0.5, "#2f3a6b"], [0.7, "#3d8a5a"]] as [number, string][]) {
+        const [x, y] = isoPt(ox, oy, u, 0.5, 12);
+        p.ellipse(Math.round(x), Math.round(y), 3, 4, rgb(col));
+        p.ellipse(Math.round(x), Math.round(y), 1, 1, rgb("#1c1530"));
+      }
+      break;
+    }
     case "stampDesk": {
       box(0.05, 0.2, 1.95, 0.8, 0, 12, rgb("#6b4a2f"));
       // bandeau rayé rouge et blanc
@@ -429,6 +453,55 @@ function drawProp(p: Pen, prop: Prop, ox: number, oy: number): void {
 }
 
 /** Cylindre vertical pixel (tonneaux, bittes, phare). */
+/** Maison du quartier résidentiel : murs crème, toit à deux pans couleur du pôle, porte, fenêtres, cheminée. */
+function drawHouse(p: Pen, ox: number, oy: number, w: number, h: number, couleur: string, v: number): void {
+  const roof = rgb(couleur);
+  const murs = [rgb("#f4ead8"), rgb("#efe1cf"), rgb("#f6efe4"), rgb("#ecdcc6")][v % 4]!;
+  const m = 0.18;
+  const H = 24;
+  const R = 42;
+  // murs
+  isoBox(p, ox, oy, m, m, w - m, h - m, 0, H, { top: murs, left: shade(murs, -0.06), right: shade(murs, -0.2) });
+  isoBox(p, ox, oy, m, m, w - m, h - m, 0, 3, { top: murs, left: shade(murs, -0.25), right: shade(murs, -0.35) });
+  // porte sur la façade sud (v = h), fenêtres
+  const door = rgb("#8a5a34");
+  p.poly([isoPt(ox, oy, w / 2 - 0.3, h - m, 0), isoPt(ox, oy, w / 2 + 0.3, h - m, 0), isoPt(ox, oy, w / 2 + 0.3, h - m, 15), isoPt(ox, oy, w / 2 - 0.3, h - m, 15)], door);
+  const [kx, ky] = isoPt(ox, oy, w / 2 + 0.18, h - m, 7);
+  p.set(Math.round(kx), Math.round(ky), rgb("#f2c14e"));
+  const vitre = rgb("#bfe6f5");
+  const cadre = rgb("#ffffff");
+  for (const u of [0.55, w - 0.55]) {
+    p.poly([isoPt(ox, oy, u - 0.28, h - m, 9), isoPt(ox, oy, u + 0.28, h - m, 9), isoPt(ox, oy, u + 0.28, h - m, 19), isoPt(ox, oy, u - 0.28, h - m, 19)], cadre);
+    p.poly([isoPt(ox, oy, u - 0.2, h - m, 10), isoPt(ox, oy, u + 0.2, h - m, 10), isoPt(ox, oy, u + 0.2, h - m, 18), isoPt(ox, oy, u - 0.2, h - m, 18)], vitre);
+  }
+  for (const vv of [0.9, h - 0.9]) {
+    p.poly([isoPt(ox, oy, w - m, vv - 0.3, 9), isoPt(ox, oy, w - m, vv + 0.3, 9), isoPt(ox, oy, w - m, vv + 0.3, 19), isoPt(ox, oy, w - m, vv - 0.3, 19)], cadre);
+    p.poly([isoPt(ox, oy, w - m, vv - 0.22, 10), isoPt(ox, oy, w - m, vv + 0.22, 10), isoPt(ox, oy, w - m, vv + 0.22, 18), isoPt(ox, oy, w - m, vv - 0.22, 18)], shade(vitre, -0.1));
+  }
+  // toit à deux pans (faîtage selon u), avec débord
+  const e = 0.05;
+  const a0 = isoPt(ox, oy, e, e, H);
+  const a1 = isoPt(ox, oy, w - e, e, H);
+  const b0 = isoPt(ox, oy, e, h - e, H);
+  const b1 = isoPt(ox, oy, w - e, h - e, H);
+  const r0 = isoPt(ox, oy, e, h / 2, R);
+  const r1 = isoPt(ox, oy, w - e, h / 2, R);
+  p.poly([r0, r1, a1, a0], shade(roof, -0.25));
+  // pignon (côté x+) couleur des murs
+  p.poly([isoPt(ox, oy, w - m, m, H), isoPt(ox, oy, w - m, h - m, H), isoPt(ox, oy, w - m, h / 2, R - 2)], shade(murs, -0.2));
+  p.poly([r0, r1, b1, b0], roof);
+  // tuiles : quelques lignes plus sombres
+  for (let i = 1; i < 4; i++) {
+    const t = i / 4;
+    const l0 = isoPt(ox, oy, e, h / 2 + (h / 2 - e) * t, R - (R - H) * t);
+    const l1 = isoPt(ox, oy, w - e, h / 2 + (h / 2 - e) * t, R - (R - H) * t);
+    p.line(l0[0], l0[1], l1[0], l1[1], shade(roof, -0.15));
+  }
+  p.line(r0[0], r0[1], r1[0], r1[1], shade(roof, 0.3));
+  // cheminée
+  isoBox(p, ox, oy, w * 0.7, h * 0.3, w * 0.7 + 0.35, h * 0.3 + 0.35, R - 8, R + 6, boxOf(rgb("#a3533b")));
+}
+
 function cylinder(p: Pen, cx: number, by: number, r: number, h: number, colAt: (z: number) => RGBA, top: RGBA, rTop = r): void {
   for (let z = 0; z < h; z++) {
     const rr = r + (rTop - r) * (z / h);
@@ -482,6 +555,10 @@ function drawPhare(p: Pen, cx: number, cy: number): void {
 
 // ------------------------------------------------------------------ murets
 const SLAB_H = { muret: 9, verre: 20, douane: 14 } as const;
+/** mur du fond (côté x- et y-) : haut, avec fenêtres, comme la façade intérieure d'un bâtiment */
+const BACK_H = 28;
+const estFond = (side: Side) => side === "x-" || side === "y-";
+const hauteurMur = (style: WallSlab["style"], side: Side) => (style === "muret" && estFond(side) ? BACK_H : SLAB_H[style]);
 
 export function slabKey(s: WallSlab, z: Zone): string {
   return `slab:${s.style}:${z.color}:${s.side}`;
@@ -495,7 +572,7 @@ export function slabDefs(slabs: WallSlab[], zones: Zone[]): AtlasEntryDef[] {
     if (!z) continue;
     const key = slabKey(s, z);
     if (seen.has(key)) continue;
-    const h = SLAB_H[s.style] + 3;
+    const h = hauteurMur(s.style, s.side) + 3;
     seen.set(key, { key, w: 32, h: 16 + h, ax: 16, ay: h, draw: (p) => drawSlab(p, s.side, s.style, z.color, 16, h) });
   }
   return [...seen.values()];
@@ -532,6 +609,29 @@ function drawSlab(p: Pen, side: Side, style: WallSlab["style"], color: string, o
     return;
   }
   const body = style === "douane" ? rgb("#efe3d3") : rgb("#f1e9dc");
+  if (style === "muret" && estFond(side)) {
+    // façade du bâtiment vue de l'intérieur : mur haut, fenêtre, corniche couleur du pôle
+    const HB = BACK_H;
+    isoBox(p, ox, oy, u0, v0, u1, v1, 0, HB, { top: body, left: shade(body, -0.05), right: shade(body, -0.12) });
+    isoBox(p, ox, oy, u0, v0, u1, v1, 0, 3, { top: body, left: shade(zc, -0.15), right: shade(zc, -0.3) });
+    // fenêtre sur la face visible (côté intérieur)
+    const glass = rgb("#bfe6f5");
+    const frame = rgb("#ffffff");
+    if (side === "y-") {
+      const pts: [number, number][] = [isoPt(ox, oy, 0.22, v1, 10), isoPt(ox, oy, 0.78, v1, 10), isoPt(ox, oy, 0.78, v1, 22), isoPt(ox, oy, 0.22, v1, 22)];
+      p.poly(pts, frame);
+      p.poly([isoPt(ox, oy, 0.28, v1, 11), isoPt(ox, oy, 0.72, v1, 11), isoPt(ox, oy, 0.72, v1, 21), isoPt(ox, oy, 0.28, v1, 21)], glass);
+      const [mx, my] = isoPt(ox, oy, 0.5, v1, 11);
+      p.vline(Math.round(mx), Math.round(my - 10), Math.round(my), frame);
+    } else {
+      p.poly([isoPt(ox, oy, u1, 0.22, 10), isoPt(ox, oy, u1, 0.78, 10), isoPt(ox, oy, u1, 0.78, 22), isoPt(ox, oy, u1, 0.22, 22)], frame);
+      p.poly([isoPt(ox, oy, u1, 0.28, 11), isoPt(ox, oy, u1, 0.72, 11), isoPt(ox, oy, u1, 0.72, 21), isoPt(ox, oy, u1, 0.28, 21)], shade(glass, -0.08));
+      const [mx, my] = isoPt(ox, oy, u1, 0.5, 11);
+      p.vline(Math.round(mx), Math.round(my - 10), Math.round(my), frame);
+    }
+    isoBox(p, ox, oy, u0 - 0.02, v0 - 0.02, u1 + 0.02, v1 + 0.02, HB, HB + 3, { top: shade(zc, 0.25), left: zc, right: shade(zc, -0.2) });
+    return;
+  }
   isoBox(p, ox, oy, u0, v0, u1, v1, 0, H, { top: body, left: shade(body, -0.08), right: shade(body, -0.2) });
   // soubassement et chaperon couleur du pôle
   isoBox(p, ox, oy, u0, v0, u1, v1, 0, 2, { top: body, left: shade(zc, -0.15), right: shade(zc, -0.3) });

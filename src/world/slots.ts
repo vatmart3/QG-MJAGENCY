@@ -1,9 +1,9 @@
 /**
  * Emplacements de la carte. Chaque pôle ou lieu occupe un emplacement 7×6 cases.
- * Colonnes c1…c5, rangées r1…r3 (rive nord, porte côté sud) et r4…r5 (rive sud, porte côté canal).
+ * Colonnes c1…c6, rangées r1…r3 (rive nord, porte côté sud) et r4…r5 (rive sud, porte côté canal).
  */
 
-export const COLS = [5, 14, 23, 32, 41] as const;
+export const COLS = [5, 14, 23, 32, 41, 50] as const;
 export const ROWS = [5, 13, 21, 33, 41] as const;
 
 export interface Slot {

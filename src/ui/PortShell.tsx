@@ -10,6 +10,7 @@ import { uiStore, useUI } from "@/store/ui";
 import { world } from "@/store/world";
 import { AgentSheet } from "./AgentSheet";
 import { Ambiance } from "./Ambiance";
+import { Toasts } from "./Toasts";
 import { CityCanvas } from "./CityCanvas";
 import { CommandBar } from "./CommandBar";
 import { MiniMap } from "./MiniMap";
@@ -87,6 +88,7 @@ export function PortShell({ children }: { children: ReactNode }) {
       <AgentSheet />
       <PoleSheet />
       <Ambiance />
+      <Toasts />
       {children}
     </main>
   );

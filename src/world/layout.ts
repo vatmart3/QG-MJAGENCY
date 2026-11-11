@@ -8,8 +8,8 @@ import { hash2, mulberry32 } from "@/lib/rng";
  * Le canal suit les lignes y = 29-30 → il traverse l'île en diagonale à l'écran.
  */
 
-export const GW = 58;
-export const GH = 58;
+export const GW = 78;
+export const GH = 78;
 
 export enum T {
   VOID = 0,
@@ -73,7 +73,10 @@ export type PropKind =
   | "bigScreen"
   | "archive"
   | "flowers"
-  | "railing";
+  | "railing"
+  | "house"
+  | "treadmill"
+  | "weights";
 
 export interface Prop {
   kind: PropKind;
@@ -89,6 +92,8 @@ export interface Prop {
   blocks: boolean;
   /** décalage de tri (en px écran) */
   zBias?: number;
+  /** couleur (toit des maisons = couleur du pôle) */
+  color?: string;
 }
 
 export interface Spot {
@@ -96,7 +101,18 @@ export interface Spot {
   y: number;
   facing: Facing;
   pose: "sit" | "stand";
-  kind: "desk" | "cafe" | "terrasse" | "detente" | "criee" | "douane" | "archives";
+  kind: "desk" | "cafe" | "terrasse" | "detente" | "criee" | "douane" | "archives" | "resto" | "lecture" | "sport";
+}
+
+/** Maison d'un pôle dans le quartier résidentiel : les agents y rentrent le soir. */
+export interface House {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  poleId: string | null;
+  color: string;
+  door: { x: number; y: number };
 }
 
 export interface WallSlab {
@@ -124,6 +140,9 @@ export interface Layout {
   lamps: { x: number; y: number }[];
   pharePos: { x: number; y: number };
   pileCell: { x: number; y: number };
+  houses: House[];
+  /** porte de la maison de chaque agent */
+  homeOf: Record<string, { x: number; y: number }>;
 }
 
 export const idx = (x: number, y: number): number => y * GW + x;
@@ -157,11 +176,14 @@ function zonePlan(): ZonePlan[] {
 const CANAL_Y = [29, 30];
 const QUAY_N = [27, 28];
 const QUAY_S = [31, 32];
-const BRIDGES_X = [21, 22, 39, 40];
-const H_PATHS = [11, 12, 19, 20, 39, 40, 47, 48];
-const V_PATHS = [12, 13, 21, 22, 30, 31, 39, 40];
-export const PHARE = { x: 52, y: 6 };
+const BRIDGES_X = [21, 22, 39, 40, 57, 58];
+// rues du quartier résidentiel : 53-54, 60-61, 67-68 (les maisons ont leur porte sur la rue au sud)
+const H_PATHS = [11, 12, 19, 20, 39, 40, 47, 48, 53, 54, 60, 61, 67, 68];
+const V_PATHS = [12, 13, 21, 22, 30, 31, 39, 40, 48, 49, 57, 58];
+export const PHARE = { x: 70, y: 6 };
 const HOME_ROW = 47;
+/** rangées de maisons (haut de la maison) : porte sur la rue juste en dessous */
+const HOUSE_ROWS = [50, 57, 64];
 
 let cached: { key: string; layout: Layout } | null = null;
 
@@ -190,8 +212,8 @@ function buildLayout(): Layout {
   const mask = new Uint8Array(GW * GH);
   for (let y = 0; y < GH; y++) {
     for (let x = 0; x < GW; x++) {
-      const dx = Math.abs(x + 0.5 - cx) / 27.6;
-      const dy = Math.abs(y + 0.5 - cy) / 27.6;
+      const dx = Math.abs(x + 0.5 - cx) / (GW / 2 - 1.4);
+      const dy = Math.abs(y + 0.5 - cy) / (GH / 2 - 1.4);
       const n = (hash2(x >> 1, y >> 1, 7) - 0.5) * 0.12;
       if (Math.pow(dx, 2.5) + Math.pow(dy, 2.5) <= 1 + n) mask[idx(x, y)] = 1;
       const px = x + 0.5 - PHARE.x - 0.5;
@@ -226,8 +248,8 @@ function buildLayout(): Layout {
   for (const x of BRIDGES_X) for (const y of CANAL_Y) setIf(x, y, T.BRIDGE);
   // les allées verticales 12-13 et 30-31 s'arrêtent aux quais (pas de pont)
   // chemin vers le phare
-  for (let x = 41; x <= 50; x++) for (const y of [11, 12]) setIf(x, y, T.PATH);
-  for (let y = 7; y <= 12; y++) for (const x of [48, 49]) setIf(x, y, T.PATH);
+  for (let x = 41; x <= PHARE.x - 2; x++) for (const y of [11, 12]) setIf(x, y, T.PATH);
+  for (let y = PHARE.y + 1; y <= 12; y++) for (const x of [PHARE.x - 4, PHARE.x - 3]) setIf(x, y, T.PATH);
   // éperon rocheux du phare
   for (let y = PHARE.y - 2; y <= PHARE.y + 2; y++)
     for (let x = PHARE.x - 2; x <= PHARE.x + 2; x++) {
@@ -385,6 +407,55 @@ function buildLayout(): Layout {
         add({ kind: "plant", x: x0 + 1, y: y0 + 1, blocks: true, zone: z.id, variant: 2 });
         break;
       }
+      case "restaurant": {
+        // « La Tielle » : comptoir, cuisine, tables pour le déjeuner
+        add({ kind: "counter", x: x0 + 1, y: y0 + 1, w: 3, h: 1, blocks: true, zone: z.id });
+        add({ kind: "coffee", x: x0 + 1, y: y0 + 1, blocks: false, zone: z.id, zBias: 2 });
+        add({ kind: "shelf", x: x0 + 5, y: y0, blocks: false, zone: z.id, variant: 1 });
+        const tables: [number, number][] = [[x0 + 2, y0 + 3], [x0 + 5, y0 + 2], [x0 + 5, y0 + 4]];
+        for (const [tx, ty] of tables) add({ kind: "roundTable", x: tx, y: ty, blocks: true, zone: z.id });
+        const seats: [number, number, Facing][] = [
+          [x0 + 1, y0 + 3, "x+"], [x0 + 3, y0 + 3, "x-"], [x0 + 2, y0 + 4, "y-"],
+          [x0 + 4, y0 + 2, "x+"], [x0 + 6, y0 + 2, "x-"],
+          [x0 + 4, y0 + 4, "x+"], [x0 + 6, y0 + 4, "x-"], [x0 + 5, y0 + 5, "y-"],
+        ];
+        for (const [sx, sy, f] of seats) {
+          add({ kind: "chair", x: sx, y: sy, blocks: false, zone: z.id, facing: f, zBias: -2, variant: 2 });
+          spot({ x: sx, y: sy, facing: f, pose: "sit", kind: "resto" });
+        }
+        add({ kind: "plant", x: x0 + 6, y: y0 + 1, blocks: true, zone: z.id, variant: 1 });
+        add({ kind: "plant", x: x0 + 1, y: y0 + 5, blocks: true, zone: z.id, variant: 0 });
+        break;
+      }
+      case "mediatheque": {
+        // étagères, postes de lecture et canapés
+        for (const sx of [x0 + 1, x0 + 2, x0 + 4, x0 + 5]) add({ kind: "shelf", x: sx, y: y0, blocks: false, zone: z.id, variant: sx % 3 });
+        for (const sx of [x0 + 2, x0 + 4]) {
+          add({ kind: "desk", x: sx, y: y0 + 3, blocks: true, zone: z.id, variant: 0 });
+          add({ kind: "chair", x: sx, y: y0 + 2, blocks: false, zone: z.id, facing: "y+", zBias: -2 });
+          spot({ x: sx, y: y0 + 2, facing: "y+", pose: "sit", kind: "lecture" });
+        }
+        add({ kind: "sofa", x: x0 + 5, y: y0 + 4, blocks: false, zone: z.id, facing: "x-", variant: 1 });
+        spot({ x: x0 + 5, y: y0 + 4, facing: "x-", pose: "sit", kind: "lecture" });
+        add({ kind: "beanbag", x: x0 + 1, y: y0 + 4, blocks: false, zone: z.id });
+        spot({ x: x0 + 1, y: y0 + 4, facing: "x+", pose: "sit", kind: "lecture" });
+        add({ kind: "plant", x: x0 + 6, y: y0 + 1, blocks: true, zone: z.id, variant: 2 });
+        break;
+      }
+      case "sport": {
+        // tapis de course, haltères, ping-pong
+        for (const sx of [x0 + 1, x0 + 3, x0 + 5]) {
+          add({ kind: "treadmill", x: sx, y: y0 + 1, blocks: true, zone: z.id });
+          spot({ x: sx, y: y0 + 2, facing: "y-", pose: "stand", kind: "sport" });
+        }
+        add({ kind: "weights", x: x0 + 1, y: y0 + 4, blocks: true, zone: z.id });
+        spot({ x: x0 + 2, y: y0 + 4, facing: "x-", pose: "stand", kind: "sport" });
+        add({ kind: "pingpong", x: x0 + 4, y: y0 + 4, w: 2, h: 1, blocks: true, zone: z.id });
+        spot({ x: x0 + 3, y: y0 + 4, facing: "x+", pose: "stand", kind: "sport" });
+        spot({ x: x0 + 6, y: y0 + 4, facing: "x-", pose: "stand", kind: "sport" });
+        add({ kind: "plant", x: x0 + 6, y: y0 + 2, blocks: true, zone: z.id, variant: 0 });
+        break;
+      }
       default: {
         // bureau standard d'un pôle
         const doorY = z.doorSide === "y+";
@@ -411,6 +482,39 @@ function buildLayout(): Layout {
       }
     }
   }
+
+  // ---- 5 bis. Quartier résidentiel : une maison par pôle (toit à sa couleur), porte sur la rue
+  const houses: House[] = [];
+  const onVPath = (x: number) => V_PATHS.includes(x);
+  for (const hy of HOUSE_ROWS) {
+    for (let hx = 2; hx < GW - 4; hx++) {
+      const cells: [number, number][] = [];
+      for (let yy = hy; yy < hy + 3; yy++) for (let xx = hx; xx < hx + 3; xx++) cells.push([xx, yy]);
+      const door = { x: hx + 1, y: hy + 3 };
+      const libre = cells.every(([xx, yy]) => inGrid(xx, yy) && tiles[idx(xx, yy)] === T.GRASS && !blocked[idx(xx, yy)] && !onVPath(xx) && !onVPath(xx - 1) && !onVPath(xx + 1));
+      if (!libre || !inGrid(door.x, door.y) || tiles[idx(door.x, door.y)] === T.VOID) continue;
+      // maisons sans pôle (pour les pôles à venir) : toits de tuile, d'ardoise ou de brique
+      houses.push({ x: hx, y: hy, w: 3, h: 3, poleId: null, color: ["#b5573b", "#5d6b7e", "#a0673a", "#8f3f36", "#6b7f5a"][(hx + hy) % 5]!, door });
+      for (const [xx, yy] of cells) blocked[idx(xx, yy)] = 1;
+      hx += 4; // jardin entre deux maisons
+    }
+  }
+  // attribution : chaque pôle qui a des agents reçoit sa maison (dans l'ordre des pôles)
+  const homeOf: Record<string, { x: number; y: number }> = {};
+  const habites = allPoles().filter((p) => agentsOfPole(p.id).length);
+  habites.forEach((p, i) => {
+    const h = houses[i];
+    if (!h) return;
+    h.poleId = p.id;
+    h.color = p.couleur;
+    for (const a of agentsOfPole(p.id)) homeOf[a.id] = h.door;
+  });
+  houses.forEach((h, i) => {
+    props.push({ kind: "house", x: h.x, y: h.y, w: 3, h: 3, blocks: true, color: h.color, variant: i % 4 });
+    // petit jardin : fleurs et buisson devant certaines maisons
+    if (inGrid(h.x + 3, h.y + 2) && tiles[idx(h.x + 3, h.y + 2)] === T.GRASS && !blocked[idx(h.x + 3, h.y + 2)] && i % 2 === 0)
+      add({ kind: "flowers", x: h.x + 3, y: h.y + 2, blocks: true, variant: i % 3 });
+  });
 
   // ---- 6. Phare, ponton, décor extérieur
   add({ kind: "phare", x: PHARE.x, y: PHARE.y, blocks: true });
@@ -440,6 +544,8 @@ function buildLayout(): Layout {
   // lampadaires aux carrefours des allées
   for (const [lx, ly] of [
     [11, 10], [20, 10], [29, 10], [38, 10], [11, 18], [29, 18], [47, 18], [20, 38], [38, 38], [29, 46], [11, 46], [47, 10],
+    [56, 10], [56, 18], [56, 38], [47, 46], [56, 46],
+    [11, 55], [29, 55], [47, 55], [65, 55], [20, 62], [38, 62], [56, 62], [29, 69], [47, 69],
   ] as [number, number][]) {
     if (tiles[idx(lx, ly)] === T.GRASS && !blocked[idx(lx, ly)]) {
       add({ kind: "lamp", x: lx, y: ly, blocks: true });
@@ -447,7 +553,7 @@ function buildLayout(): Layout {
     }
   }
   // garde-corps des ponts
-  for (const bx of [21, 39]) {
+  for (const bx of [21, 39, 57]) {
     for (const by of CANAL_Y) {
       add({ kind: "railing", x: bx, y: by, blocks: false, facing: "x-" });
       add({ kind: "railing", x: bx + 1, y: by, blocks: false, facing: "x+" });
@@ -520,6 +626,8 @@ function buildLayout(): Layout {
     lamps,
     pharePos: PHARE,
     pileCell: pile ? { x: pile.x, y: pile.y } : { x: 0, y: 0 },
+    houses,
+    homeOf,
   };
 }
 

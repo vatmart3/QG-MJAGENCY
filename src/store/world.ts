@@ -345,7 +345,7 @@ export const world = {
           ...get().links.filter((l) => l.until > now),
           ...fresh
             .filter((e) => e.to && e.to !== "fondateurs" && e.from !== "fondateurs" && e.from !== e.to)
-            .map((e) => ({ id: e.id, from: e.from, to: e.to!, type: e.type, at: now, until: now + (e.type === "livrable" ? 7000 : 5500) })),
+            .map((e) => ({ id: e.id, from: e.from, to: e.to!, type: e.type, at: now, until: now + (e.type === "livrable" ? 9500 : 8000) })),
         ].slice(-24)
       : get().links;
     set({ flux, links });

@@ -286,7 +286,7 @@ body {
 .flow-path {
   fill: none;
   stroke: var(--flow);
-  stroke-width: 2.5;
+  stroke-width: 3.5;
   stroke-linecap: round;
   stroke-dasharray: 7 7;
   animation: flow-dash 0.6s linear infinite;
@@ -294,14 +294,43 @@ body {
 .flow-glow {
   fill: none;
   stroke: var(--flow);
-  stroke-width: 9;
-  stroke-opacity: 0.18;
+  stroke-width: 12;
+  stroke-opacity: 0.22;
   stroke-linecap: round;
 }
 .flow-dot {
   fill: #fff;
   stroke: var(--flow);
   stroke-width: 2.5;
+}
+.flow-ring {
+  fill: none;
+  stroke: var(--flow);
+  stroke-width: 3;
+}
+/* le message qui voyage d'un agent à l'autre */
+.flow-runner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #fff;
+  border: 2.5px solid var(--flow);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.25), 0 0 0 4px color-mix(in srgb, var(--flow) 22%, transparent);
+  font-size: 15px;
+  line-height: 1;
+  will-change: transform;
+  z-index: 2;
+}
+.overlay-layer[data-compact="1"] .flow-runner {
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
 }
 @keyframes flow-dash {
   to {

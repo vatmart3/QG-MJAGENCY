@@ -232,6 +232,39 @@ const RAW_LIEUX: RawPole[] = [
     missions: [],
     kind: "lieu",
   },
+  {
+    id: "restaurant",
+    nom: "Restaurant La Tielle",
+    court: "La Tielle",
+    icone: "🍽️",
+    couleur: "#c8553d",
+    sol: "#f6e6dc",
+    description: "La cantine du port : tielles, poisson du jour et grandes tablées à midi.",
+    missions: [],
+    kind: "lieu",
+  },
+  {
+    id: "mediatheque",
+    nom: "La Médiathèque",
+    court: "Médiathèque",
+    icone: "📚",
+    couleur: "#4a6fa5",
+    sol: "#e3ebf6",
+    description: "Livres, veille et postes de lecture : on y étudie les sites et les tendances.",
+    missions: [],
+    kind: "lieu",
+  },
+  {
+    id: "sport",
+    nom: "Le Club",
+    court: "Sport",
+    icone: "🏋️",
+    couleur: "#2e9d8f",
+    sol: "#dcf1ee",
+    description: "Tapis de course, haltères et ping-pong pour se dégourdir les jambes.",
+    missions: [],
+    kind: "lieu",
+  },
 ];
 
 /** Emplacements sur la carte (cf. src/world/slots.ts) */
@@ -241,8 +274,9 @@ const POSITION: Record<string, string> = {
   commercial: "c1r3", quai: "c2r3", douane: "c3r3", archives: "c4r3",
   studio: "c1r4", tech: "c2r4", marketing: "c3r4", veille: "c4r4", succes: "c5r4",
   labo: "c1r5", boutique: "c2r5", detente: "c3r5",
+  mediatheque: "c5r3", restaurant: "c4r5", sport: "c5r5",
 };
-const STYLE: Record<string, WallStyleName> = { direction: "verre", criee: "verre", douane: "douane", quai: "back", detente: "back" };
+const STYLE: Record<string, WallStyleName> = { direction: "verre", criee: "verre", douane: "douane", quai: "back", detente: "back", mediatheque: "verre" };
 
 const withMap = (p: RawPole, i: number): Pole => ({ ...p, position: POSITION[p.id] ?? "c1r1", style: STYLE[p.id] ?? "muret", actif: true, ordre: i });
 
@@ -258,7 +292,7 @@ const A = (a: Omit<AgentDef, "promptSysteme" | "apparenceSeed" | "actif" | "ordr
   ordre: ordre++,
 });
 
-const COMMUNS = ["ask_agent", "delegate_task", "post_to_journal", "finish_task", "read_company_memory", "write_agent_note"];
+const COMMUNS = ["ask_agent", "delegate_task", "post_to_journal", "finish_task", "read_company_memory", "write_agent_note", "browse_site"];
 
 export const AGENTS: AgentDef[] = [
   // 🏛️ Direction

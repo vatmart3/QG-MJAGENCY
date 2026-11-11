@@ -3,6 +3,7 @@ import { euros, statutFr, type ModifBoutique } from "@/boutique/shopify";
 import { auditTexte, auditUrl } from "@/tech/audit";
 import { normUrl } from "@/tech/db";
 import { checkSite, resumeSante } from "@/tech/monitoring";
+import { naviguer, naviguerTexte } from "@/tech/navigateur";
 import { controlerSite } from "@/tech/surveillance";
 import { costEur, COUT_RECHERCHE_EUR } from "../config";
 import { kpis, kpisTexte } from "../kpis";
@@ -171,4 +172,25 @@ export const shopifyUpdate = defineTool({
   },
 });
 
-export const ATELIER_TOOLS = [checkSiteHealth, auditUrlTool, webSearch, getKpis, shopifyOrders, shopifyProducts, shopifyUpdate];
+export const browseSite = defineTool({
+  name: "browse_site",
+  description:
+    "Navigateur : ouvre un site web et le lit comme un visiteur (gratuit). Rend le titre, la description, les sections, le texte, les coordonnées, les réseaux sociaux, la technologie et les liens, et suit jusqu'à 5 pages internes utiles (contact, tarifs, services, à propos…). Pour étudier le site d'un client, d'un prospect ou d'un concurrent.",
+  schema: z.object({
+    url: z.string().min(3).max(500).describe("adresse du site ou d'une page (ex. monsite.fr ou https://monsite.fr/contact)"),
+    pages: z.number().int().min(1).max(6).optional().describe("nombre de pages à lire (défaut 3)"),
+  }),
+  async run(ctx, input) {
+    const pages = await naviguer(input.url, input.pages ?? 3);
+    const host = (() => {
+      try {
+        return new URL(pages[0]!.url).hostname.replace(/^www\./, "");
+      } catch {
+        return input.url;
+      }
+    })();
+    return { content: externe(host, naviguerTexte(pages)), etape: `Navigue sur ${host.slice(0, 40)}` };
+  },
+});
+
+export const ATELIER_TOOLS = [checkSiteHealth, auditUrlTool, webSearch, getKpis, shopifyOrders, shopifyProducts, shopifyUpdate, browseSite];

@@ -120,6 +120,21 @@ DATABASE_URL=postgres://utilisateur@localhost/leport npm run test:moteur
 Il vérifie la mission « offre de lancement des cartes NFC » de bout en bout (Marius → Elsa, Mila, Victor → échanges → synthèse),
 la question aux fondateurs via la Douane, le plafond de budget, et deux ticks simultanés.
 
+## Une ville vivante (carte 78 × 78)
+
+- **Carte agrandie** : 6e colonne d'emplacements (c6r1…c6r5, pour de nouveaux pôles), phare à l'est, troisième pont.
+- **Bâtiments** : murs du fond hauts avec fenêtres et corniche couleur du pôle (on voit l'intérieur par la façade basse).
+- **Nouveaux lieux** : Restaurant La Tielle (c4r5), La Médiathèque (c5r3), Le Club (sport, c5r5).
+- **Quartier résidentiel** : une maison par pôle (toit à sa couleur). La vie des agents, côté ville (aucun crédit) :
+  déjeuner au restaurant à midi, lecture et sport dans la journée, sport ou dîner en fin de journée, retour à la
+  maison le soir (21 h → 7 h). Une tâche les fait toujours revenir au bureau, même la nuit.
+- **Notifications à l'écran** (en haut à droite) : mail reçu (temps réel), mail envoyé, demande en Douane, alerte,
+  mission terminée, nouvelle commande. **Flux** : le message voyage sur l'arc (« Marius → Victor · Délégation ») avec
+  une onde à l'arrivée.
+- **Navigateur des agents** (`browse_site`, tous les agents, gratuit) : lit un site comme un visiteur et suit jusqu'à
+  5 pages utiles (contact, tarifs, services…) : texte, sections, coordonnées, réseaux, technologie, liens.
+- Migration `…1600` (emplacements c6, nouveaux lieux, `emails` en temps réel).
+
 ## Cerveau mélangé : clé API pour l'urgent, abonnement Claude pour le reste
 
 - Réglages → Connexions → **Cerveau des agents** : `api` (tout par la clé), **`mixte`** (par défaut) ou `abonnement`.

@@ -23,6 +23,12 @@ type Step =
 
 const SPEED = 2.1; // cases / s
 
+const MIDI = ["Une tielle et je reviens 😋", "Poisson du jour, parfait !", "On mange ensemble ?", "Bon appétit !", "La terrasse est au soleil ☀️"];
+const SPORT = ["10 minutes de course 🏃", "Ça défoule !", "Allez, une série de plus 💪"];
+const LECTURE = ["Un peu de veille 📚", "Je lis un super article", "Petite pause lecture"];
+const SOIR = ["Bonne soirée !", "Je rentre à la maison 🏠", "À demain !"];
+const auHasard = (l: string[]) => l[Math.floor(Math.random() * l.length)]!;
+
 export interface WorldServices {
   layout: Layout;
   frames: (key: string) => Texture;
@@ -146,9 +152,10 @@ export class AgentView {
     const initial = this.initial;
     const go = (x: number, y: number) => plan.push(initial ? { k: "teleport", x, y } : { k: "walk", x, y, onFail: "teleport" });
 
-    // revenir d'une absence
-    if (this.hidden && rt.state !== "offline") {
-      const h = this.svc.layout.home;
+    // revenir d'une absence : on sort de sa maison
+    const nuitIdle = rt.state === "idle" && this.estNuit();
+    if (this.hidden && rt.state !== "offline" && !nuitIdle) {
+      const h = this.maison();
       plan.push({ k: "teleport", x: h.x, y: h.y }, { k: "fade", to: 1, dur: 0.6 });
     }
 
@@ -165,12 +172,7 @@ export class AgentView {
           go(desk.x, desk.y);
           plan.push({ k: "pose", pose: "sleep", facing: desk.facing });
         } else {
-          const h = this.svc.layout.home;
-          if (initial) {
-            plan.push({ k: "teleport", x: h.x, y: h.y }, { k: "fade", to: 0, dur: 0 });
-          } else {
-            plan.push({ k: "walk", x: h.x, y: h.y, onFail: "teleport" }, { k: "fade", to: 0, dur: 0.8 });
-          }
+          this.rentrer(plan, initial);
         }
         break;
       }
@@ -246,11 +248,53 @@ export class AgentView {
     this.stepStarted = false;
   }
 
+  /** Porte de sa maison (quartier résidentiel), ou le ponton s'il n'en a pas. */
+  private maison(): { x: number; y: number } {
+    return this.svc.layout.homeOf[this.id] ?? this.svc.layout.home;
+  }
+
+  private estNuit(): boolean {
+    const h = this.svc.hour();
+    return h >= 21 || h < 7;
+  }
+
+  /** Rentre chez soi et disparaît dans la maison. */
+  private rentrer(plan: Step[], initial: boolean): void {
+    const h = this.maison();
+    if (initial) plan.push({ k: "teleport", x: h.x, y: h.y }, { k: "fade", to: 0, dur: 0 });
+    else plan.push({ k: "walk", x: h.x, y: h.y, onFail: "teleport" }, { k: "fade", to: 0, dur: 0.8 });
+  }
+
+  /** Va s'asseoir (ou se poser) sur un emplacement d'un type donné ; false s'il n'y en a pas de libre. */
+  private allerA(plan: Step[], kind: Spot["kind"], dur: number, phrases?: string[]): boolean {
+    const s = this.findSpot(kind);
+    if (!s) return false;
+    this.spot = s;
+    plan.push({ k: "walk", x: s.x, y: s.y, onFail: "skip" });
+    if (phrases && Math.random() < 0.4) plan.push({ k: "do", fn: () => world.say(this.id, auHasard(phrases), 2800) });
+    plan.push({ k: "pose", pose: s.pose === "sit" ? "sit" : kind === "sport" ? "cheer" : "stand", facing: s.facing, dur });
+    return true;
+  }
+
   private idlePlan(plan: Step[], initial: boolean): void {
     const desk = this.svc.layout.deskOf[this.id];
     const r = Math.random();
-    const night = this.svc.hour() >= 20.5 || this.svc.hour() < 7;
-    if (initial || night || r < 0.3) {
+    const h = this.svc.hour();
+    // la nuit : chacun rentre dormir chez soi (une tâche le fait revenir au bureau)
+    if (this.estNuit()) {
+      if (this.hidden) {
+        plan.push({ k: "pose", pose: "stand", dur: 20 + Math.random() * 20 });
+        return;
+      }
+      if (!initial && Math.random() < 0.3) plan.push({ k: "do", fn: () => world.say(this.id, auHasard(SOIR), 2400) });
+      this.rentrer(plan, initial);
+      return;
+    }
+    // midi : déjeuner au restaurant
+    if (!initial && h >= 12 && h < 13.75 && r < 0.75 && this.allerA(plan, "resto", 25 + Math.random() * 25, MIDI)) return;
+    // fin de journée : sport ou dîner
+    if (!initial && h >= 18.5 && h < 21 && r < 0.4 && (this.allerA(plan, r < 0.2 ? "sport" : "resto", 20 + Math.random() * 20, r < 0.2 ? SPORT : MIDI) || this.allerA(plan, "terrasse", 15))) return;
+    if (initial || r < 0.3) {
       if (desk) {
         plan.push(initial ? { k: "teleport", x: desk.x, y: desk.y } : { k: "walk", x: desk.x, y: desk.y, onFail: "teleport" });
         plan.push({ k: "pose", pose: "sit", facing: desk.facing, dur: 6 + Math.random() * 14 });
@@ -292,6 +336,9 @@ export class AgentView {
       }
       return;
     }
+    // dans la journée : un peu de lecture, de sport, ou la détente
+    if (r < 0.88 && this.allerA(plan, "lecture", 12 + Math.random() * 12, LECTURE)) return;
+    if (r < 0.94 && this.allerA(plan, "sport", 10 + Math.random() * 10, SPORT)) return;
     const spot = this.findSpot("detente") ?? this.findSpot("archives");
     if (spot) {
       this.spot = spot;

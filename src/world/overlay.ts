@@ -23,7 +23,9 @@ interface LinkEl {
   path: SVGPathElement;
   glow: SVGPathElement;
   dot: SVGCircleElement;
+  ring: SVGCircleElement;
   chip: HTMLDivElement;
+  runner: HTMLDivElement;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -219,15 +221,25 @@ export class Overlay {
         const dot = document.createElementNS(SVG_NS, "circle");
         dot.setAttribute("class", "flow-dot");
         dot.setAttribute("r", "4.5");
+        // onde qui s'élargit chez le destinataire quand le message arrive
+        const ring = document.createElementNS(SVG_NS, "circle");
+        ring.setAttribute("class", "flow-ring");
         g.style.setProperty("--flow", st.color);
-        g.append(glow, path, dot);
+        g.append(glow, path, dot, ring);
         this.svg.appendChild(g);
         const chip = document.createElement("div");
         chip.className = "flow-chip";
         chip.style.setProperty("--flow", st.color);
-        chip.innerHTML = `<span>${st.icon}</span><span class="fc-l"> ${st.label}</span>`;
+        const nom = (id: string) => (id === "fondateurs" ? "Fondateurs" : (agentById(id)?.nom ?? id));
+        chip.innerHTML = `<span>${st.icon}</span><span class="fc-l"> ${escapeHtml(nom(l.from))} → ${escapeHtml(nom(l.to))} · ${st.label}</span>`;
         this.root.appendChild(chip);
-        el = { g, path, glow, dot, chip };
+        // le message lui-même voyage le long de l'arc (enveloppe, dossier, question…)
+        const runner = document.createElement("div");
+        runner.className = "flow-runner";
+        runner.style.setProperty("--flow", st.color);
+        runner.textContent = st.icon;
+        this.root.appendChild(runner);
+        el = { g, path, glow, dot, ring, chip, runner };
         this.links.set(l.id, el);
       }
       const s = toScreen(a.x, a.y - 4);
@@ -243,12 +255,23 @@ export class Overlay {
       el.path.setAttribute("d", d);
       el.glow.setAttribute("d", d);
       // point lumineux qui voyage de l'émetteur au destinataire
-      const t = ((now - l.at) % 1300) / 1300;
-      const u = 1 - t;
-      el.dot.setAttribute("cx", (u * u * s.x + 2 * u * t * cx + t * t * e.x).toFixed(1));
-      el.dot.setAttribute("cy", (u * u * s.y + 2 * u * t * cy + t * t * e.y).toFixed(1));
+      const t = ((now - l.at) % 1800) / 1800;
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const u = 1 - ease;
+      const px = u * u * s.x + 2 * u * ease * cx + ease * ease * e.x;
+      const py = u * u * s.y + 2 * u * ease * cy + ease * ease * e.y;
+      el.dot.setAttribute("cx", s.x.toFixed(1));
+      el.dot.setAttribute("cy", s.y.toFixed(1));
+      el.runner.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0) translate(-50%, -50%) scale(${(0.85 + 0.3 * Math.sin(Math.PI * ease)).toFixed(2)})`;
+      // arrivée : une onde chez le destinataire
+      const arr = Math.max(0, (t - 0.85) / 0.15);
+      el.ring.setAttribute("cx", e.x.toFixed(1));
+      el.ring.setAttribute("cy", e.y.toFixed(1));
+      el.ring.setAttribute("r", (6 + arr * 18).toFixed(1));
+      el.ring.style.opacity = String(arr > 0 ? 1 - arr : 0);
       const life = Math.min(1, (now - l.at) / 300, (l.until - now) / 600);
       el.g.style.opacity = String(Math.max(0, life));
+      el.runner.style.opacity = String(Math.max(0, life));
       // étiquette au sommet de l'arc
       const mx = 0.25 * s.x + 0.5 * cx + 0.25 * e.x;
       const my = 0.25 * s.y + 0.5 * cy + 0.25 * e.y;
@@ -259,6 +282,7 @@ export class Overlay {
       if (seen.has(id)) continue;
       el.g.remove();
       el.chip.remove();
+      el.runner.remove();
       this.links.delete(id);
     }
   }

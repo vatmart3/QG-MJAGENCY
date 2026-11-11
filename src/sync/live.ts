@@ -32,6 +32,7 @@ import {
 import { getDirector, type LiveAdapter } from "@/sim/director";
 import { uiStore } from "@/store/ui";
 import { world, type FluxEvent, type RapportItem, type TaskItem } from "@/store/world";
+import { toast } from "@/store/toasts";
 
 /**
  * Mode « direct » : charge l'état depuis Supabase puis écoute Realtime
@@ -267,6 +268,14 @@ export async function startLive(sb: SupabaseClient): Promise<LiveStart> {
       if (a.statut !== "en_attente" && exists) world.removeApproval(a.id);
       const done = douaneFromRow(a);
       if (done) world.upsertDouane([done]);
+    })
+    // un mail arrive dans la boîte de l'agence : notification + Lucie le signale dans la ville
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "emails" }, (p) => {
+      const m = p.new as { id: string; de?: string | null; objet?: string | null; categorie?: string | null; statut?: string | null };
+      const de = (m.de ?? "").replace(/<[^>]*>/, "").replace(/"/g, "").trim() || (m.de ?? "");
+      if (m.categorie === "spam") return;
+      toast({ kind: "mail", titre: "📬 Vous avez reçu un mail", texte: `${de} — ${m.objet ?? "(sans objet)"}`, agentId: "lucie", href: "/journal" }, `mail:${m.id}`);
+      world.say("lucie", `📬 Nouveau mail de ${de.split(" ")[0] ?? "quelqu'un"} !`, 4500);
     })
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "journal" }, (p) => {
       const e = journalFromRow(p.new as JournalRow);
