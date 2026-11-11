@@ -27,6 +27,7 @@ import { createHmac } from "node:crypto";
 import { interpreter, messagesEntrants, normNumero, signatureValide } from "@/integrations/whatsapp";
 import { messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
 import { autoriseClaude, jouerPas, prendreTaches } from "@/engine/claude-worker";
+import { toolByName } from "@/engine/tools";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -592,6 +593,33 @@ async function scenarioCerveau() {
   check(!autoriseClaude("Bearer x") && !autoriseClaude(null), "routes de Claude Code protégées par un secret");
 }
 
+async function scenarioUneReponse() {
+  console.log("\n— Une seule réponse par mail, boîte relevée chaque minute");
+  await reset();
+  await q("delete from public.emails; delete from public.engine_kv where cle = 'courrier.releve'");
+  await q("update public.routines set actif = true where id = 'rt_tri_mails'");
+  // relève à chaque passage : les nouveaux mails sont vus tout de suite (sans attendre la routine)
+  await tick(db, llm, { services: demoServices, maxSteps: 0 });
+  const vus = await q<{ id: string }>("select id from public.emails");
+  check(vus.length >= 3, `boîte relevée au passage du moteur (${vus.length} mails vus)`);
+  await tick(db, llm, { services: demoServices, maxSteps: 0 });
+  check((await q("select 1 from public.tasks where titre like 'Tri des mails%'")).length === 1, "une seule tâche de tri pour ces mails, même si le moteur repasse");
+  await q("update public.routines set actif = false where id = 'rt_tri_mails'");
+
+  const send = toolByName("send_email")!;
+  const [noe] = await q<Record<string, unknown>>("select * from public.agents where id = 'noe'");
+  const t = await db.insertTask({ agent_id: "noe", cree_par: "test", titre: "Répondre : test", description: "x", statut: "running" });
+  const ctx = { db, llm, task: t, agent: (await db.agents()).find((a) => a.id === "noe")!, run: null as never, team: await db.agents(), poles: new Map(), memory: [], now: new Date(), settings: await db.settings(), services: demoServices } as unknown as Parameters<typeof send.run>[0];
+  void noe;
+  const r1 = await send.run(ctx, { a: "contact@fournil-du-quai.example", objet: "Re: Site internet", corps: "Bonjour, merci pour votre message.", repondre_a: "demo-mail-1" });
+  const r2 = await send.run(ctx, { a: "contact@fournil-du-quai.example", objet: "Re: Site internet", corps: "Bonjour, encore merci.", repondre_a: "demo-mail-1" });
+  const r3 = await send.run(ctx, { a: "contact@fournil-du-quai.example", objet: "Petite précision", corps: "Bonjour, autre chose." });
+  const n = (await q("select 1 from public.approvals where payload->>'repondre_a' = 'demo-mail-1'")).length;
+  check(!r1.content.startsWith("Rien n'est envoyé") && r2.content.startsWith("Rien n'est envoyé") && r3.content.startsWith("Rien n'est envoyé") && n === 1, `une seule réponse par mail (2e réponse et message sans id bloqués : ${n} envoi)`);
+  const rep = await db.repondus(["demo-mail-1", "demo-mail-2"]);
+  check(!!rep["demo-mail-1"] && !rep["demo-mail-2"], "la boîte montre aux agents les mails « DÉJÀ RÉPONDU »");
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -607,6 +635,7 @@ async function scenarioCerveau() {
     await scenarioAtelierBoutique();
     await scenarioWhatsApp();
     await scenarioCerveau();
+    await scenarioUneReponse();
   } catch (e) {
     console.error(e);
     failures++;

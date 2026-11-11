@@ -12,6 +12,6 @@ export const searchEmails = defineTool({
   async run(ctx, input) {
     const mb = await ctx.services.mailbox();
     const list = await mb.list(input.requete, input.max ?? 10);
-    return { content: `${list.length} résultat(s) pour « ${input.requete} »${demoNote(mb.kind)}\n${mailLines(list)}`, etape: "Cherche dans les mails" };
+    return { content: `${list.length} résultat(s) pour « ${input.requete} »${demoNote(mb.kind)}\n${mailLines(list, await ctx.db.repondus(list.map((m) => m.id)))}`, etape: "Cherche dans les mails" };
   },
 });

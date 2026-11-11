@@ -12,6 +12,6 @@ export const listInbox = defineTool({
   async run(ctx, input) {
     const mb = await ctx.services.mailbox();
     const list = await mb.list(input.filtre === "tous" ? "in:inbox" : "in:inbox is:unread", input.max ?? 15);
-    return { content: `${list.length} mail(s) — boîte ${mb.compte}${demoNote(mb.kind)}\n${mailLines(list)}`, etape: "Lit la boîte de réception" };
+    return { content: `${list.length} mail(s) — boîte ${mb.compte}${demoNote(mb.kind)}\n${mailLines(list, await ctx.db.repondus(list.map((m) => m.id)))}`, etape: "Lit la boîte de réception" };
   },
 });

@@ -39,10 +39,10 @@ export function parseRecipients(v: string): string[] | null {
 
 export const dateFr = (iso: string) => formatInTimeZone(new Date(iso), "Europe/Paris", "EEE d MMM HH:mm", { locale: fr });
 
-export function mailLines(list: MailSummary[]): string {
+export function mailLines(list: MailSummary[], repondus: Record<string, string> = {}): string {
   if (!list.length) return "Aucun mail.";
   const body = list
-    .map((m) => `- id=${m.id} · ${m.nonLu ? "[non lu] " : ""}${dateFr(m.date)}\n  De : ${m.de}\n  Objet : ${m.objet}\n  Extrait : ${m.extrait}`)
+    .map((m) => `- id=${m.id} · ${repondus[m.id] ? `[DÉJÀ RÉPONDU le ${dateFr(repondus[m.id]!)} — ne pas répondre à nouveau] ` : m.nonLu ? "[non lu] " : ""}${dateFr(m.date)}\n  De : ${m.de}\n  Objet : ${m.objet}\n  Extrait : ${m.extrait}`)
     .join("\n");
   return externe("gmail", body);
 }

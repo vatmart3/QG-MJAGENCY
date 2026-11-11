@@ -259,6 +259,10 @@ export interface EngineDb {
   knownEmailIds(ids: string[]): Promise<string[]>;
   insertEmails(rows: Omit<EEmail, "statut">[]): Promise<void>;
   email(id: string): Promise<EEmail | null>;
+  /** mails (parmi `ids`) qui ont déjà une réponse envoyée ou programmée : id → date de la réponse */
+  repondus(ids: string[]): Promise<Record<string, string>>;
+  /** dernier mail reçu de cette adresse depuis une date */
+  dernierMailRecu(adresse: string, depuisIso: string): Promise<EEmail | null>;
   updateEmail(id: string, patch: Partial<EEmail>): Promise<void>;
   approval(id: string): Promise<EApproval | null>;
   /** mises à jour de mémoire validées en Douane et pas encore appliquées */
@@ -506,6 +510,28 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     },
     async insertEmails(list) {
       if (list.length) ok(await sb.from("emails").upsert(list, { onConflict: "id", ignoreDuplicates: true }));
+    },
+    async repondus(ids) {
+      if (!ids.length) return {};
+      const out: Record<string, string> = {};
+      const a = rows(
+        await sb
+          .from("approvals")
+          .select("cree_le, statut, execution_statut, payload")
+          .in("type_action", ["email", "relance"])
+          .neq("statut", "refuse")
+          .in("payload->>repondre_a", ids)
+          .limit(500),
+      ) as { cree_le: string; execution_statut: string | null; payload: { repondre_a?: string } }[];
+      for (const r of a) if (r.payload.repondre_a && !["annule", "echec"].includes(r.execution_statut ?? "")) out[r.payload.repondre_a] ??= r.cree_le;
+      const e = rows(await sb.from("emails").select("id, maj_le").in("id", ids).eq("statut", "traite")) as { id: string; maj_le: string }[];
+      for (const r of e) out[r.id] ??= r.maj_le;
+      return out;
+    },
+    async dernierMailRecu(adresse, depuisIso) {
+      const a = adresse.replace(/[%_,()]/g, "");
+      const r = rows(await sb.from("emails").select("*").ilike("de", `%${a}%`).gte("recu_le", depuisIso).order("recu_le", { ascending: false }).limit(1));
+      return (r[0] as EEmail) ?? null;
     },
     async email(id) {
       return ok(await sb.from("emails").select("*").eq("id", id).maybeSingle());

@@ -5,6 +5,7 @@ import type { Services } from "@/integrations/types";
 import { deliverReports, runRoutines } from "./routines";
 import type { EngineDb } from "./db";
 import { executeApprovals } from "./douane";
+import { triInbox } from "./courrier";
 import { notifierFondateurs, retoursMissions } from "./notifications";
 import { claudeVivant, versAbonnement, type ModeIa } from "./cerveau";
 import type { LLM } from "./llm";
@@ -124,6 +125,13 @@ export async function tick(db: EngineDb, llm: LLM, opts: { now?: () => Date; max
   await safe("douane", async () => {
     const r = await executeApprovals(db, services, now);
     report.envois = r.faits;
+  });
+  // courrier : la boîte est relevée à chaque passage (toutes les minutes), sans IA tant qu'il n'y a rien de nouveau
+  await safe("courrier", async () => {
+    const tri = await db.routine("rt_tri_mails");
+    if (!tri?.actif || !team.some((a) => a.id === tri.agent_id && a.actif)) return;
+    if (!(await db.kvClaim("courrier.releve", { le: now.toISOString() }, new Date(now.getTime() - 45_000).toISOString(), now.toISOString()))) return;
+    await triInbox(db, services, tri.agent_id ?? "lucie");
   });
   await safe("routines", async () => {
     const r = await runRoutines(db, services, team, now);

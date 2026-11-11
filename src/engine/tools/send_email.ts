@@ -22,6 +22,23 @@ export const sendEmail = defineTool({
   async run(ctx, input) {
     const dest = parseRecipients(input.a);
     if (!dest) return { content: "Adresse(s) de destinataire invalide(s).", isError: true };
+    // une seule réponse par mail : un mail déjà traité ne reçoit jamais une deuxième réponse
+    if ((input.type ?? "email") === "email") {
+      if (!input.repondre_a && dest.length === 1 && !isInternal(dest[0]!, ctx.settings)) {
+        // pas d'id : on rattache au dernier mail reçu de cette personne (7 jours)
+        const dernier = await ctx.db.dernierMailRecu(dest[0]!, new Date(ctx.now.getTime() - 7 * 86400_000).toISOString());
+        if (dernier) {
+          const deja = (await ctx.db.repondus([dernier.id]))[dernier.id];
+          if (!deja) input.repondre_a = dernier.id;
+          else if (!ctx.task.mission_id)
+            return { content: `Rien n'est envoyé : ${dest[0]} a déjà reçu une réponse à son dernier mail (« ${dernier.objet} », répondu le ${new Date(deja).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}). Une seule réponse par mail : attends son prochain message.` };
+        }
+      }
+      if (input.repondre_a) {
+        const deja = (await ctx.db.repondus([input.repondre_a]))[input.repondre_a];
+        if (deja) return { content: `Rien n'est envoyé : ce mail a déjà reçu sa réponse (le ${new Date(deja).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}). Une seule réponse par mail. Passe au suivant.`, etape: "Mail déjà traité" };
+      }
+    }
     const mb = await ctx.services.mailbox();
     const orig = input.repondre_a ? await mb.read(input.repondre_a) : null;
     if (input.repondre_a && !orig) return { content: `Mail d'origine introuvable : ${input.repondre_a}.`, isError: true };

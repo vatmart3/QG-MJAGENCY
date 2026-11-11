@@ -219,6 +219,17 @@ export function pgEngineDb(pool: Pool): EngineDb {
     async journalParType(type, iso, limit) {
       return (await q<{ titre: string; contenu: string | null; cree_le: Date }>("select titre, contenu, cree_le from public.journal where type = $1 and cree_le > $2 order by cree_le limit $3", [type, iso, limit])).map((r) => ({ ...r, cree_le: new Date(r.cree_le).toISOString() }));
     },
+    async repondus(ids) {
+      if (!ids.length) return {};
+      const out: Record<string, string> = {};
+      for (const r of await q<{ id: string; le: Date }>("select payload->>'repondre_a' id, min(cree_le) le from public.approvals where type_action in ('email','relance') and statut <> 'refuse' and coalesce(execution_statut, '') not in ('annule','echec') and payload->>'repondre_a' = any($1) group by 1", [ids])) out[r.id] = new Date(r.le).toISOString();
+      for (const r of await q<{ id: string; le: Date }>("select id, maj_le le from public.emails where id = any($1) and statut = 'traite'", [ids])) out[r.id] ??= new Date(r.le).toISOString();
+      return out;
+    },
+    async dernierMailRecu(adresse, depuisIso) {
+      const [r] = await q("select * from public.emails where de ilike $1 and recu_le >= $2 order by recu_le desc limit 1", [`%${adresse.replace(/[%_]/g, "")}%`, depuisIso]);
+      return (r as unknown as EEmail) ?? null;
+    },
     async emailsSince(since) {
       return (await q("select * from public.emails where recu_le >= $1 order by recu_le desc limit 60", [since])) as unknown as EEmail[];
     },
