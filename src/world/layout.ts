@@ -81,7 +81,7 @@ export type PropKind =
   | "tower";
 
 /** Gratte-ciel (style New York) : variant = style × 1000 + hauteur en px. */
-export const TOUR = { verre: 0, deco: 1, brique: 2, fine: 3 } as const;
+export const TOUR = { verre: 0, deco: 1, brique: 2, fine: 3, times: 4 } as const;
 export const tourVariant = (style: number, hauteur: number) => style * 1000 + Math.round(hauteur);
 export const tourDe = (variant: number) => ({ style: Math.floor(variant / 1000), hauteur: variant % 1000 });
 
@@ -233,8 +233,11 @@ function buildLayout(style: StyleVille): Layout {
     }
   }
   for (const z of ZONE_PLAN) {
-    for (let y = z.y - 2; y < z.y + ZH + 2; y++)
-      for (let x = z.x - 2; x < z.x + ZW + 2; x++) if (inGrid(x, y)) mask[idx(x, y)] = 1;
+    // New York : une bande de terrain en plus derrière la ville (au fond de l'écran) pour la rangée de gratte-ciel
+    const fondY = style === "newyork" ? 7 : 2;
+    const fondX = style === "newyork" && z.y < CANAL_Y[0]! ? 7 : 2;
+    for (let y = z.y - fondY; y < z.y + ZH + 2; y++)
+      for (let x = z.x - fondX; x < z.x + ZW + 2; x++) if (inGrid(x, y)) mask[idx(x, y)] = 1;
   }
   // lisse : retire les cases isolées
   for (let pass = 0; pass < 2; pass++) {
@@ -746,20 +749,35 @@ function placerTours(
       }
   }
   cands.sort((a, b) => b.H * b.w * b.h - a.H * a.w * a.h);
+  const placees: { p: Prop; c: (typeof cands)[number] }[] = [];
   for (const c of cands) {
     let libre = true;
     for (let yy = c.y - 1; yy <= c.y + c.h && libre; yy++) for (let xx = c.x - 1; xx <= c.x + c.w; xx++) if (reserve[idx(xx, yy)]) libre = false;
     if (!libre) continue;
     for (let yy = c.y; yy < c.y + c.h; yy++) for (let xx = c.x; xx < c.x + c.w; xx++) if (blocked[idx(xx, yy)]) libre = false;
     if (!libre) continue;
-    const H = Math.round(Math.min(c.H, 70 + rng() * 170));
+    // rien derrière (le fond de la ville) : la skyline, les plus hautes tours
+    const H = Math.round(Math.min(c.H, c.H >= 200 ? 140 + rng() * 96 : 70 + rng() * 170));
     const r = rng();
-    const st = H >= 150 ? (r < 0.45 ? TOUR.verre : r < 0.75 ? TOUR.deco : TOUR.fine) : H >= 90 ? (r < 0.5 ? TOUR.verre : r < 0.75 ? TOUR.deco : TOUR.brique) : TOUR.brique;
+    const st = H >= 150 ? (r < 0.5 ? TOUR.verre : r < 0.82 ? TOUR.deco : TOUR.fine) : H >= 90 ? (r < 0.5 ? TOUR.verre : r < 0.75 ? TOUR.deco : TOUR.brique) : TOUR.brique;
     const hh = st === TOUR.brique ? Math.min(H, 52 + Math.round(rng() * 40)) : H;
-    add({ kind: "tower", x: c.x, y: c.y, w: c.w, h: c.h, blocks: true, variant: tourVariant(st, hh) });
+    const prop: Prop = { kind: "tower", x: c.x, y: c.y, w: c.w, h: c.h, blocks: true, variant: tourVariant(st, hh) };
+    add(prop);
+    placees.push({ p: prop, c });
     for (let yy = c.y - 1; yy <= c.y + c.h; yy++) for (let xx = c.x - 1; xx <= c.x + c.w; xx++) if (inGrid(xx, yy)) reserve[idx(xx, yy)] = 1;
     for (let yy = c.y; yy < c.y + c.h; yy++) for (let xx = c.x; xx < c.x + c.w; xx++) tourPres[idx(xx, yy)] = 1;
   }
+  // « Times Square » : la tour assez large et haute la plus au centre du fond porte les écrans géants
+  const times = placees
+    .filter(({ c }) => c.w >= 3 && c.h >= 3 && c.H >= 120)
+    .sort((a, b) => score(a.c) - score(b.c))[0];
+  if (times) times.p.variant = tourVariant(TOUR.times, Math.min(times.c.H, 190));
+}
+
+/** plus petit = plus au centre de l'écran et plus au fond */
+function score(c: { x: number; y: number; w: number; h: number }): number {
+  const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+  return Math.abs(cx - cy) * 1.5 + (cx + cy) * 0.4;
 }
 
 export function doorCellsOf(z: Zone): { x: number; y: number }[] {

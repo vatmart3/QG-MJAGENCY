@@ -7,9 +7,10 @@ import { world } from "@/store/world";
 import { AgentView, type WorldServices } from "./agents/AgentView";
 import { Balises, Boats, Gulls, Lighthouse, Particles, Pile, Sparkles, Traffic } from "./ambient";
 import { ambianceAt } from "./daynight";
-import { T, WORLD_H, WORLD_W, getLayout, idx, iso, tourDe, worldToCell, zoneAt, type Layout, type Prop } from "./layout";
+import { T, TOUR, WORLD_H, WORLD_W, getLayout, idx, iso, tourDe, worldToCell, zoneAt, type Layout, type Prop } from "./layout";
 import type { StyleVille } from "./theme";
 import { tourSommet } from "./sprites/newyork";
+import { EcranGeant } from "./times";
 import { Overlay } from "./overlay";
 import { makeBeamTexture, makeGlowTexture, SkyLayer } from "./sky";
 import { buildAtlas, type AtlasFrame } from "./sprites/atlas";
@@ -56,6 +57,7 @@ export class Game {
   private traffic: Traffic | null = null;
   private balises: Balises | null = null;
   private towerLights: Sprite[] = [];
+  private times: EcranGeant | null = null;
   private agentCells = new Set<number>();
   private lampGlows: Sprite[] = [];
   private deskGlows = new Map<string, Sprite>();
@@ -187,6 +189,9 @@ export class Game {
           return { x: c.x, y: c.y - tourSommet(p.variant ?? 0) };
         });
       this.balises = new Balises(this.lights, sommets, this.glowTex);
+      // « Times Square » : écrans géants sur la tour centrale du fond
+      const tt = L.props.find((p) => p.kind === "tower" && tourDe(p.variant ?? 0).style === TOUR.times);
+      if (tt) this.times = new EcranGeant(this.objects, this.lights, tt, (x, y) => this.pointCache(x, y, tt));
     }
 
     this.overlay = new Overlay(this.overlayEl, L, (z) => this.opts.onZoneClick(z), iso(L.pharePos.x + 0.5, L.pharePos.y + 0.5));
@@ -281,6 +286,20 @@ export class Game {
       this.lights.addChild(g);
       this.lampGlows.push(g);
     }
+  }
+
+  /** Un point du monde (px) est-il recouvert par une tour située devant la tour `t0` ? */
+  private pointCache(x: number, y: number, t0: Prop): boolean {
+    const d0 = t0.x + (t0.w ?? 1) + t0.y + (t0.h ?? 1);
+    for (const t of this.layout.props) {
+      if (t.kind !== "tower" || t === t0) continue;
+      const w = t.w ?? 1, h = t.h ?? 1;
+      if (t.x + w + t.y + h <= d0) continue;
+      const g = iso(t.x, t.y + h).x, d = iso(t.x + w, t.y).x;
+      const haut = iso(t.x, t.y).y - tourDe(t.variant ?? 0).hauteur, bas = iso(t.x + w, t.y + h).y;
+      if (x > g && x < d && y > haut && y < bas) return true;
+    }
+    return false;
   }
 
   /** Le point (case u, v, hauteur z) est-il masqué par un gratte-ciel situé devant ? */
@@ -593,6 +612,7 @@ export class Game {
       this.traffic.update(dt, night);
     }
     this.balises?.update(dt, night);
+    this.times?.update(dt, st, night, this.hour);
     this.boats.update(dt);
     this.gulls.update(dt);
     this.sparkles.update(dt);

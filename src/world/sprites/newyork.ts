@@ -15,6 +15,26 @@ export function tourTete(variant: number): number {
   return hauteur + (style === TOUR.deco ? 46 : style === TOUR.brique ? 30 : 34);
 }
 
+/**
+ * Écrans géants de la tour « Times Square » (coordonnées relatives à l'emprise) : R = façade droite (u = w),
+ * L = façade gauche (v = h) ; `a0`-`a1` le long de la façade, `z0`-`z1` en hauteur (px).
+ */
+export interface EcranGeom {
+  face: "L" | "R";
+  a0: number;
+  a1: number;
+  z0: number;
+  z1: number;
+  role: "infos" | "pubs" | "bandeau";
+}
+export function ecransTimes(w: number, h: number, H: number): EcranGeom[] {
+  return [
+    { face: "R", a0: 0.22, a1: h - 0.22, z0: Math.round(H * 0.42), z1: Math.round(H * 0.9), role: "infos" },
+    { face: "L", a0: 0.22, a1: w - 0.22, z0: Math.round(H * 0.36), z1: Math.round(H * 0.8), role: "pubs" },
+    { face: "L", a0: 0.12, a1: w - 0.12, z0: Math.round(H * 0.36) - 14, z1: Math.round(H * 0.36) - 5, role: "bandeau" },
+  ];
+}
+
 /** Point le plus haut (feu rouge d'aviation) au-dessus du sol, au centre de l'emprise. */
 export function tourSommet(variant: number): number {
   const { style, hauteur } = tourDe(variant);
@@ -99,6 +119,41 @@ export function drawTower(p: Pen, ox: number, oy: number, w: number, h: number, 
       p.vline(Math.round(tx), Math.round(ty), Math.round(ty - 16), rgb("#5a6070"));
     }
     void corps;
+    return;
+  }
+
+  if (style === TOUR.times) {
+    // façade sombre, cadres noirs des écrans (les images sont posées par la ville, en direct)
+    const base = rgb("#2a2f3d");
+    boite(u0, v0, u1, v1, 0, 6, rgb("#8d93a3"));
+    boite(u0, v0, u1, v1, 6, H, base);
+    const ecrans = ecransTimes(w, h, H);
+    const vitre = (t: number, f: Face) => shade(t < 0.2 ? rgb("#8796b3") : rgb("#3a4152"), f === "L" ? -0.1 : 0);
+    // fenêtres seulement hors des écrans (par bandes de hauteur)
+    const bandes: [number, number][] = [];
+    let z = 6;
+    for (const zz of [...ecrans].sort((a, b) => a.z0 - b.z0)) {
+      if (zz.z0 - 3 > z) bandes.push([z, zz.z0 - 3]);
+      z = Math.max(z, zz.z1 + 3);
+    }
+    if (H > z) bandes.push([z, H]);
+    for (const [za, zb] of bandes) {
+      fenetres(p, ox, oy, "L", u0, u1, v1, za, zb, { pasH: 4, pasZ: 4, w: 2, h: 2, vitre, allume: 0.5, seed, nuit, cache });
+      fenetres(p, ox, oy, "R", v0, v1, u1, za, zb, { pasH: 4, pasZ: 4, w: 2, h: 2, vitre, allume: 0.5, seed: seed + 5, nuit, cache });
+    }
+    if (nuit) return;
+    const noir = rgb("#101218");
+    for (const e of ecrans) {
+      const q =
+        e.face === "R"
+          ? [isoPt(ox, oy, u1 + 0.01, e.a0 - 0.08, e.z0 - 2), isoPt(ox, oy, u1 + 0.01, e.a1 + 0.08, e.z0 - 2), isoPt(ox, oy, u1 + 0.01, e.a1 + 0.08, e.z1 + 2), isoPt(ox, oy, u1 + 0.01, e.a0 - 0.08, e.z1 + 2)]
+          : [isoPt(ox, oy, e.a0 - 0.08, v1 + 0.01, e.z0 - 2), isoPt(ox, oy, e.a1 + 0.08, v1 + 0.01, e.z0 - 2), isoPt(ox, oy, e.a1 + 0.08, v1 + 0.01, e.z1 + 2), isoPt(ox, oy, e.a0 - 0.08, v1 + 0.01, e.z1 + 2)];
+      p.poly(q as [number, number][], noir);
+    }
+    // enseigne sur le toit
+    boite(u0 + 0.4, v0 + 0.4, u1 - 0.4, v1 - 0.4, H, H + 8, rgb("#3a4052"));
+    const [tx, ty] = isoPt(ox, oy, w / 2, h / 2, H + 8);
+    p.vline(Math.round(tx), Math.round(ty), Math.round(ty - 18), rgb("#9aa3b5"));
     return;
   }
 

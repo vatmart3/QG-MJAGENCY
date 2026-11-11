@@ -189,6 +189,11 @@ images »). Migration `…1800`.
   trottoirs (les agents y marchent de préférence), parcs aux couleurs d'automne, **brownstones** (corniche et porte à
   la couleur du pôle) à la place des maisons, **lofts** en brique avec verrière d'atelier, falaises de schiste, et une
   skyline à l'horizon qui s'illumine la nuit (`src/world/theme.ts`, `src/world/sprites/newyork.ts`).
+- **Skyline au fond de la ville** : une bande de terrain en plus derrière les pôles, réservée aux plus hautes tours.
+- **Times Square** : la tour la plus centrale du fond porte des **écrans géants en direct** (`src/world/times.ts`) :
+  à droite les infos du port (agents au travail, Douane, tâches et missions, dernière action d'un agent, heure),
+  à gauche les offres de la Carte des offres (site vitrine dès 890 €, Pack Visibilité, avis Google NFC, agent IA),
+  et un bandeau défilant avec ce que viennent de faire les agents. Les écrans brillent la nuit.
 
 ## Telegram (gratuit) : missions et « quel agent fait quoi » sur le téléphone
 
