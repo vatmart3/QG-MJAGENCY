@@ -2,7 +2,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { supabaseEngineDb } from "@/engine/db";
 import { eur } from "@/finance/types";
 import { AIDE_TELEGRAM, boutonTelegram, carteDouane, envoyerTelegram, html, lireTelegram, messageTelegram, modifierMessage, repondreBouton, secretValide, type BoutonTelegram, type ReglagesTelegram } from "@/integrations/telegram";
-import { interpreter } from "@/integrations/whatsapp";
+import { interpreter, reponseBavardage } from "@/integrations/whatsapp";
 import { adminSupabase } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +92,12 @@ export async function POST(request: Request) {
   const c = interpreter(texte, team.filter((a) => a.actif).map((a) => ({ id: a.id, nom: a.nom })));
   if (c.type === "aide" || /^start$/i.test(texte)) {
     await repondre(AIDE_TELEGRAM);
+  } else if (c.type === "bavardage") {
+    // petit mot : réponse immédiate, sans IA (rien n'est facturé)
+    const [ouvertes, attente] = await Promise.all([db.openTasks(60), db.pendingApprovals()]);
+    const agent = team.find((a) => a.id === (c.cible ?? "marius"))?.nom ?? "Marius";
+    const heure = Number(formatInTimeZone(new Date(), "Europe/Paris", "H"));
+    await repondre(`${c.cible ? `<b>${html(agent)}</b> : ` : ""}${html(reponseBavardage(c.genre, { agent, prenom: m.prenom, enCours: ouvertes.length, douane: attente.length, heure }))}`);
   } else if (c.type === "point") {
     const jour = formatInTimeZone(new Date(), "Europe/Paris", "yyyy-MM-dd");
     const [ouvertes, attente, depense, settings] = await Promise.all([db.openTasks(60), db.pendingApprovals(), db.spentSince(jour), db.settings()]);

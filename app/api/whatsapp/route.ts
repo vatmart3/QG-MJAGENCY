@@ -1,7 +1,7 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { supabaseEngineDb } from "@/engine/db";
 import { eur } from "@/finance/types";
-import { AIDE_WHATSAPP, envoyerWhatsApp, interpreter, messagesEntrants, signatureValide } from "@/integrations/whatsapp";
+import { AIDE_WHATSAPP, envoyerWhatsApp, interpreter, messagesEntrants, reponseBavardage, signatureValide } from "@/integrations/whatsapp";
 import { adminSupabase } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +45,11 @@ export async function POST(request: Request) {
     const c = interpreter(m.texte, team.filter((a) => a.actif).map((a) => ({ id: a.id, nom: a.nom })));
     if (c.type === "aide") {
       await repondre(m.de, AIDE_WHATSAPP);
+    } else if (c.type === "bavardage") {
+      const [ouvertes, attente] = await Promise.all([db.openTasks(60), db.pendingApprovals()]);
+      const agent = team.find((a) => a.id === (c.cible ?? "marius"))?.nom ?? "Marius";
+      const heure = Number(formatInTimeZone(new Date(), "Europe/Paris", "H"));
+      await repondre(m.de, `${c.cible ? `*${agent}* : ` : ""}${reponseBavardage(c.genre, { agent, prenom: null, enCours: ouvertes.length, douane: attente.length, heure })}`);
     } else if (c.type === "point") {
       const jour = formatInTimeZone(new Date(), "Europe/Paris", "yyyy-MM-dd");
       const [ouvertes, attente, depense, settings] = await Promise.all([db.openTasks(60), db.pendingApprovals(), db.spentSince(jour), db.settings()]);

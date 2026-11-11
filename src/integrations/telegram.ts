@@ -186,5 +186,6 @@ export const AIDE_TELEGRAM = [
   "• /point → ce qui tourne au port en ce moment.",
   "• /douane → ce qui attend ta validation, avec les boutons Accepter / Refuser.",
   "• /calme → seulement l'important · /tout → chaque action des agents.",
+  "• Un petit mot (bonjour, ça va ?, merci, bonne nuit) → je réponds tout de suite, gratuitement, sans IA.",
   "Je te renvoie le résultat ici quand la mission est terminée.",
 ].join("\n");

@@ -24,7 +24,7 @@ import { executeApprovals } from "@/engine/douane";
 import { kpis, kpisTexte } from "@/engine/kpis";
 import { notifierFondateurs } from "@/engine/notifications";
 import { createHmac } from "node:crypto";
-import { interpreter, messagesEntrants, normNumero, signatureValide } from "@/integrations/whatsapp";
+import { interpreter, messagesEntrants, normNumero, reponseBavardage, signatureValide } from "@/integrations/whatsapp";
 import { boutonTelegram, carteDouane, messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
 import { autoriseClaude, jouerPas, prendreTaches } from "@/engine/claude-worker";
 import { toolByName } from "@/engine/tools";
@@ -45,6 +45,10 @@ const q = async <T = Record<string, unknown>>(sql: string, p: unknown[] = []) =>
 
 async function reset() {
   await q("delete from public.agent_chats; delete from public.usage; delete from public.agent_messages; delete from public.approvals; delete from public.task_runs; update public.agents set tache_courante_id = null, etat = 'idle', offline_raison = null, interlocuteur = null; delete from public.tasks; delete from public.missions; delete from public.journal;");
+  // comme en production : pas de « nuit au port » (le scénario de nuit la rallume lui-même), quelle que soit l'heure du test
+  await q("update public.routines set actif = false where id = 'rt_nuit'");
+  // et pas de reste du scénario « cerveau mixte » : tout passe par le moteur
+  await q(`delete from public.engine_kv where cle = 'claude.dernier'; update public.settings set ia = '{"mode": "api"}' where id = 1`);
   // le courrier planifié (tri, relances) ne tourne que dans son propre scénario
   await q("update public.routines set actif = false, derniere_execution = null");
 }
@@ -539,6 +543,12 @@ async function scenarioWhatsApp() {
   const c3 = interpreter("Céleste : bloque mardi matin", agents);
   const c4 = interpreter("Point", agents);
   check(c1.type === "mission" && c1.cible === null && c2.type === "mission" && c2.cible === "victor" && c2.texte.startsWith("devis") && c3.type === "mission" && c3.cible === "celeste" && c4.type === "point", "messages compris : mission (Marius), @victor, « Céleste : », point");
+  const petits = ["Bonne nuit !", "bonne nuit la team 🌙", "Salut", "Coucou Marius", "Ça va ?", "comment ça va les gars", "Merci beaucoup", "Bravo !", "ok", "👍", "Bien joué l'équipe"].map((x) => interpreter(x, agents));
+  const travail = ["Salut, prépare un devis pour La Marée", "Bonne nuit, et envoie la facture à Dupont demain", "Trouve des fleuristes à Sète", "Ça va être compliqué, relance le client"].map((x) => interpreter(x, agents));
+  const cv = interpreter("@victor ça va ?", agents);
+  check(petits.every((x) => x.type === "bavardage") && travail.every((x) => x.type === "mission") && cv.type === "bavardage" && cv.cible === "victor", `petits mots (bonne nuit, ça va, merci, 👍…) → réponse sans IA ; une vraie demande reste une mission (${petits.map((x) => (x.type === "bavardage" ? x.genre : "MISSION")).join(", ")})`);
+  const rep = reponseBavardage("nuit", { agent: "Marius", prenom: "Jérémy", enCours: 3, douane: 1, heure: 23 });
+  check(rep.includes("Jérémy") && rep.includes("3 tâches"), `réponse du soir avec l'état du port (${rep})`);
   check(normNumero("06 12 34 56 78") === "33612345678" && normNumero("+33 6 12 34 56 78") === "33612345678", "numéros normalisés (33612345678)");
   const corps = JSON.stringify({ entry: [{ changes: [{ field: "messages", value: { messages: [{ id: "wamid.1", from: "33612345678", type: "text", text: { body: "Salut" } }] } }] }] });
   const sig = "sha256=" + createHmac("sha256", "secret-test").update(corps).digest("hex");
