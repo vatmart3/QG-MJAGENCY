@@ -152,6 +152,8 @@ async function envoyerProspection(ctx: ToolCtx, dest: string[], input: { objet: 
       execution_statut: "a_faire",
     });
     await ctx.db.commercial.updateLead(lead.id, { statut: "contacte", contacte_le: quand.toISOString() });
+    const opp = await ctx.db.commercial.opportuniteDuLead(lead.id);
+    if (opp && opp.etape === "nouveau") await ctx.db.commercial.updateOpportunity(opp.id, { etape: "contacte", prochaine_action: `Mail envoyé à ${heureParis(quand)} — relance à J+5 sans réponse` });
     await ctx.db.insertJournal({ type: "action", titre: `📨 ${ctx.agent.nom} écrit à ${lead.nom} (envoi à ${heureParis(quand)})`.slice(0, 300), contenu: `${input.objet}\n\n${input.corps}`.slice(0, 1500), agent_id: ctx.agent.id, pole_id: ctx.agent.pole_id });
     return { content: `Mail de prospection programmé : il part tout seul à ${heureParis(quand)}${formatInTimeZone(quand, "Europe/Paris", "yyyy-MM-dd") !== formatInTimeZone(ctx.now, "Europe/Paris", "yyyy-MM-dd") ? ` le ${formatInTimeZone(quand, "Europe/Paris", "dd/MM")}` : ""}.`, etape: `Programme : ${lead.nom}` };
   }

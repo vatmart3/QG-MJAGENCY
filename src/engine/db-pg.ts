@@ -476,6 +476,22 @@ function pgCommercialDb(q: Q): CommercialDb {
     async leadsAProspecter(scoreMin, max) {
       return (await q("select l.* from public.leads l where l.statut = 'nouveau' and not l.demo and l.email is not null and l.score >= $1 and not exists (select 1 from public.desinscrits d where d.email = lower(l.email)) order by l.score desc limit $2", [scoreMin, max])).map(nL);
     },
+    async leadsAEtudier(scoreMin, max) {
+      return (await q("select l.* from public.leads l where l.statut = 'nouveau' and not l.demo and l.score >= $1 and (l.email is null or not exists (select 1 from public.desinscrits d where d.email = lower(l.email))) order by l.score desc limit $2", [scoreMin, max])).map(nL);
+    },
+    async sauverProspection(p) {
+      await q("update public.settings set prospection = $1 where id = 1", [JSON.stringify(p)]);
+    },
+    async sauverPilote(p) {
+      await q("update public.settings set pilote_commercial = $1 where id = 1", [JSON.stringify(p)]);
+    },
+    async leadsResume() {
+      return (await q<{ metier: string | null; ville: string | null; statut: string; angle: string | null; email: string | null }>("select metier, ville, statut, angle, email from public.leads where not demo limit 3000")).map((r) => ({ ...r, email: !!r.email }));
+    },
+    async opportuniteDuLead(leadId) {
+      const [r] = await q("select * from public.opportunities where lead_id = $1 order by cree_le desc limit 1", [leadId]);
+      return r ? nO(r) : null;
+    },
     async leadsARelancer(avantIso, max) {
       return (await q("select * from public.leads where statut = 'contacte' and not demo and email is not null and contacte_le <= $1 and relance_le is null limit $2", [avantIso, max])).map(nL);
     },

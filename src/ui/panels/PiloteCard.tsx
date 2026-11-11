@@ -44,7 +44,7 @@ export function PiloteCard() {
         </label>
       </div>
       <p className="mt-1 text-[12px] text-ink-soft">
-        Chaque jour de semaine : Hugo et Inès trouvent et notent des commerces (10 h), <b>Sacha écrit aux meilleurs</b> (10 h 30) et les mails <b>partent tout seuls</b>, étalés dans la journée. Relance unique sans réponse, puis plus rien. Une réponse arrive dans le pipeline (Noé et Victor prennent le relais) ; un « STOP » ou le lien de désinscription retire l&apos;adresse pour toujours. Un mail qui parle de prix passe par la Douane.
+        Chaque jour de semaine : Hugo et Inès trouvent et notent des commerces (10 h), <b>Sacha étudie les meilleurs</b> (10 h 30), choisit l&apos;offre (prix calculé selon la Carte des offres, jamais annoncé) et crée l&apos;affaire. Avec un e-mail, le mail <b>part tout seul</b>, étalé dans la journée ; sans e-mail, un <b>créneau d&apos;appel avec le script</b> est réservé dans ton agenda. Chaque vendredi, Marius analyse et ajuste. Relance unique sans réponse, puis plus rien. Une réponse arrive dans le pipeline (Noé et Victor prennent le relais) ; un « STOP » ou le lien de désinscription retire l&apos;adresse pour toujours. Un mail qui parle de prix passe par la Douane.
       </p>
       {stats && (
         <p className="mt-2 text-[12px]">
@@ -55,6 +55,10 @@ export function PiloteCard() {
         <label>
           Mails par jour (max 40)
           <input className={input} inputMode="numeric" value={p.mails_par_jour} onChange={(e) => set({ mails_par_jour: Math.max(0, Math.min(40, Number(e.target.value) || 0)) })} />
+        </label>
+        <label>
+          Appels préparés par jour (sans e-mail)
+          <input className={input} inputMode="numeric" value={p.appels_par_jour} onChange={(e) => set({ appels_par_jour: Math.max(0, Math.min(8, Number(e.target.value) || 0)) })} />
         </label>
         <label>
           Score minimum (/100)

@@ -9,9 +9,11 @@ export interface Pilote {
   debut: string;
   fin: string;
   ecart_minutes: number;
+  /** prospects sans e-mail préparés chaque jour pour un appel / un DM (créneau dans l'agenda) */
+  appels_par_jour: number;
 }
 
-export const PILOTE_DEFAUT: Pilote = { actif: true, mails_par_jour: 10, score_min: 55, relance_jours: 5, debut: "09:00", fin: "18:00", ecart_minutes: 12 };
+export const PILOTE_DEFAUT: Pilote = { actif: true, mails_par_jour: 10, score_min: 55, relance_jours: 5, debut: "09:00", fin: "18:00", ecart_minutes: 12, appels_par_jour: 3 };
 
 export function lirePilote(v: unknown): Pilote {
   const o = (v && typeof v === "object" ? v : {}) as Partial<Pilote>;
@@ -25,5 +27,6 @@ export function lirePilote(v: unknown): Pilote {
     debut: h(o.debut, PILOTE_DEFAUT.debut),
     fin: h(o.fin, PILOTE_DEFAUT.fin),
     ecart_minutes: n(o.ecart_minutes, PILOTE_DEFAUT.ecart_minutes, 3, 120),
+    appels_par_jour: n(o.appels_par_jour, PILOTE_DEFAUT.appels_par_jour, 0, 8),
   };
 }

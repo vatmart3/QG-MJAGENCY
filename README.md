@@ -122,6 +122,16 @@ la question aux fondateurs via la Douane, le plafond de budget, et deux ticks si
 
 ## Pilote automatique : les agents travaillent seuls
 
+**La chaîne commerciale** (tout s'enchaîne, sans intervention) : Hugo trouve (recherche web) → Inès note et retrouve
+les coordonnées → **Sacha étudie** chaque prospect (`browse_site`), choisit l'offre dans la **Carte des offres MJ**
+(`src/commercial/offres.ts`, prix calculés sans IA, packs appliqués s'ils reviennent moins cher, budget interne jamais
+annoncé) avec `plan_prospect` → l'**affaire** est créée dans le pipeline → avec e-mail : mail automatique ; sans
+e-mail : **créneau de 15 min dans l'agenda** des fondateurs avec le script (appel, DM, visite) + notification →
+réponse du prospect : **Théo prépare la fiche RDV** → chaque vendredi, **Marius analyse** (métiers, villes, offres,
+coût) et **ajuste la prospection** (`ajuster_prospection`). Chloé crée les contenus lundi et jeudi, avec des
+**carrousels** (JSON) dessinés en images 1080 × 1350 dans LE PORT (Rapports → fichier joint → « Télécharger les
+images »). Migration `…1800`.
+
 - **Source des prospects** : **OpenStreetMap** par défaut (gratuit, sans clé ni carte bancaire, API Overpass ;
   © les contributeurs d'OpenStreetMap, ODbL) : nom, adresse et souvent site, téléphone, e-mail, Instagram — sans
   note Google. Avec `GOOGLE_PLACES_API_KEY`, Google Places est utilisé à la place (avec les avis).

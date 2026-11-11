@@ -71,6 +71,13 @@ export interface CommercialDb {
   /** envois du pilote : combien créés depuis une date, et l'heure du dernier envoi programmé */
   envoisPilote(depuisIso: string): Promise<{ aujourdhui: number; dernier: string | null }>;
   leadsAProspecter(scoreMin: number, max: number): Promise<Lead[]>;
+  /** prospects nouveaux à étudier (avec ou sans e-mail, jamais la démo ni les désinscrits), meilleurs d'abord */
+  leadsAEtudier(scoreMin: number, max: number): Promise<Lead[]>;
+  opportuniteDuLead(leadId: string): Promise<Opportunity | null>;
+  sauverProspection(p: Prospection): Promise<void>;
+  sauverPilote(p: Pilote): Promise<void>;
+  /** tous les prospects réels (métier, ville, statut, angle), pour l'analyse de Marius */
+  leadsResume(): Promise<{ metier: string | null; ville: string | null; statut: string; angle: string | null; email: boolean }[]>;
   leadsARelancer(avantIso: string, max: number): Promise<Lead[]>;
   leadParEmail(email: string): Promise<Lead | null>;
   estDesinscrit(email: string): Promise<boolean>;
@@ -161,6 +168,25 @@ export function supabaseCommercialDb(sb: SupabaseClient): CommercialDb {
       if (!r.length) return [];
       const stop = new Set(((ok(await sb.from("desinscrits").select("email").in("email", r.map((l) => (l.email ?? "").toLowerCase()))) ?? []) as { email: string }[]).map((x) => x.email));
       return r.filter((l) => !stop.has((l.email ?? "").toLowerCase())).slice(0, max);
+    },
+    async leadsAEtudier(scoreMin, max) {
+      const r = ((ok(await sb.from("leads").select("*").eq("statut", "nouveau").eq("demo", false).gte("score", scoreMin).order("score", { ascending: false }).limit(max * 2)) ?? []) as Record<string, unknown>[]).map(nLead);
+      const mails = r.map((l) => (l.email ?? "").toLowerCase()).filter(Boolean);
+      const stop = mails.length ? new Set(((ok(await sb.from("desinscrits").select("email").in("email", mails)) ?? []) as { email: string }[]).map((x) => x.email)) : new Set<string>();
+      return r.filter((l) => !l.email || !stop.has(l.email.toLowerCase())).slice(0, max);
+    },
+    async sauverProspection(p) {
+      ok(await sb.from("settings").update({ prospection: p }).eq("id", 1));
+    },
+    async sauverPilote(p) {
+      ok(await sb.from("settings").update({ pilote_commercial: p }).eq("id", 1));
+    },
+    async leadsResume() {
+      return ((ok(await sb.from("leads").select("metier, ville, statut, angle, email").eq("demo", false).limit(3000)) ?? []) as { metier: string | null; ville: string | null; statut: string; angle: string | null; email: string | null }[]).map((r) => ({ ...r, email: !!r.email }));
+    },
+    async opportuniteDuLead(leadId) {
+      const r = ok(await sb.from("opportunities").select("*").eq("lead_id", leadId).order("cree_le", { ascending: false }).limit(1));
+      return r?.[0] ? nOpp(r[0] as Record<string, unknown>) : null;
     },
     async leadsARelancer(avantIso, max) {
       return ((ok(await sb.from("leads").select("*").eq("statut", "contacte").eq("demo", false).not("email", "is", null).lte("contacte_le", avantIso).is("relance_le", null).limit(max)) ?? []) as Record<string, unknown>[]).map(nLead);

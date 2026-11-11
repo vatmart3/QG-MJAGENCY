@@ -28,7 +28,8 @@ import { interpreter, messagesEntrants, normNumero, signatureValide } from "@/in
 import { messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
 import { autoriseClaude, jouerPas, prendreTaches } from "@/engine/claude-worker";
 import { toolByName } from "@/engine/tools";
-import { jetonDesinscription, jetonValide, lirePilote, prochainCreneau, relancesProspects, reponsesProspects, tacheProspectionAuto } from "@/commercial/pilote";
+import { jetonDesinscription, jetonValide, lirePilote, prochainCreneau, relancesProspects, reponsesProspects, tacheOptimisation, tacheProspectionAuto } from "@/commercial/pilote";
+import { chiffrer } from "@/commercial/offres";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -720,6 +721,55 @@ async function scenarioOsm() {
   check(rp.crees === 0 && rp.erreurs.length > 0 && rp.recherches === 0 && Date.now() - t0 < 5000, "OpenStreetMap en panne : pas de plantage, l'erreur est remontée à l'écran et au Journal");
 }
 
+async function scenarioChaine() {
+  console.log("\n— Chaîne commerciale : étude, offre chiffrée (Carte des offres), affaire, mail ou appel planifié, fiche RDV, optimisation");
+  await reset();
+  await pool.query("set session_replication_role = replica; delete from public.opportunities; delete from public.leads; delete from public.desinscrits; delete from public.approvals; set session_replication_role = origin;");
+  await q(`update public.settings set pilote_commercial = '{"actif": true, "mails_par_jour": 5, "appels_par_jour": 3, "score_min": 55}' where id = 1`);
+  // chiffrage exact
+  const c1 = chiffrer({ niveau: "pro", formule: "C", modules: ["nfc"] });
+  const c2 = chiffrer({ niveau: "pro", formule: "A", modules: ["nfc"], mensuels: ["presence"] });
+  check(c1.signature === 939 && c1.mois === 124 && c1.total24 === 3285 && c2.pack === "Pack Visibilité" && c2.signature === 1590 && c2.mois === 329, `Carte des offres : Vitrine Pro hybride + NFC = ${c1.resume} ; le pack est appliqué quand il revient moins cher`);
+
+  const avec = (await q<{ id: string }>("insert into public.leads (place_id, nom, metier, ville, email, telephone, score, source) values ('web:a', 'Boulangerie Avec Mail', 'Boulangerie', 'Sète', 'contact@avec-mail.fr', '04 67 00 00 01', 70, 'places') returning id"))[0]!.id;
+  const sans = (await q<{ id: string }>("insert into public.leads (place_id, nom, metier, ville, telephone, score, source) values ('web:b', 'Boulangerie Sans Mail', 'Boulangerie', 'Mèze', '04 67 00 00 02', 60, 'places') returning id"))[0]!.id;
+  const tid = await tacheProspectionAuto(db, new Date("2026-11-10T09:30:00Z"));
+  const [t] = await q<{ description: string }>("select description from public.tasks where id = $1", [tid]);
+  check(!!t && t.description.includes("Boulangerie Avec Mail") && t.description.includes("Boulangerie Sans Mail") && t.description.includes("plan_prospect"), "Sacha reçoit les prospects avec ET sans e-mail, à étudier puis approcher");
+
+  const plan = toolByName("plan_prospect")!;
+  const ctx = { db, llm, task: (await db.tasks([tid!]))[0]!, agent: (await db.agents()).find((a) => a.id === "sacha")!, run: null as never, team: await db.agents(), poles: new Map(), memory: [], now: new Date("2026-11-10T09:30:00Z"), settings: await db.settings(), services: demoServices } as unknown as Parameters<typeof plan.run>[0];
+  const rA = await plan.run(ctx, { prospect: avec, besoins: ["être trouvé sur Google"], niveau: "pro", formule: "C", modules: ["nfc"], canal: "email", arguments: ["les avis"], message: "Bonjour, une idée pour votre boulangerie…" });
+  const rS = await plan.run(ctx, { prospect: sans, besoins: ["aucun site"], niveau: "essentiel", formule: "A", modules: ["nfc"], options: ["gbp"], canal: "telephone", arguments: ["exister en ligne en 7 jours"], message: "Bonjour, je suis Jérémy de MJAGENCY, à Sète…" });
+  const opps = await q<{ lead_id: string; montant: string; etape: string; prochaine_action: string; notes: string }>("select lead_id, montant, etape, prochaine_action, notes from public.opportunities");
+  const oA = opps.find((o) => o.lead_id === avec);
+  const oS = opps.find((o) => o.lead_id === sans);
+  const agenda = await q<{ titre: string }>("select titre from public.journal where titre like 'À faire (fondateurs) : 📞 Appeler Boulangerie Sans Mail%'");
+  check(rA.content.includes("send_email") && Number(oA?.montant) === 3285 && oA?.notes.includes("ne pas annoncer"), "avec e-mail : étude + affaire chiffrée (budget interne jamais annoncé), puis le mail");
+  check(rS.content.includes("créneau réservé") && oS?.notes.includes("Pack Démarrage") && oS.prochaine_action.startsWith("📞 Appeler") && agenda.length === 1, `sans e-mail : créneau d'appel dans l'agenda avec le script, fondateurs prévenus (${oS?.prochaine_action})`);
+
+  const send = toolByName("send_email")!;
+  await send.run(ctx, { a: "contact@avec-mail.fr", objet: "Votre boulangerie", corps: "Bonjour…", type: "prospection" });
+  const [oA2] = await q<{ etape: string }>("select etape from public.opportunities where lead_id = $1", [avec]);
+  check(oA2?.etape === "contacte", "le mail programmé fait passer l'affaire à « contacté »");
+
+  // il répond : Théo prépare la fiche RDV tout seul
+  await reponsesProspects(db, [{ id: "rep-1", de: "Boulangerie <contact@avec-mail.fr>", objet: "Re: Votre boulangerie", extrait: "Bonjour, ça m'intéresse, rappelez-moi" }]);
+  const theo = await q("select 1 from public.tasks where agent_id = 'theo' and titre like 'Fiche RDV%'");
+  check(theo.length === 1, "réponse du prospect → Théo prépare la fiche RDV, les fondateurs sont prévenus");
+
+  // vendredi : Marius analyse et ajuste
+  const mid = await tacheOptimisation(db, new Date("2026-11-13T15:30:00Z"));
+  const [mt] = await q<{ description: string }>("select description from public.tasks where id = $1", [mid]);
+  const ajuster = toolByName("ajuster_prospection")!;
+  const ctxM = { ...ctx, agent: (await db.agents()).find((a) => a.id === "marius")! } as typeof ctx;
+  await ajuster.run(ctxM, { metiers: ["restaurant", "coiffeur", "fleuriste", "institut de beauté"], zones: ["Sète", "Frontignan", "Balaruc-les-Bains"], mails_par_jour: 12, raison: "Les boulangeries n'affichent pas d'e-mail : on cible des métiers qui en ont." } as never);
+  const cfg = await db.commercial.prospection();
+  const pil = await db.commercial.pilote();
+  check(!!mt && mt.description.includes("Par métier") && mt.description.includes("Boulangerie") && cfg.metiers[0] === "restaurant" && pil.mails_par_jour === 12, "vendredi : Marius reçoit les chiffres (métiers, villes, offres, coût) et ajuste la prospection");
+  await q(`update public.settings set pilote_commercial = '{"actif": false}' where id = 1`);
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -738,6 +788,7 @@ async function scenarioOsm() {
     await scenarioUneReponse();
     await scenarioPilote();
     await scenarioOsm();
+    await scenarioChaine();
   } catch (e) {
     console.error(e);
     failures++;

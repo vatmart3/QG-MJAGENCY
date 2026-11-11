@@ -6,7 +6,7 @@ import type { Services } from "@/integrations/types";
 import { alertesFiscales, clotureMois, facturerAbonnements, relancesImpayes } from "@/finance/automations";
 import { enrichirLeads, relancesDevis, trouverProspects } from "@/commercial/prospection";
 import { surveillerBoutique } from "@/boutique/surveillance";
-import { relancesProspects, tacheProspectionAuto } from "@/commercial/pilote";
+import { relancesProspects, tacheOptimisation, tacheProspectionAuto } from "@/commercial/pilote";
 import { surveillerSites } from "@/tech/surveillance";
 import { relancesSansReponse, triInbox } from "./courrier";
 import type { EAgent, ERoutine, EngineDb } from "./db";
@@ -94,6 +94,7 @@ export async function launchRoutine(db: EngineDb, services: Services, team: EAge
     return !!(await tacheProspectionAuto(db, now));
   }
   if (r.id === "rt_relances_prospects") return (await relancesProspects(db, now)) > 0;
+  if (r.id === "rt_optimisation") return !!(await tacheOptimisation(db, now));
   // Atelier Tech et boutique : contrôles et alertes, sans IA
   if (r.id === "rt_sante_sites") return (await surveillerSites(db, now)).controles > 0;
   if (r.id === "rt_boutique") {

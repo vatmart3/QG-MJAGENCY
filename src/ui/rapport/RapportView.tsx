@@ -6,6 +6,7 @@ import { mdToHtml, nomFichier } from "@/lib/rapport";
 import { formatParis } from "@/lib/paris";
 import { useWorld, type RapportItem } from "@/store/world";
 import { Portrait } from "../Portrait";
+import { CarrouselView, lireCarrousel } from "./Carrousel";
 import { downloadFichier, downloadMarkdown, downloadZip, printPdf } from "./download";
 
 const FICHIER_ICON = { md: "📝", txt: "📄", csv: "📊", html: "🌐", json: "🧾" } as const;
@@ -119,6 +120,7 @@ export function RapportView({ item }: { item: RapportItem }) {
                       ⬇️
                     </button>
                   </div>
+                  {f.type === "json" && lireCarrousel(f.contenu) && <CarrouselView spec={lireCarrousel(f.contenu)!} nom={f.nom} />}
                   {ouvert === key &&
                     (f.type === "md" ? (
                       <div className="rapport-md max-h-80 overflow-auto border-t border-paper-edge px-3 py-2" dangerouslySetInnerHTML={{ __html: mdToHtml(f.contenu) }} />
