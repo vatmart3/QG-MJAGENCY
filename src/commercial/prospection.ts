@@ -93,6 +93,8 @@ export async function scanSite(site: string): Promise<SiteInfo> {
 export function noter(p: Place, s: SiteInfo | null): { score: number; angle: string; diagnostic: string } {
   let score = 20;
   const notes: string[] = [];
+  // OpenStreetMap ne donne pas les avis : inconnu n'est pas « peu d'avis »
+  const avisConnus = p.nb_avis !== undefined && p.nb_avis !== null;
   const avis = p.nb_avis ?? 0;
   const note = p.note ?? 0;
   if (!p.site) {
@@ -116,7 +118,7 @@ export function noter(p: Place, s: SiteInfo | null): { score: number; angle: str
     }
     if (s.generateur) notes.push(`site ${s.generateur}`);
   }
-  if (avis < 30) {
+  if (avisConnus && avis < 30) {
     score += 15;
     notes.push(`peu d'avis Google (${avis})`);
   } else if (avis >= 100) {
@@ -133,7 +135,7 @@ export function noter(p: Place, s: SiteInfo | null): { score: number; angle: str
     ? "Site vitrine + fiche Google optimisée (SEO local)"
     : s && (!s.ok || !s.mobile || !s.https)
       ? "Refonte du site (mobile, rapide, sécurisé) + SEO local"
-      : avis < 30
+      : !avisConnus || avis < 30
         ? "Cartes NFC avis Google pour multiplier les avis"
         : /restaurant|bar|café|traiteur/i.test(p.metier ?? "")
           ? "Menu digital + avis Google + réservation en ligne"

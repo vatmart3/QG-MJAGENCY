@@ -122,6 +122,10 @@ la question aux fondateurs via la Douane, le plafond de budget, et deux ticks si
 
 ## Pilote automatique : les agents travaillent seuls
 
+- **Source des prospects** : **OpenStreetMap** par défaut (gratuit, sans clé ni carte bancaire, API Overpass ;
+  © les contributeurs d'OpenStreetMap, ODbL) : nom, adresse et souvent site, téléphone, e-mail, Instagram — sans
+  note Google. Avec `GOOGLE_PLACES_API_KEY`, Google Places est utilisé à la place (avec les avis).
+
 - **Prospection** (Commercial → Réglages → Pilote commercial, actif par défaut) : chaque jour de semaine, Hugo et
   Inès trouvent et notent des commerces (10 h, sans IA), **Sacha écrit aux meilleurs** (10 h 30, `rt_prospection_auto`)
   avec `send_email` `type=prospection` : les mails **partent tout seuls**, étalés (12 min d'écart, 9 h-18 h, jours

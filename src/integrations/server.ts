@@ -6,7 +6,7 @@ import { boutiqueDepuisEnv } from "@/boutique/shopify";
 import { envoyerPush } from "@/lib/push";
 import { envoyerTelegram, tgConfigure } from "./telegram";
 import { envoyerWhatsApp, waConfigure } from "./whatsapp";
-import { demoPlaces, googlePlaces } from "./places";
+import { googlePlaces, osmPlaces } from "./places";
 import { GoogleAuthError, GoogleClient, gmailMailbox, googleCalendar, hasGoogleOAuth } from "./google";
 import type { Calendar, Documents, Mailbox, Services } from "./types";
 
@@ -84,7 +84,8 @@ export async function engineServices(admin: SupabaseClient): Promise<Services> {
   };
   return {
     documents: storageDocuments(admin),
-    places: async () => (process.env.GOOGLE_PLACES_API_KEY ? googlePlaces(process.env.GOOGLE_PLACES_API_KEY) : demoPlaces()),
+    // Google Places si une clé est configurée (avec les avis), sinon OpenStreetMap (gratuit, sans clé)
+    places: async () => (process.env.GOOGLE_PLACES_API_KEY ? googlePlaces(process.env.GOOGLE_PLACES_API_KEY) : osmPlaces()),
     boutique: async () => boutiqueDepuisEnv(),
     notifier: (n) => envoyerPush(admin, n),
     ...(waConfigure() ? { whatsapp: (a: string, t: string) => envoyerWhatsApp(a, t) } : {}),

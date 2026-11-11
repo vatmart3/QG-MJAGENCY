@@ -12,9 +12,9 @@ import { SENSIBLE_RE } from "@/engine/tools/autonomie";
 import { launchRoutine } from "@/engine/routines";
 import { estAutomatique } from "@/engine/courrier";
 import { resumeFinance } from "@/finance/calc";
-import { relancesDevis, trouverProspects, urlPublique } from "@/commercial/prospection";
+import { noter, relancesDevis, trouverProspects, urlPublique } from "@/commercial/prospection";
 import { tacheSacha } from "@/commercial/taches";
-import { demoPlaces } from "@/integrations/places";
+import { demoPlaces, placesDepuisOsm, requeteOverpass } from "@/integrations/places";
 import { sha256Hex } from "@/finance/pdf";
 import { surveillerSites } from "@/tech/surveillance";
 import { analyser, auditUrl } from "@/tech/audit";
@@ -675,6 +675,30 @@ async function scenarioPilote() {
   await q(`update public.settings set pilote_commercial = '{"actif": false}' where id = 1`);
 }
 
+async function scenarioOsm() {
+  console.log("\n— OpenStreetMap : prospects gratuits, sans clé");
+  const r = requeteOverpass("boulangerie à Sète", 10);
+  check(r.label === "Boulangerie" && r.ql.includes('area["name"="Sète"]') && r.ql.includes('"shop"~"^(bakery|pastry)$"'), "« boulangerie à Sète » → requête OpenStreetMap (boulangeries de la commune)");
+  const art = requeteOverpass("artisan du bâtiment à Mèze", 10);
+  check(art.ql.includes("craft") && art.ql.includes('"name"="Mèze"'), "métier composé reconnu (artisans du bâtiment à Mèze)");
+  const libre = requeteOverpass("tatoueur à Sète", 5);
+  check(libre.ql.includes('"name"~"tatoueur",i'), "métier inconnu → recherche par nom");
+  const p = placesDepuisOsm(
+    [
+      { type: "node", id: 1, tags: { name: "Sans contact", shop: "bakery" } },
+      { type: "node", id: 2, tags: { name: "Au Bon Pain", shop: "bakery", "addr:housenumber": "4", "addr:street": "Rue Gambetta", "addr:postcode": "34200", "addr:city": "Sète", "contact:email": "Contact@AuBonPain.fr", website: "aubonpain.fr", "contact:instagram": "https://www.instagram.com/aubonpain_sete/" } },
+      { type: "way", id: 3, tags: { name: "Fermé", "disused:shop": "bakery" } },
+      { type: "node", id: 4, tags: { shop: "bakery" } },
+    ],
+    "Boulangerie",
+    "Sète",
+    10,
+  );
+  check(p.length === 2 && p[0]!.nom === "Au Bon Pain" && p[0]!.email === "contact@aubonpain.fr" && p[0]!.site === "https://aubonpain.fr" && p[0]!.instagram === "aubonpain_sete" && p[0]!.adresse === "4 Rue Gambetta, 34200 Sète" && p[0]!.place_id === "osm:node/2", "fiche lue (adresse, e-mail, site, Instagram), commerces fermés ou sans nom ignorés, joignables d'abord");
+  const n = noter({ place_id: "x", nom: "Au Bon Pain", adresse: "", site: undefined, telephone: undefined }, null);
+  check(!n.diagnostic.includes("peu d'avis") && n.score >= 55, `sans avis connus (OpenStreetMap) : pas de « peu d'avis » inventé, score ${n.score}`);
+}
+
 (async () => {
   try {
     await scenarioMission();
@@ -692,6 +716,7 @@ async function scenarioPilote() {
     await scenarioCerveau();
     await scenarioUneReponse();
     await scenarioPilote();
+    await scenarioOsm();
   } catch (e) {
     console.error(e);
     failures++;
