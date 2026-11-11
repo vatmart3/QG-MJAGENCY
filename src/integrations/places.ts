@@ -143,7 +143,7 @@ export function requeteOverpass(q: string, max: number): { ql: string; label: st
   const corps = def
     ? def.filtres.map((f) => `nwr${f}["name"](area.a);`).join("")
     : `nwr["shop"]["name"~"${echapper(metier)}",i](area.a);nwr["amenity"]["name"~"${echapper(metier)}",i](area.a);nwr["craft"]["name"~"${echapper(metier)}",i](area.a);`;
-  return { ql: `[out:json][timeout:20];${zoneQl}(${corps});out center tags ${Math.max(20, max * 4)};`, label: def?.label ?? metier };
+  return { ql: `[out:json][timeout:12];${zoneQl}(${corps});out center tags ${Math.max(20, max * 4)};`, label: def?.label ?? metier };
 }
 
 interface OsmEl {
@@ -180,7 +180,7 @@ export function placesDepuisOsm(els: OsmEl[], label: string, zone: string | null
   return out.sort((a, b) => rang(a) - rang(b)).slice(0, max);
 }
 
-const OVERPASS = (process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter").split(",");
+const OVERPASS = (process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter,https://overpass.kumi.systems/api/interpreter").split(",");
 
 export function osmPlaces(): Places {
   return {
@@ -194,16 +194,16 @@ export function osmPlaces(): Places {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "LE-PORT-MJAGENCY/1.0 (prospection locale)" },
             body: new URLSearchParams({ data: ql }),
-            signal: AbortSignal.timeout(25_000),
+            signal: AbortSignal.timeout(13_000),
           });
-          if (!res.ok) throw new Error(`OpenStreetMap : HTTP ${res.status}`);
+          if (!res.ok) throw new Error(`OpenStreetMap : HTTP ${res.status}${res.status === 429 ? " (trop de demandes, réessaie dans une minute)" : res.status === 504 ? " (serveur surchargé)" : ""}`);
           const j = (await res.json()) as { elements?: OsmEl[] };
           return placesDepuisOsm(j.elements ?? [], label, decouperRequete(query).zone, Math.min(20, max));
         } catch (e) {
           derniere = e;
         }
       }
-      throw derniere instanceof Error ? derniere : new Error("OpenStreetMap ne répond pas.");
+      throw derniere instanceof Error ? new Error((derniere as Error).name === "TimeoutError" ? "OpenStreetMap ne répond pas (serveur lent)" : (derniere as Error).message) : new Error("OpenStreetMap ne répond pas.");
     },
   };
 }

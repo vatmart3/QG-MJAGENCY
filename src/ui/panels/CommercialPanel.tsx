@@ -122,9 +122,12 @@ function Prospects({ d, reload }: { d: Data; reload: () => void }) {
   }, []);
   const list = useMemo(
     () =>
-      d.leads.filter((l) =>
-        filtre === "ecartes" ? l.statut === "ecarte" : filtre === "contactes" ? ["contacte", "repondu", "converti"].includes(l.statut) : ["nouveau", "a_contacter"].includes(l.statut),
-      ),
+      // dès qu'il y a de vrais prospects, les commerces de démonstration disparaissent de la liste
+      d.leads
+        .filter((l) => !l.demo || !d.leads.some((x) => !x.demo))
+        .filter((l) =>
+          filtre === "ecartes" ? l.statut === "ecarte" : filtre === "contactes" ? ["contacte", "repondu", "converti"].includes(l.statut) : ["nouveau", "a_contacter"].includes(l.statut),
+        ),
     [d.leads, filtre],
   );
   const run = async (fn: () => Promise<string>) => {
@@ -152,9 +155,11 @@ function Prospects({ d, reload }: { d: Data; reload: () => void }) {
           className={btnDark}
           onClick={() =>
             void run(async () => {
-              const r = await api<{ crees: number; demo: boolean }>("/api/commercial/prospects", {});
+              const r = await api<{ crees: number; demo: boolean; erreurs?: string[]; recherches?: number }>("/api/commercial/prospects", {});
               reload();
-              return r.crees ? `${r.crees} nouveau(x) prospect(s) trouvé(s) et noté(s)${r.demo ? " (DÉMO)" : ""}.` : "Aucun nouveau commerce pour ces recherches : élargis les métiers ou les zones dans Réglages.";
+              if (r.crees) return `${r.crees} nouveau(x) prospect(s) trouvé(s) et noté(s)${r.demo ? " (DÉMO)" : ""}.`;
+              if (r.erreurs?.length && !r.recherches) throw new Error(`La recherche n'a pas abouti : ${r.erreurs[0]}. Réessaie dans une minute.`);
+              return "Aucun nouveau commerce pour ces recherches : réessaie (Hugo passe aux métiers suivants) ou élargis les métiers et zones dans Réglages.";
             })
           }
         >

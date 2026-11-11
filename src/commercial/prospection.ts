@@ -147,16 +147,29 @@ export function noter(p: Place, s: SiteInfo | null): { score: number; angle: str
  * Hugo + Inès : trouve jusqu'à `max` nouveaux commerces (métiers × zones, en tournant d'un jour à l'autre),
  * analyse les sites, note et enregistre. Sans IA. Retourne le nombre de prospects créés.
  */
-export async function trouverProspects(db: EngineDb, places: Places, cfg: Prospection, max = cfg.par_jour): Promise<{ crees: number; demo: boolean }> {
-  if (!cfg.metiers.length || !cfg.zones.length) return { crees: 0, demo: places.kind === "demo" };
+export async function trouverProspects(db: EngineDb, places: Places, cfg: Prospection, max = cfg.par_jour, budgetMs = 40_000): Promise<{ crees: number; demo: boolean; erreurs: string[]; recherches: number }> {
+  if (!cfg.metiers.length || !cfg.zones.length) return { crees: 0, demo: places.kind === "demo", erreurs: [], recherches: 0 };
+  const debut = Date.now();
+  const erreurs: string[] = [];
+  let recherches = 0;
   const combos = cfg.metiers.flatMap((m) => cfg.zones.map((z) => `${m} à ${z}`));
   const curseur = Number((await db.kvGet<{ i: number }>("prospection.curseur"))?.i ?? 0);
   let crees = 0;
   let i = curseur;
   const vus = new Set<string>();
-  for (let essais = 0; essais < Math.min(combos.length, 6) && crees < max; essais++, i++) {
+  // le temps est compté (la page s'arrête à 60 s) : on garde ce qui est trouvé au fur et à mesure
+  for (let essais = 0; essais < Math.min(combos.length, 6) && crees < max && Date.now() - debut < budgetMs; essais++, i++) {
     const requete = combos[i % combos.length]!;
-    const res = (await places.search(requete, 20)).filter((p) => !p.ferme && !vus.has(p.place_id));
+    let trouves: Place[];
+    try {
+      trouves = await places.search(requete, 20);
+      recherches++;
+    } catch (e) {
+      erreurs.push(`${requete} : ${e instanceof Error ? e.message : String(e)}`);
+      await db.kvSet("prospection.curseur", { i: i + 1 });
+      continue;
+    }
+    const res = trouves.filter((p) => !p.ferme && !vus.has(p.place_id));
     res.forEach((p) => vus.add(p.place_id));
     const connus = new Set(await db.commercial.knownPlaces(res.map((p) => p.place_id)));
     const nouveaux = res.filter((p) => !connus.has(p.place_id)).slice(0, max - crees);
@@ -185,8 +198,8 @@ export async function trouverProspects(db: EngineDb, places: Places, cfg: Prospe
       });
       if (ok) crees++;
     }
+    await db.kvSet("prospection.curseur", { i: i + 1 });
   }
-  await db.kvSet("prospection.curseur", { i });
   if (crees) {
     await db.insertMessage({ from_agent: "hugo", to_agent: "ines", type: "delegation", contenu: `${crees} nouveaux commerces à noter`, resume_bulle: `Inès, ${crees} nouveaux prospects pour toi !` });
     await db.insertJournal({
@@ -197,7 +210,8 @@ export async function trouverProspects(db: EngineDb, places: Places, cfg: Prospe
       pole_id: "prospection",
     });
   }
-  return { crees, demo: places.kind === "demo" };
+  if (!crees && erreurs.length && !recherches) await db.insertJournal({ type: "alerte", titre: "⚠️ Hugo n'a pas pu chercher de prospects", contenu: erreurs.slice(0, 3).join("\n"), agent_id: "hugo", pole_id: "prospection" });
+  return { crees, demo: places.kind === "demo", erreurs, recherches };
 }
 
 /** Margaux : relance des devis envoyés sans réponse (J+7 puis J+15), sans IA, en Douane avec le PDF. */

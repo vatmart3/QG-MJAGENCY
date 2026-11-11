@@ -697,6 +697,10 @@ async function scenarioOsm() {
   check(p.length === 2 && p[0]!.nom === "Au Bon Pain" && p[0]!.email === "contact@aubonpain.fr" && p[0]!.site === "https://aubonpain.fr" && p[0]!.instagram === "aubonpain_sete" && p[0]!.adresse === "4 Rue Gambetta, 34200 Sète" && p[0]!.place_id === "osm:node/2", "fiche lue (adresse, e-mail, site, Instagram), commerces fermés ou sans nom ignorés, joignables d'abord");
   const n = noter({ place_id: "x", nom: "Au Bon Pain", adresse: "", site: undefined, telephone: undefined }, null);
   check(!n.diagnostic.includes("peu d'avis") && n.score >= 55, `sans avis connus (OpenStreetMap) : pas de « peu d'avis » inventé, score ${n.score}`);
+  const enPanne = { kind: "osm" as const, search: async () => Promise.reject(new Error("OpenStreetMap ne répond pas (serveur lent)")) };
+  const t0 = Date.now();
+  const rp = await trouverProspects(db, enPanne, await db.commercial.prospection(), 10);
+  check(rp.crees === 0 && rp.erreurs.length > 0 && rp.recherches === 0 && Date.now() - t0 < 5000, "OpenStreetMap en panne : pas de plantage, l'erreur est remontée à l'écran et au Journal");
 }
 
 (async () => {
