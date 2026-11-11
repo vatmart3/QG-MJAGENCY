@@ -5,15 +5,17 @@ import { parisHour } from "@/lib/paris";
 import { ui, uiStore } from "@/store/ui";
 import { world } from "@/store/world";
 import { AgentView, type WorldServices } from "./agents/AgentView";
-import { Boats, Gulls, Lighthouse, Particles, Pile, Sparkles } from "./ambient";
+import { Balises, Boats, Gulls, Lighthouse, Particles, Pile, Sparkles, Traffic } from "./ambient";
 import { ambianceAt } from "./daynight";
-import { T, WORLD_H, WORLD_W, getLayout, idx, iso, worldToCell, zoneAt, type Layout, type Prop } from "./layout";
+import { T, WORLD_H, WORLD_W, getLayout, idx, iso, tourDe, worldToCell, zoneAt, type Layout, type Prop } from "./layout";
+import type { StyleVille } from "./theme";
+import { tourSommet } from "./sprites/newyork";
 import { Overlay } from "./overlay";
 import { makeBeamTexture, makeGlowTexture, SkyLayer } from "./sky";
 import { buildAtlas, type AtlasFrame } from "./sprites/atlas";
 import { characterAtlasDefs } from "./sprites/characters";
 import { renderGround } from "./sprites/ground";
-import { miscDefs, propDefs, propKey, slabDefs, slabKey } from "./sprites/props";
+import { carDefs, dessinerEnStyle, litKeyAt, miscDefs, propDefs, propKey, slabDefs, slabKey, towerLitDefs } from "./sprites/props";
 
 /**
  * LE PORT — la ville. Une instance par page.
@@ -22,6 +24,8 @@ import { miscDefs, propDefs, propKey, slabDefs, slabKey } from "./sprites/props"
 
 export interface GameOptions {
   onZoneClick: (zoneId: string) => void;
+  /** décor de la ville (par défaut : le choix enregistré dans ce navigateur) */
+  style?: StyleVille;
 }
 
 const MULTI_FLAT: Prop["kind"][] = ["bigTable", "babyfoot", "pingpong", "counter", "stampDesk"];
@@ -49,6 +53,10 @@ export class Game {
   private particles!: Particles;
   private pile!: Pile;
   private phare!: Lighthouse;
+  private traffic: Traffic | null = null;
+  private balises: Balises | null = null;
+  private towerLights: Sprite[] = [];
+  private agentCells = new Set<number>();
   private lampGlows: Sprite[] = [];
   private deskGlows = new Map<string, Sprite>();
   private glowTex!: Texture;
@@ -72,10 +80,15 @@ export class Game {
     private opts: GameOptions,
   ) {
     this.app = new Application();
-    this.layout = getLayout();
+    this.layout = getLayout(opts.style);
     // allées un peu moins chères que l'herbe → les bonshommes suivent les chemins
+    // (New York : trottoirs d'abord, la chaussée est aux taxis, les pelouses en dernier)
     this.extraCost = new Uint8Array(this.layout.tiles.length);
-    for (let i = 0; i < this.layout.tiles.length; i++) this.extraCost[i] = this.layout.tiles[i] === T.GRASS ? 2 : 0;
+    const ny = this.layout.style === "newyork";
+    for (let i = 0; i < this.layout.tiles.length; i++) {
+      const t = this.layout.tiles[i];
+      this.extraCost[i] = ny ? (t === T.GRASS ? (this.layout.parc[i] ? 2 : 0) : t === T.PATH ? 1 : 0) : t === T.GRASS ? 2 : 0;
+    }
   }
 
   static async create(host: HTMLElement, overlayEl: HTMLElement, opts: GameOptions): Promise<Game> {
@@ -109,7 +122,15 @@ export class Game {
 
     // ---- textures procédurales
     const L = this.layout;
-    const atlas = buildAtlas([...propDefs(L.props), ...slabDefs(L.slabs, L.zones), ...miscDefs(), ...characterAtlasDefs(allAgents().map((a) => a.id))]);
+    const ny = L.style === "newyork";
+    dessinerEnStyle(L.style);
+    const atlas = buildAtlas([
+      ...propDefs(L.props),
+      ...slabDefs(L.slabs, L.zones),
+      ...miscDefs(),
+      ...characterAtlasDefs(allAgents().map((a) => a.id)),
+      ...(ny ? [...towerLitDefs(L.props, L.zones), ...carDefs()] : []),
+    ]);
     this.atlasSource = new CanvasSource({ resource: atlas.canvas, scaleMode: "nearest" });
     const frameData = new Map<string, AtlasFrame>();
     for (const [key, f] of atlas.frames) {
@@ -121,7 +142,7 @@ export class Game {
     this.glowTex = makeGlowTexture();
 
     // ---- scène
-    this.sky = new SkyLayer();
+    this.sky = new SkyLayer(L.style);
     this.viewport = new Viewport({
       screenWidth: this.app.screen.width,
       screenHeight: this.app.screen.height,
@@ -157,6 +178,16 @@ export class Game {
     this.particles = new Particles(this.fx, this.frames);
     this.pile = new Pile(this.objects, L, this.frames);
     this.phare = new Lighthouse(this.lights, L, makeBeamTexture(), this.glowTex);
+    if (ny) {
+      this.traffic = new Traffic(this.objects, this.lights, L, this.frames, this.glowTex, (cell) => this.agentCells.has(cell));
+      const sommets = L.props
+        .filter((p) => p.kind === "tower" && tourSommet(p.variant ?? 0) > 0)
+        .map((p) => {
+          const c = iso(p.x + (p.w ?? 1) / 2, p.y + (p.h ?? 1) / 2);
+          return { x: c.x, y: c.y - tourSommet(p.variant ?? 0) };
+        });
+      this.balises = new Balises(this.lights, sommets, this.glowTex);
+    }
 
     this.overlay = new Overlay(this.overlayEl, L, (z) => this.opts.onZoneClick(z), iso(L.pharePos.x + 0.5, L.pharePos.y + 0.5));
 
@@ -193,7 +224,22 @@ export class Game {
       const ref = flat ? iso(p.x + 0.5, p.y + 0.5) : iso(p.x + fw - 0.5, p.y + fh - 0.5);
       s.zIndex = ref.y + (p.zBias ?? 0);
       this.objects.addChild(s);
+      if (p.kind === "tower") {
+        // fenêtres allumées la nuit (calque ajouté en lumière, masqué derrière ce qui est devant)
+        const lk = litKeyAt(p);
+        const lf = frameData.get(lk);
+        if (lf) {
+          const l = new Sprite(this.frames(lk));
+          l.x = o.x - lf.ax;
+          l.y = o.y - lf.ay;
+          l.alpha = 0;
+          this.lights.addChild(l);
+          this.towerLights.push(l);
+        }
+      }
       if (p.kind === "lamp") {
+        // un lampadaire caché derrière un gratte-ciel n'éclaire pas sa façade
+        if (this.derriereUneTour(p.x + 0.5, p.y + 0.5, 31)) continue;
         const g = new Sprite(this.glowTex);
         g.anchor.set(0.5);
         const c = iso(p.x + 0.5, p.y + 0.5);
@@ -235,6 +281,21 @@ export class Game {
       this.lights.addChild(g);
       this.lampGlows.push(g);
     }
+  }
+
+  /** Le point (case u, v, hauteur z) est-il masqué par un gratte-ciel situé devant ? */
+  private derriereUneTour(u: number, v: number, z: number): boolean {
+    const q = iso(u, v);
+    const y = q.y - z;
+    for (const t of this.layout.props) {
+      if (t.kind !== "tower") continue;
+      const w = t.w ?? 1, h = t.h ?? 1;
+      if (t.x + w + t.y + h <= u + v + 0.5) continue;
+      const g = iso(t.x, t.y + h).x, d = iso(t.x + w, t.y).x;
+      const haut = iso(t.x, t.y).y - tourDe(t.variant ?? 0).hauteur, bas = iso(t.x + w, t.y + h).y;
+      if (q.x > g + 2 && q.x < d - 2 && y > haut + 4 && y < bas - 4) return true;
+    }
+    return false;
   }
 
   private placeAgents(): void {
@@ -509,6 +570,7 @@ export class Game {
     this.fx.tint = amb.tint;
     const night = amb.night;
     for (const g of this.lampGlows) g.alpha = night * 0.85;
+    for (const l of this.towerLights) l.alpha = Math.min(1, night * 1.1);
 
     // agents
     const hover = uiStore.getState().hoverAgent;
@@ -525,6 +587,12 @@ export class Game {
     }
 
     // ambiance
+    if (this.traffic) {
+      this.agentCells.clear();
+      for (const a of this.agents.values()) if (!a.isHidden) this.agentCells.add(idx(a.cellX, a.cellY));
+      this.traffic.update(dt, night);
+    }
+    this.balises?.update(dt, night);
     this.boats.update(dt);
     this.gulls.update(dt);
     this.sparkles.update(dt);

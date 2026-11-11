@@ -177,6 +177,19 @@ images »). Migration `…1800`.
 - Sécurité : si Claude Code n'est pas passé depuis 3 h, ses tâches reviennent automatiquement sur la clé API.
   Migration `…1500` (`tasks.executeur`, `claim_tasks_claude`).
 
+## Ville style New York (par défaut) ou Sète
+
+- **Réglages → Affichage & tests → Style de la ville**, ou le bouton **NY / Sète** à côté du zoom. Choix gardé dans
+  le navigateur. Seul le décor change : pôles, bureaux, agents, chemins et missions sont les mêmes.
+- **Gratte-ciel** (verre, Art déco à couronne dorée, tour fine, brique avec réservoir d'eau et escalier de secours)
+  placés automatiquement sur l'herbe libre : chacun prend la plus grande hauteur qui **ne cache aucun pôle, aucune
+  maison ni le phare** (les grandes tours finissent au fond de l'île). La nuit, leurs **fenêtres s'allument** (calque
+  ajouté en lumière, masqué derrière ce qui est devant) et des feux rouges clignotent au sommet.
+- **Avenues** en bitume (ligne jaune, passages piétons), **taxis jaunes** qui s'arrêtent devant un agent qui traverse,
+  trottoirs (les agents y marchent de préférence), parcs aux couleurs d'automne, **brownstones** (corniche et porte à
+  la couleur du pôle) à la place des maisons, **lofts** en brique avec verrière d'atelier, falaises de schiste, et une
+  skyline à l'horizon qui s'illumine la nuit (`src/world/theme.ts`, `src/world/sprites/newyork.ts`).
+
 ## Telegram (gratuit) : missions et « quel agent fait quoi » sur le téléphone
 
 - Une seule variable, `TELEGRAM_BOT_TOKEN` (bot créé avec @BotFather). Réglages → Connexions → Telegram :

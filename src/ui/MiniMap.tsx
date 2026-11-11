@@ -6,7 +6,8 @@ import { useWorld } from "@/store/world";
 import { ui } from "@/store/ui";
 import { GH, GW, T, getLayout, idx } from "@/world/layout";
 import { getGame } from "./gameRef";
-import { useIsMobile } from "./hooks";
+import { useIsMobile, useStyleVille } from "./hooks";
+import { choisirStyleVille, NOM_STYLE } from "@/world/theme";
 
 // projection mini : 1 case = 4×2 px
 const MW = 4;
@@ -35,7 +36,8 @@ export function MiniMap() {
   const agents = useWorld((s) => s.agents);
   const mobile = useIsMobile();
   const [open, setOpen] = useState(true);
-  const layout = useMemo(() => getLayout(), []);
+  const style = useStyleVille();
+  const layout = useMemo(() => getLayout(style), [style]);
 
   useEffect(() => {
     if (mobile) setOpen(false);
@@ -52,7 +54,9 @@ export function MiniMap() {
         const t = layout.tiles[idx(x, y)] as T;
         if (t === T.VOID) continue;
         const zi = layout.zoneOf[idx(x, y)]!;
-        ctx.fillStyle = zi >= 0 ? layout.zones[zi]!.floor : (TILE_COL[t] ?? "#93d36e");
+        const ny = layout.style === "newyork";
+        const couleurNY = t === T.GRASS ? (layout.parc[idx(x, y)] ? "#7fb55e" : "#c7c1b6") : t === T.PATH ? "#5a5e6b" : undefined;
+        ctx.fillStyle = zi >= 0 ? layout.zones[zi]!.floor : ((ny ? couleurNY : undefined) ?? TILE_COL[t] ?? "#93d36e");
         const p = mini(x, y);
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
@@ -62,9 +66,19 @@ export function MiniMap() {
         ctx.closePath();
         ctx.fill();
       }
+    // gratte-ciel (style New York)
+    for (const p of layout.props) {
+      if (p.kind !== "tower") continue;
+      ctx.fillStyle = "#3d4660";
+      for (let yy = p.y; yy < p.y + (p.h ?? 1); yy++)
+        for (let xx = p.x; xx < p.x + (p.w ?? 1); xx++) {
+          const q = mini(xx, yy);
+          ctx.fillRect(q.x - MW / 2, q.y - 1, MW, MH + 1);
+        }
+    }
     // tranche de falaise
     ctx.globalCompositeOperation = "destination-over";
-    ctx.fillStyle = "#8d5a35";
+    ctx.fillStyle = layout.style === "newyork" ? "#6f7184" : "#8d5a35";
     for (let y = 0; y < GH; y++)
       for (let x = 0; x < GW; x++) {
         if (layout.tiles[idx(x, y)] === T.VOID) continue;
@@ -82,7 +96,7 @@ export function MiniMap() {
 
   return (
     <div className="pointer-events-none fixed right-3 bottom-[max(96px,calc(env(safe-area-inset-bottom)+90px))] z-20 flex flex-col items-end gap-2 sm:right-4 sm:bottom-6">
-      <ZoomControls onToggleMap={() => setOpen((o) => !o)} mapOpen={open} />
+      <ZoomControls onToggleMap={() => setOpen((o) => !o)} mapOpen={open} style={style} />
       {open && (
         <div className="glass pointer-events-auto rounded-2xl p-2" style={{ width: mobile ? 210 : 260 }}>
           <div className="mb-1 flex items-center justify-between px-1">
@@ -138,7 +152,8 @@ export function MiniMap() {
   );
 }
 
-function ZoomControls({ onToggleMap, mapOpen }: { onToggleMap: () => void; mapOpen: boolean }) {
+function ZoomControls({ onToggleMap, mapOpen, style }: { onToggleMap: () => void; mapOpen: boolean; style: "newyork" | "sete" }) {
+  const autre = style === "newyork" ? "sete" : "newyork";
   const btn = "grid size-9 place-items-center rounded-full text-ink transition hover:bg-white active:scale-95";
   return (
     <div className="glass pointer-events-auto flex items-center gap-0.5 rounded-full p-1">
@@ -151,6 +166,15 @@ function ZoomControls({ onToggleMap, mapOpen }: { onToggleMap: () => void; mapOp
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
           <path d="M2 6h8M6 2v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
+      </button>
+      <button
+        type="button"
+        className="h-9 rounded-full px-2.5 font-silk text-[9px] uppercase text-ink transition hover:bg-white active:scale-95"
+        onClick={() => choisirStyleVille(autre)}
+        title={`Ville : ${NOM_STYLE[style]} — passer en style ${NOM_STYLE[autre]}`}
+        aria-label={`Passer la ville en style ${NOM_STYLE[autre]}`}
+      >
+        {style === "newyork" ? "NY" : "Sète"}
       </button>
       <button type="button" className={`${btn} ${mapOpen ? "bg-white/70" : ""}`} onClick={onToggleMap} aria-label="Afficher la carte" aria-pressed={mapOpen}>
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>

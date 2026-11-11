@@ -1,6 +1,7 @@
 import { agentsOfPole, allLieux, allPoles, catalogStore } from "@/data/catalog";
 import { slotById } from "./slots";
 import { hash2, mulberry32 } from "@/lib/rng";
+import { styleVille, type StyleVille } from "./theme";
 
 /**
  * Plan de l'île : grille isométrique GW×GH.
@@ -76,7 +77,13 @@ export type PropKind =
   | "railing"
   | "house"
   | "treadmill"
-  | "weights";
+  | "weights"
+  | "tower";
+
+/** Gratte-ciel (style New York) : variant = style × 1000 + hauteur en px. */
+export const TOUR = { verre: 0, deco: 1, brique: 2, fine: 3 } as const;
+export const tourVariant = (style: number, hauteur: number) => style * 1000 + Math.round(hauteur);
+export const tourDe = (variant: number) => ({ style: Math.floor(variant / 1000), hauteur: variant % 1000 });
 
 export interface Prop {
   kind: PropKind;
@@ -143,6 +150,10 @@ export interface Layout {
   houses: House[];
   /** porte de la maison de chaque agent */
   homeOf: Record<string, { x: number; y: number }>;
+  /** décor : « newyork » ou « sete » */
+  style: StyleVille;
+  /** New York : cases d'herbe gardées en pelouse (parcs) ; le reste de l'herbe devient trottoir */
+  parc: Uint8Array;
 }
 
 export const idx = (x: number, y: number): number => y * GW + x;
@@ -178,8 +189,8 @@ const QUAY_N = [27, 28];
 const QUAY_S = [31, 32];
 const BRIDGES_X = [21, 22, 39, 40, 57, 58];
 // rues du quartier résidentiel : 53-54, 60-61, 67-68 (les maisons ont leur porte sur la rue au sud)
-const H_PATHS = [11, 12, 19, 20, 39, 40, 47, 48, 53, 54, 60, 61, 67, 68];
-const V_PATHS = [12, 13, 21, 22, 30, 31, 39, 40, 48, 49, 57, 58];
+export const H_PATHS = [11, 12, 19, 20, 39, 40, 47, 48, 53, 54, 60, 61, 67, 68];
+export const V_PATHS = [12, 13, 21, 22, 30, 31, 39, 40, 48, 49, 57, 58];
 export const PHARE = { x: 70, y: 6 };
 const HOME_ROW = 47;
 /** rangées de maisons (haut de la maison) : porte sur la rue juste en dessous */
@@ -187,15 +198,15 @@ const HOUSE_ROWS = [50, 57, 64];
 
 let cached: { key: string; layout: Layout } | null = null;
 
-/** Plan de l'île, recalculé quand la structure du catalogue change (pôle ajouté, agent déplacé…). */
-export function getLayout(): Layout {
-  const key = catalogStore.getState().structure;
+/** Plan de l'île, recalculé quand la structure du catalogue change (pôle ajouté, agent déplacé…) ou le style de la ville. */
+export function getLayout(style: StyleVille = styleVille()): Layout {
+  const key = `${catalogStore.getState().structure}|${style}`;
   if (cached && cached.key === key) return cached.layout;
-  cached = { key, layout: buildLayout() };
+  cached = { key, layout: buildLayout(style) };
   return cached.layout;
 }
 
-function buildLayout(): Layout {
+function buildLayout(style: StyleVille): Layout {
   const tiles = new Uint8Array(GW * GH);
   const zoneOf = new Int16Array(GW * GH).fill(-1);
   const blocked = new Uint8Array(GW * GH);
@@ -566,6 +577,11 @@ function buildLayout(): Layout {
     if (tiles[idx(fx, fy)] === T.GRASS && !blocked[idx(fx, fy)]) add({ kind: "flowers", x: fx, y: fy, blocks: true, variant: (fx + fy) % 3 });
   }
 
+  // ---- 6 bis. New York : gratte-ciel là où ils ne cachent rien d'important
+  const parc = new Uint8Array(GW * GH);
+  const tourPres = new Uint8Array(GW * GH);
+  if (style === "newyork") placerTours(tiles, zoneOf, blocked, houses, add, tourPres, mulberry32(1979));
+
   // arbres : surtout en bordure de l'île, jamais sur les allées
   const isEdge = (x: number, y: number, r: number) => {
     for (let dy = -r; dy <= r; dy++)
@@ -581,12 +597,34 @@ function buildLayout(): Layout {
     }
     return false;
   };
+  if (style === "newyork") {
+    // pelouses : l'herbe loin des rues et des tours ; le reste est pavé (trottoirs, places)
+    for (let y = 0; y < GH; y++)
+      for (let x = 0; x < GW; x++) {
+        if (tiles[idx(x, y)] !== T.GRASS || tourPres[idx(x, y)]) continue;
+        let ok = true;
+        for (let dy = -2; dy <= 2 && ok; dy++)
+          for (let dx = -2; dx <= 2; dx++) {
+            const t = inGrid(x + dx, y + dy) ? tiles[idx(x + dx, y + dy)] : T.VOID;
+            if (t !== T.GRASS || (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && tourPres[idx(x + dx, y + dy)])) {
+              ok = false;
+              break;
+            }
+          }
+        if (ok) parc[idx(x, y)] = 1;
+      }
+  }
   for (let y = 0; y < GH; y++)
     for (let x = 0; x < GW; x++) {
       if (tiles[idx(x, y)] !== T.GRASS || blocked[idx(x, y)]) continue;
       if (nearWalk(x, y)) continue;
       const edge = isEdge(x, y, 1);
       const r = rng();
+      if (style === "newyork") {
+        // arbres d'automne dans les parcs seulement
+        if (parc[idx(x, y)] && r < (edge ? 0.2 : 0.09)) add({ kind: "tree", x, y, blocks: true, variant: Math.floor(rng() * 3) });
+        continue;
+      }
       const p = edge ? 0.42 : 0.07;
       if (r < p) {
         const kr = rng();
@@ -628,7 +666,100 @@ function buildLayout(): Layout {
     pileCell: pile ? { x: pile.x, y: pile.y } : { x: 0, y: 0 },
     houses,
     homeOf,
+    style,
+    parc,
   };
+}
+
+/**
+ * Gratte-ciel du style New York. Chaque tour prend la plus grande hauteur qui ne cache aucun pôle, aucune maison
+ * ni le phare : une case « derrière » la tour à l'écran (même colonne, plus haut) doit rester visible avec ses murs
+ * et ses agents. Les grandes tours se retrouvent donc au fond de l'île. Une ruelle d'une case sépare deux tours.
+ */
+function placerTours(
+  tiles: Uint8Array,
+  zoneOf: Int16Array,
+  blocked: Uint8Array,
+  houses: House[],
+  add: (p: Prop) => void,
+  tourPres: Uint8Array,
+  rng: () => number,
+): void {
+  // colonnes d'écran (x − y) → profondeurs (x + y) des cases à ne pas cacher, triées
+  const imp = new Map<number, number[]>();
+  const marque = (x: number, y: number) => {
+    const c = x - y;
+    const l = imp.get(c) ?? [];
+    l.push(x + y);
+    imp.set(c, l);
+  };
+  const maison = new Uint8Array(GW * GH);
+  for (const h of houses) for (let yy = h.y - 1; yy <= h.y + h.h; yy++) for (let xx = h.x - 1; xx <= h.x + h.w; xx++) if (inGrid(xx, yy)) maison[idx(xx, yy)] = 1;
+  for (let y = 0; y < GH; y++)
+    for (let x = 0; x < GW; x++) {
+      const t = tiles[idx(x, y)];
+      if (zoneOf[idx(x, y)]! >= 0 || t === T.ROCK || maison[idx(x, y)] || t === T.BRIDGE) marque(x, y);
+    }
+  for (const l of imp.values()) l.sort((a, b) => a - b);
+  /** plus grande profondeur « importante » dans la colonne c, strictement inférieure à d (−∞ si aucune) */
+  const derriere = (c: number, d: number) => {
+    const l = imp.get(c);
+    if (!l) return -Infinity;
+    let lo = 0;
+    let hi = l.length - 1;
+    let best = -Infinity;
+    while (lo <= hi) {
+      const m = (lo + hi) >> 1;
+      if (l[m]! < d) {
+        best = l[m]!;
+        lo = m + 1;
+      } else hi = m - 1;
+    }
+    return best;
+  };
+  const interdit = (t: number | undefined) => t === T.FLOOR || t === T.WOOD || t === T.ROCK || t === T.BRIDGE || t === T.WATER;
+  const reserve = new Uint8Array(GW * GH);
+  const cands: { x: number; y: number; w: number; h: number; H: number }[] = [];
+  for (const [w, h] of [[4, 4], [4, 3], [3, 4], [3, 3], [3, 2], [2, 3], [2, 2]] as [number, number][]) {
+    for (let y = 1; y + h < GH - 1; y++)
+      for (let x = 1; x + w < GW - 1; x++) {
+        let ok = true;
+        for (let yy = y - 1; yy <= y + h && ok; yy++)
+          for (let xx = x - 1; xx <= x + w; xx++) {
+            const i = idx(xx, yy);
+            const dedans = xx >= x && xx < x + w && yy >= y && yy < y + h;
+            if (dedans ? tiles[i] !== T.GRASS || blocked[i] || maison[i] : interdit(tiles[i]) || maison[i] || zoneOf[i]! >= 0) {
+              ok = false;
+              break;
+            }
+          }
+        if (!ok) continue;
+        // hauteur maximale sans cacher une case importante située derrière
+        const front = x + w - 1 + (y + h - 1);
+        let H = 236;
+        for (let c = x - (y + h - 1) - 1; c <= x + w - 1 - y + 1; c++) {
+          const d = derriere(c, front);
+          if (d === -Infinity) continue;
+          H = Math.min(H, (x + y - d - 1) * 8 - 42);
+        }
+        if (H >= 46) cands.push({ x, y, w, h, H });
+      }
+  }
+  cands.sort((a, b) => b.H * b.w * b.h - a.H * a.w * a.h);
+  for (const c of cands) {
+    let libre = true;
+    for (let yy = c.y - 1; yy <= c.y + c.h && libre; yy++) for (let xx = c.x - 1; xx <= c.x + c.w; xx++) if (reserve[idx(xx, yy)]) libre = false;
+    if (!libre) continue;
+    for (let yy = c.y; yy < c.y + c.h; yy++) for (let xx = c.x; xx < c.x + c.w; xx++) if (blocked[idx(xx, yy)]) libre = false;
+    if (!libre) continue;
+    const H = Math.round(Math.min(c.H, 70 + rng() * 170));
+    const r = rng();
+    const st = H >= 150 ? (r < 0.45 ? TOUR.verre : r < 0.75 ? TOUR.deco : TOUR.fine) : H >= 90 ? (r < 0.5 ? TOUR.verre : r < 0.75 ? TOUR.deco : TOUR.brique) : TOUR.brique;
+    const hh = st === TOUR.brique ? Math.min(H, 52 + Math.round(rng() * 40)) : H;
+    add({ kind: "tower", x: c.x, y: c.y, w: c.w, h: c.h, blocks: true, variant: tourVariant(st, hh) });
+    for (let yy = c.y - 1; yy <= c.y + c.h; yy++) for (let xx = c.x - 1; xx <= c.x + c.w; xx++) if (inGrid(xx, yy)) reserve[idx(xx, yy)] = 1;
+    for (let yy = c.y; yy < c.y + c.h; yy++) for (let xx = c.x; xx < c.x + c.w; xx++) tourPres[idx(xx, yy)] = 1;
+  }
 }
 
 export function doorCellsOf(z: Zone): { x: number; y: number }[] {

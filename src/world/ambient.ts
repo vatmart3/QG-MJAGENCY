@@ -1,6 +1,6 @@
 import { Container, Sprite, type Texture } from "pixi.js";
-import { GW, T, WORLD_W, idx, iso, type Layout } from "./layout";
-import { PHARE_LANTERN } from "./sprites/props";
+import { GH, GW, H_PATHS, T, V_PATHS, WORLD_W, idx, inGrid, iso, type Layout } from "./layout";
+import { COULEURS_VOITURES, PHARE_LANTERN } from "./sprites/props";
 
 type Frames = (key: string) => Texture;
 
@@ -298,5 +298,114 @@ export class Lighthouse {
     this.glow.alpha = (0.35 + night * 0.65) * (urgent ? 0.4 + blink * 0.6 : 0.8);
     this.glow.scale.set(urgent ? 1.6 + blink * 0.5 : 1.4);
     this.glow.tint = urgent && blink > 0.5 ? 0xffb199 : 0xfff1b8;
+  }
+}
+
+// ------------------------------------------------------------------ taxis sur les avenues (style New York)
+interface Voie {
+  axe: "x" | "y";
+  fixe: number;
+  a: number;
+  b: number;
+  dir: 1 | -1;
+}
+interface Voiture {
+  s: Sprite;
+  phare: Sprite;
+  voie: Voie;
+  pos: number;
+  vitesse: number;
+}
+
+/** Voitures qui roulent sur les deux voies de chaque avenue, s'arrêtent devant un agent qui traverse. */
+export class Traffic {
+  private voitures: Voiture[] = [];
+  constructor(objects: Container, lights: Container, layout: Layout, frames: Frames, glow: Texture, private occupe: (cell: number) => boolean) {
+    const route = (x: number, y: number) => inGrid(x, y) && (layout.tiles[idx(x, y)] === T.PATH || layout.tiles[idx(x, y)] === T.BRIDGE);
+    const voies: Voie[] = [];
+    const paires = (l: number[]) => l.filter((v, i) => l[i + 1] === v + 1);
+    for (const y of paires(H_PATHS)) {
+      let debut = -1;
+      for (let x = 0; x <= GW; x++) {
+        const ok = x < GW && route(x, y) && route(x, y + 1);
+        if (ok && debut < 0) debut = x;
+        if (!ok && debut >= 0) {
+          if (x - debut >= 6) voies.push({ axe: "x", fixe: y + 0.5, a: debut + 0.4, b: x - 0.4, dir: 1 }, { axe: "x", fixe: y + 1.5, a: debut + 0.4, b: x - 0.4, dir: -1 });
+          debut = -1;
+        }
+      }
+    }
+    for (const x of paires(V_PATHS)) {
+      let debut = -1;
+      for (let y = 0; y <= GH; y++) {
+        const ok = y < GH && route(x, y) && route(x + 1, y);
+        if (ok && debut < 0) debut = y;
+        if (!ok && debut >= 0) {
+          if (y - debut >= 6) voies.push({ axe: "y", fixe: x + 1.5, a: debut + 0.4, b: y - 0.4, dir: 1 }, { axe: "y", fixe: x + 0.5, a: debut + 0.4, b: y - 0.4, dir: -1 });
+          debut = -1;
+        }
+      }
+    }
+    let k = 0;
+    for (const v of voies) {
+      const n = Math.max(1, Math.round((v.b - v.a) / 16));
+      for (let i = 0; i < n; i++) {
+        const couleur = COULEURS_VOITURES[k++ % COULEURS_VOITURES.length]!;
+        const s = new Sprite(frames(`car:${couleur}:${v.axe}`));
+        s.pivot.set(16, 14);
+        objects.addChild(s);
+        const phare = new Sprite(glow);
+        phare.anchor.set(0.5);
+        phare.scale.set(0.35, 0.22);
+        phare.tint = 0xfff1c0;
+        phare.alpha = 0;
+        lights.addChild(phare);
+        this.voitures.push({ s, phare, voie: v, pos: v.a + ((v.b - v.a) * (i + Math.random() * 0.8)) / n, vitesse: 1.1 + Math.random() * 0.8 });
+      }
+    }
+  }
+
+  update(dt: number, night: number): void {
+    for (const c of this.voitures) {
+      const v = c.voie;
+      // un agent sur la case devant : on attend qu'il traverse
+      const devant = c.pos + v.dir * 0.9;
+      const cell = v.axe === "x" ? idx(Math.floor(devant), Math.floor(v.fixe)) : idx(Math.floor(v.fixe), Math.floor(devant));
+      if (!this.occupe(cell)) c.pos += v.dir * c.vitesse * dt;
+      if (c.pos > v.b) c.pos = v.a;
+      if (c.pos < v.a) c.pos = v.b;
+      const u = v.axe === "x" ? c.pos : v.fixe;
+      const w = v.axe === "x" ? v.fixe : c.pos;
+      const p = iso(u, w);
+      c.s.x = Math.round(p.x);
+      c.s.y = Math.round(p.y);
+      c.s.zIndex = p.y + 3;
+      // apparition / disparition en douceur au bout de la rue
+      c.s.alpha = Math.min(1, (c.pos - v.a) / 0.8, (v.b - c.pos) / 0.8);
+      const f = iso(v.axe === "x" ? c.pos + v.dir * 0.45 : u, v.axe === "x" ? w : c.pos + v.dir * 0.45);
+      c.phare.position.set(f.x, f.y - 3);
+      c.phare.alpha = night * 0.7 * c.s.alpha;
+    }
+  }
+}
+
+// ------------------------------------------------------------------ feux rouges en haut des gratte-ciel
+export class Balises {
+  private feux: { s: Sprite; ph: number }[] = [];
+  private t = 0;
+  constructor(lights: Container, points: { x: number; y: number }[], glow: Texture) {
+    points.forEach((q, i) => {
+      const s = new Sprite(glow);
+      s.anchor.set(0.5);
+      s.scale.set(0.16);
+      s.tint = 0xff3030;
+      s.position.set(q.x, q.y);
+      lights.addChild(s);
+      this.feux.push({ s, ph: i * 0.7 });
+    });
+  }
+  update(dt: number, night: number): void {
+    this.t += dt;
+    for (const f of this.feux) f.s.alpha = Math.sin(this.t * 2.4 + f.ph) > 0.2 ? 0.55 + night * 0.45 : 0;
   }
 }

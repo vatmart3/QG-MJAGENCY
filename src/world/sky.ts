@@ -1,6 +1,7 @@
 import { CanvasSource, Container, Graphics, Sprite, Texture, TilingSprite } from "pixi.js";
 import { mulberry32 } from "@/lib/rng";
 import type { Ambiance } from "./daynight";
+import type { StyleVille } from "./theme";
 
 /**
  * Fond en espace écran : dégradé de ciel, étoiles, montagnes violettes,
@@ -112,6 +113,36 @@ function makeMountainTexture(seed: number, w: number, h: number, peak: number): 
   return nearestTex(c);
 }
 
+/** Skyline lointaine (style New York) : silhouette blanche (teintée comme les montagnes), raccord horizontal. */
+function makeSkylineTexture(seed: number, w: number, h: number, maxH: number, lumieres: boolean): Texture {
+  const [c, ctx] = canvas(w, h);
+  const r = mulberry32(seed);
+  const rr = mulberry32(seed + 1);
+  let x = 0;
+  while (x < w) {
+    const bw = 6 + Math.floor(r() * 18);
+    const bh = Math.floor(10 + r() * r() * maxH);
+    const left = Math.min(bw, w - x);
+    if (!lumieres) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(x, h - bh, left, bh);
+      // gradins et flèches sur quelques tours
+      if (bh > maxH * 0.55 && left > 8) {
+        ctx.fillRect(x + 2, h - bh - 6, left - 4, 6);
+        if (r() < 0.5) ctx.fillRect(x + Math.floor(left / 2), h - bh - 18, 1, 12);
+      }
+    } else {
+      // fenêtres allumées (calque de nuit)
+      for (let k = 0; k < (bw * bh) / 26; k++) {
+        ctx.fillStyle = rr() < 0.7 ? "rgba(255,214,140,0.95)" : "rgba(190,220,255,0.85)";
+        ctx.fillRect(x + 1 + Math.floor(rr() * Math.max(1, left - 2)), h - bh + 2 + Math.floor(rr() * Math.max(1, bh - 4)), 1, 1);
+      }
+    }
+    x += bw + Math.floor(r() * 3);
+  }
+  return nearestTex(c);
+}
+
 function makeShimmerTexture(): Texture {
   const [c, ctx] = canvas(128, 64);
   const r = mulberry32(42);
@@ -141,6 +172,7 @@ export class SkyLayer {
   private stars = new Graphics();
   private mountainsFar: TilingSprite;
   private mountainsNear: TilingSprite;
+  private skylineLights: TilingSprite | null = null;
   private water: Sprite;
   private waterCanvas: HTMLCanvasElement;
   private waterCtx: CanvasRenderingContext2D;
@@ -152,7 +184,7 @@ export class SkyLayer {
   private lastAmb = "";
   private t = 0;
 
-  constructor() {
+  constructor(private style: StyleVille = "sete") {
     [this.gradCanvas, this.gradCtx] = canvas(2, 256);
     this.gradSource = new CanvasSource({ resource: this.gradCanvas, scaleMode: "linear" });
     this.grad = new Sprite(new Texture({ source: this.gradSource }));
@@ -160,12 +192,20 @@ export class SkyLayer {
     this.waterSource = new CanvasSource({ resource: this.waterCanvas, scaleMode: "linear" });
     this.water = new Sprite(new Texture({ source: this.waterSource }));
 
-    this.mountainsFar = new TilingSprite({ texture: makeMountainTexture(3, 512, 140, 34), width: 100, height: 140 });
-    this.mountainsNear = new TilingSprite({ texture: makeMountainTexture(11, 640, 110, 22), width: 100, height: 110 });
+    if (style === "newyork") {
+      // l'autre rive : une skyline à l'horizon (et ses fenêtres allumées la nuit)
+      this.mountainsFar = new TilingSprite({ texture: makeSkylineTexture(3, 700, 140, 120, false), width: 100, height: 140 });
+      this.mountainsNear = new TilingSprite({ texture: makeSkylineTexture(11, 900, 110, 70, false), width: 100, height: 110 });
+      this.skylineLights = new TilingSprite({ texture: makeSkylineTexture(11, 900, 110, 70, true), width: 100, height: 110 });
+    } else {
+      this.mountainsFar = new TilingSprite({ texture: makeMountainTexture(3, 512, 140, 34), width: 100, height: 140 });
+      this.mountainsNear = new TilingSprite({ texture: makeMountainTexture(11, 640, 110, 22), width: 100, height: 110 });
+    }
     this.shimmer = new TilingSprite({ texture: makeShimmerTexture(), width: 100, height: 64 });
     this.shimmer.alpha = 0.22;
 
     this.back.addChild(this.grad, this.stars, this.mountainsFar, this.mountainsNear, this.water, this.shimmer);
+    if (this.skylineLights) this.back.addChildAt(this.skylineLights, this.back.getChildIndex(this.mountainsNear) + 1);
 
     // étoiles
     const r = mulberry32(7);
@@ -204,6 +244,7 @@ export class SkyLayer {
     this.mountainsFar.y = horizon - 140;
     this.mountainsNear.width = w;
     this.mountainsNear.y = horizon - 110;
+    if (this.skylineLights) this.skylineLights.width = w;
     this.water.x = 0;
     this.water.y = horizon;
     this.water.width = w;
@@ -248,6 +289,11 @@ export class SkyLayer {
     this.mountainsNear.tilePosition.x = ox(60);
     this.mountainsFar.y = Math.round(this.h * 0.64 - 140 - camY * 8 + tiltY * 3);
     this.mountainsNear.y = Math.round(this.h * 0.64 - 110 - camY * 12 + tiltY * 5);
+    if (this.skylineLights) {
+      this.skylineLights.tilePosition.x = this.mountainsNear.tilePosition.x;
+      this.skylineLights.y = this.mountainsNear.y;
+      this.skylineLights.alpha = amb.night;
+    }
     this.shimmer.tilePosition.x = Math.round(this.t * 6 + ox(80));
 
     const cloudTint = amb.night > 0.5 ? 0x8f8fc8 : amb.night > 0.1 ? 0xffd9e6 : 0xffffff;

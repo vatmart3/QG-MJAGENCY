@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { parisHour } from "@/lib/paris";
 import { useWorld } from "@/store/world";
+import { EVT_STYLE_VILLE, styleVille, type StyleVille } from "@/world/theme";
 
 const MQ = "(max-width: 720px)";
 
@@ -38,4 +39,16 @@ export function useNow(intervalMs = 30_000): number {
     return () => clearInterval(t);
   }, [intervalMs]);
   return now;
+}
+
+/** Style de la ville choisi dans ce navigateur (New York ou Sète), mis à jour quand on le change. */
+export function useStyleVille(): StyleVille {
+  const [s, setS] = useState<StyleVille>("newyork");
+  useEffect(() => {
+    setS(styleVille());
+    const on = (e: Event) => setS((e as CustomEvent<StyleVille>).detail);
+    window.addEventListener(EVT_STYLE_VILLE, on);
+    return () => window.removeEventListener(EVT_STYLE_VILLE, on);
+  }, []);
+  return s;
 }

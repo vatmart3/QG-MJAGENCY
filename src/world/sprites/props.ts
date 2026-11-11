@@ -1,7 +1,15 @@
 import { boxOf, isoBox, isoPt, mix, rgb, shade, withAlpha, type Pen, type RGBA } from "./pixel";
 import type { AtlasEntryDef } from "./atlas";
-import type { Prop, PropKind, Side, WallSlab, Zone } from "../layout";
+import { iso, tourDe, type Prop, type PropKind, type Side, type WallSlab, type Zone } from "../layout";
 import { hash2, mulberry32 } from "@/lib/rng";
+import type { StyleVille } from "../theme";
+import { automne, drawBrownstone, drawCar, drawLoftWall, drawTower, tourTete } from "./newyork";
+
+/** Style de dessin courant (fixé avant la construction de l'atlas). */
+let styleDessin: StyleVille = "sete";
+export function dessinerEnStyle(s: StyleVille): void {
+  styleDessin = s;
+}
 
 /** Hauteur réservée au-dessus de l'emprise, par type de meuble. */
 const HEAD: Record<PropKind, number> = {
@@ -9,7 +17,7 @@ const HEAD: Record<PropKind, number> = {
   coffee: 30, roundTable: 14, parasol: 46, sofa: 18, beanbag: 12, babyfoot: 18, pingpong: 16,
   pine: 52, tree: 46, bush: 16, lamp: 38, bollard: 12, crate: 16, barrel: 16, bench: 16, phare: 118,
   pile: 8, stampDesk: 20, bigScreen: 30, archive: 32, flowers: 10, railing: 12,
-  house: 62, treadmill: 22, weights: 22,
+  house: 62, treadmill: 22, weights: 22, tower: 0,
 };
 
 export function propKey(p: Pick<Prop, "kind" | "variant" | "facing" | "w" | "h" | "color">): string {
@@ -23,7 +31,7 @@ export function propDefs(props: Prop[]): AtlasEntryDef[] {
     if (seen.has(key)) continue;
     const fw = p.w ?? 1;
     const fh = p.h ?? 1;
-    const head = HEAD[p.kind];
+    const head = p.kind === "tower" ? tourTete(p.variant ?? 0) : HEAD[p.kind];
     const W = (fw + fh) * 16;
     const H = (fw + fh) * 8 + head;
     const ox = fh * 16;
@@ -38,6 +46,67 @@ export function propDefs(props: Prop[]): AtlasEntryDef[] {
     });
   }
   return [...seen.values()];
+}
+
+/** Calque « fenêtres allumées » des gratte-ciel (ajouté en lumière la nuit). */
+export const litKey = (p: Prop) => `lit:${propKey(p)}`;
+export const litKeyAt = (p: Prop) => `${litKey(p)}@${p.x},${p.y}`;
+export function towerLitDefs(props: Prop[], zones: Zone[]): AtlasEntryDef[] {
+  // silhouettes (hexagones iso, coordonnées monde) de ce qui peut se trouver devant une tour
+  type Occ = { d: number; pts: { x: number; y: number }[]; x0: number; x1: number; y0: number; y1: number };
+  const hex = (x: number, y: number, w: number, h: number, H: number, d: number): Occ => {
+    const b = [iso(x, y + h), iso(x + w, y + h), iso(x + w, y)];
+    const t = [iso(x + w, y), iso(x, y), iso(x, y + h)].map((q) => ({ x: q.x, y: q.y - H }));
+    const pts = [...b, ...t];
+    return { d, pts, x0: Math.min(...pts.map((q) => q.x)), x1: Math.max(...pts.map((q) => q.x)), y0: Math.min(...pts.map((q) => q.y)), y1: Math.max(...pts.map((q) => q.y)) };
+  };
+  const occ: Occ[] = [];
+  for (const p of props) {
+    const w = p.w ?? 1, h = p.h ?? 1;
+    if (p.kind === "tower") occ.push(hex(p.x + 0.1, p.y + 0.1, w - 0.2, h - 0.2, tourDe(p.variant ?? 0).hauteur, p.x + w + p.y + h));
+    if (p.kind === "house") occ.push(hex(p.x, p.y, w, h, 56, p.x + w + p.y + h));
+  }
+  for (const z of zones) occ.push(hex(z.x, z.y, z.w, z.h, 31, z.x + z.w + z.y + z.h));
+  const dedans = (o: Occ, x: number, y: number) => {
+    if (x < o.x0 || x > o.x1 || y < o.y0 || y > o.y1) return false;
+    let signe = 0;
+    for (let i = 0; i < o.pts.length; i++) {
+      const a = o.pts[i]!, b = o.pts[(i + 1) % o.pts.length]!;
+      const c = (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+      if (c !== 0) {
+        if (signe === 0) signe = Math.sign(c);
+        else if (Math.sign(c) !== signe) return false;
+      }
+    }
+    return true;
+  };
+  const seen = new Map<string, AtlasEntryDef>();
+  for (const p of props) {
+    if (p.kind !== "tower") continue;
+    const key = `${litKey(p)}@${p.x},${p.y}`;
+    if (seen.has(key)) continue;
+    const fw = p.w ?? 1;
+    const fh = p.h ?? 1;
+    const head = tourTete(p.variant ?? 0);
+    const d = p.x + fw + p.y + fh;
+    const o0 = iso(p.x, p.y);
+    const devant = occ.filter((o) => o.d > d);
+    const cache = (X: number, Y: number) => {
+      const wx = o0.x - fh * 16 + X + 1, wy = o0.y - head + Y + 1;
+      return devant.some((o) => dedans(o, wx, wy));
+    };
+    seen.set(key, { key, w: (fw + fh) * 16, h: (fw + fh) * 8 + head, ax: fh * 16, ay: head, draw: (pen) => drawTower(pen, fh * 16, head, fw, fh, p.variant ?? 0, true, cache) });
+  }
+  return [...seen.values()];
+}
+
+/** Taxis jaunes et quelques voitures (style New York). */
+export const COULEURS_VOITURES = ["#f2c230", "#f2c230", "#f2c230", "#2b2f3a", "#e9e9e9", "#3a5c9c", "#b33a3a"];
+export function carDefs(): AtlasEntryDef[] {
+  const defs: AtlasEntryDef[] = [];
+  for (const c of new Set(COULEURS_VOITURES))
+    for (const axe of ["x", "y"] as const) defs.push({ key: `car:${c}:${axe}`, w: 32, h: 24, ax: 16, ay: 14, draw: (pen) => drawCar(pen, 16, 14, axe, c) });
+  return defs;
 }
 
 // ------------------------------------------------------------------ palette
@@ -314,10 +383,13 @@ function drawProp(p: Pen, prop: Prop, ox: number, oy: number): void {
       p.set(cx, cy - hgt - 2, rgb("#5aa86a"));
       break;
     }
+    case "tower":
+      drawTower(p, ox, oy, prop.w ?? 1, prop.h ?? 1, v);
+      break;
     case "tree": {
       p.rect(cx - 1, cy - 9, 3, 9, rgb("#6b4228"));
       p.set(cx + 1, cy - 4, rgb("#4f2f1c"));
-      const base = v === 2 ? rgb("#e0913a") : v === 1 ? rgb("#68b45c") : rgb("#4f9d4a");
+      const base = styleDessin === "newyork" ? automne(v + (prop.x + prop.y) % 2) : v === 2 ? rgb("#e0913a") : v === 1 ? rgb("#68b45c") : rgb("#4f9d4a");
       const blobs: [number, number, number][] = [[0, -20, 10], [-6, -15, 7], [6, -15, 7], [-2, -26, 7], [4, -24, 6]];
       for (const [dx, dy, r] of blobs) p.ellipse(cx + dx, cy + dy, r, r * 0.85, shade(base, -0.25));
       for (const [dx, dy, r] of blobs) p.ellipse(cx + dx - 1, cy + dy - 1, r - 1.5, r * 0.85 - 1.5, base);
@@ -377,7 +449,8 @@ function drawProp(p: Pen, prop: Prop, ox: number, oy: number): void {
       drawPhare(p, cx, cy);
       break;
     case "house":
-      drawHouse(p, ox, oy, prop.w ?? 3, prop.h ?? 3, prop.color ?? "#8a8fa3", v);
+      if (styleDessin === "newyork") drawBrownstone(p, ox, oy, prop.w ?? 3, prop.h ?? 3, prop.color ?? "#8a8fa3", v);
+      else drawHouse(p, ox, oy, prop.w ?? 3, prop.h ?? 3, prop.color ?? "#8a8fa3", v);
       break;
     case "treadmill": {
       box(0.2, 0.15, 0.8, 0.95, 0, 4, rgb("#3d4157"));
@@ -609,6 +682,10 @@ function drawSlab(p: Pen, side: Side, style: WallSlab["style"], color: string, o
     return;
   }
   const body = style === "douane" ? rgb("#efe3d3") : rgb("#f1e9dc");
+  if (style === "muret" && estFond(side) && styleDessin === "newyork") {
+    drawLoftWall(p, side, color, ox, oy, u0, v0, u1, v1, BACK_H);
+    return;
+  }
   if (style === "muret" && estFond(side)) {
     // façade du bâtiment vue de l'intérieur : mur haut, fenêtre, corniche couleur du pôle
     const HB = BACK_H;

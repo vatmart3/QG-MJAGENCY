@@ -9,7 +9,8 @@ import { browserSupabase } from "@/lib/supabase/client";
 import { kickEngine, spentToday, testBench } from "@/sync/live";
 import { useUI } from "@/store/ui";
 import { useWorld, world } from "@/store/world";
-import { useNow } from "../../hooks";
+import { useNow, useStyleVille } from "../../hooks";
+import { choisirStyleVille, NOM_STYLE, type StyleVille } from "@/world/theme";
 import { Field, Toggle, inputCls, useSaver } from "./fields";
 
 const HOURS: { label: string; h: number | null }[] = [
@@ -28,9 +29,19 @@ export function DemoTab() {
   const fps = useUI((s) => s.fps);
   const conn = useUI((s) => s.conn);
   const live = conn !== "demo";
+  const style = useStyleVille();
 
   return (
     <div className="space-y-4">
+      <Field label="Style de la ville" hint="Change seulement le décor (sur cet appareil) : pôles, agents et missions restent les mêmes.">
+        <select className={inputCls} value={style} onChange={(e) => choisirStyleVille(e.target.value as StyleVille)}>
+          {(["newyork", "sete"] as StyleVille[]).map((s) => (
+            <option key={s} value={s}>
+              {s === "newyork" ? `${NOM_STYLE[s]} — gratte-ciel, avenues, taxis, brownstones` : `${NOM_STYLE[s]} — l'île d'origine, maisons et jardins`}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="Heure affichée dans la ville" hint="Change seulement le ciel et l'éclairage (ici, sur cet écran).">
         <select className={inputCls} value={override === null ? "" : String(override)} onChange={(e) => world.setClockOverride(e.target.value === "" ? null : Number(e.target.value))}>
           {HOURS.map((h) => (

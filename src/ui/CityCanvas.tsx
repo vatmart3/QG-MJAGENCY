@@ -4,12 +4,14 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ui, uiStore } from "@/store/ui";
 import { getGame, setGame } from "./gameRef";
+import { useStyleVille } from "./hooks";
 
 /** Monte la ville PixiJS (côté client uniquement) et sa couche DOM. */
 export function CityCanvas() {
   const host = useRef<HTMLDivElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const style = useStyleVille();
 
   useEffect(() => {
     let cancelled = false;
@@ -19,6 +21,7 @@ export function CityCanvas() {
       const { Game } = await import("@/world/Game");
       if (cancelled || !host.current || !overlay.current) return;
       const g = await Game.create(host.current, overlay.current, {
+        style,
         onZoneClick: (zoneId) => {
           if (zoneId === "douane" || zoneId === "phare") {
             router.push("/douane");
@@ -42,7 +45,7 @@ export function CityCanvas() {
       setGame(null);
       game?.destroy();
     };
-  }, [router]);
+  }, [router, style]);
 
   return (
     <div className="absolute inset-0">
