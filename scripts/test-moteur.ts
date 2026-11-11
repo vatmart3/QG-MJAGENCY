@@ -745,8 +745,8 @@ async function scenarioChaine() {
   const oA = opps.find((o) => o.lead_id === avec);
   const oS = opps.find((o) => o.lead_id === sans);
   const agenda = await q<{ titre: string }>("select titre from public.journal where titre like 'À faire (fondateurs) : 📞 Appeler Boulangerie Sans Mail%'");
-  check(rA.content.includes("send_email") && Number(oA?.montant) === 3285 && oA?.notes.includes("ne pas annoncer"), "avec e-mail : étude + affaire chiffrée (budget interne jamais annoncé), puis le mail");
-  check(rS.content.includes("créneau réservé") && oS?.notes.includes("Pack Démarrage") && oS.prochaine_action.startsWith("📞 Appeler") && agenda.length === 1, `sans e-mail : créneau d'appel dans l'agenda avec le script, fondateurs prévenus (${oS?.prochaine_action})`);
+  check(rA.content.includes("send_email") && Number(oA?.montant) === 3285 && !!oA?.notes.includes("ne pas annoncer"), "avec e-mail : étude + affaire chiffrée (budget interne jamais annoncé), puis le mail");
+  check(rS.content.includes("créneau réservé") && !!oS?.notes.includes("Pack Démarrage") && !!oS?.prochaine_action.startsWith("📞 Appeler") && agenda.length === 1, `sans e-mail : créneau d'appel dans l'agenda avec le script, fondateurs prévenus (${oS?.prochaine_action})`);
 
   const send = toolByName("send_email")!;
   await send.run(ctx, { a: "contact@avec-mail.fr", objet: "Votre boulangerie", corps: "Bonjour…", type: "prospection" });
