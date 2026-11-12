@@ -226,7 +226,10 @@ function buildLayout(style: StyleVille): Layout {
       const dx = Math.abs(x + 0.5 - cx) / (GW / 2 - 1.4);
       const dy = Math.abs(y + 0.5 - cy) / (GH / 2 - 1.4);
       const n = (hash2(x >> 1, y >> 1, 7) - 0.5) * 0.12;
-      if (Math.pow(dx, 2.5) + Math.pow(dy, 2.5) <= 1 + n) mask[idx(x, y)] = 1;
+      // New York : une île carrée, comme un bloc de Manhattan ; Sète : île arrondie
+      if (style === "newyork") {
+        if (x >= 2 && y >= 2 && x <= GW - 3 && y <= GH - 3) mask[idx(x, y)] = 1;
+      } else if (Math.pow(dx, 2.5) + Math.pow(dy, 2.5) <= 1 + n) mask[idx(x, y)] = 1;
       const px = x + 0.5 - PHARE.x - 0.5;
       const py = y + 0.5 - PHARE.y - 0.5;
       if (px * px + py * py <= 4.6 * 4.6) mask[idx(x, y)] = 1;
