@@ -229,8 +229,8 @@ export class Game {
       const ref = flat ? iso(p.x + 0.5, p.y + 0.5) : iso(p.x + fw - 0.5, p.y + fh - 0.5);
       s.zIndex = ref.y + (p.zBias ?? 0);
       this.objects.addChild(s);
-      if (p.kind === "tower" || (p.kind === "house" && L.style !== "sete")) {
-        // fenêtres allumées la nuit (tours et immeubles d'habitation) (calque ajouté en lumière, masqué derrière ce qui est devant)
+      if (p.kind === "tower") {
+        // fenêtres allumées la nuit (calque ajouté en lumière, masqué derrière ce qui est devant)
         const lk = litKeyAt(p);
         const lf = frameData.get(lk);
         if (lf) {

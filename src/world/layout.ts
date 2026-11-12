@@ -503,7 +503,8 @@ function buildLayout(style: StyleVille): Layout {
   // ---- 5 bis. Quartier résidentiel : une maison par pôle (toit à sa couleur), porte sur la rue
   const houses: House[] = [];
   const onVPath = (x: number) => V_PATHS.includes(x);
-  for (const hy of HOUSE_ROWS) {
+  // villes (New York, futuriste) : pas de maisons, les agents habitent dans les gratte-ciel (plus bas)
+  for (const hy of urbain(style) ? [] : HOUSE_ROWS) {
     for (let hx = 2; hx < GW - 4; hx++) {
       const cells: [number, number][] = [];
       for (let yy = hy; yy < hy + 3; yy++) for (let xx = hx; xx < hx + 3; xx++) cells.push([xx, yy]);
@@ -526,28 +527,8 @@ function buildLayout(style: StyleVille): Layout {
     h.color = p.couleur;
     for (const a of agentsOfPole(p.id)) homeOf[a.id] = h.door;
   });
-  // villes (New York, futuriste) : les maisons deviennent des immeubles d'habitation, aussi hauts que possible
-  // sans cacher un pôle, le phare ou un autre immeuble situés derrière (les agents y rentrent le soir)
-  const hauteurImmeuble = (h: House): number => {
-    let H = 124;
-    const cMin = h.x - (h.y + h.h - 1) - 1;
-    const cMax = h.x + h.w - 1 - h.y + 1;
-    const dos = h.x + h.y;
-    const voir = (x: number, y: number) => {
-      const c = x - y;
-      const d = x + y;
-      if (c >= cMin && c <= cMax && d < dos) H = Math.min(H, (dos - d - 1) * 8 - 36);
-    };
-    for (let y = 0; y < GH; y++)
-      for (let x = 0; x < GW; x++) {
-        const t = tiles[idx(x, y)];
-        if (zoneOf[idx(x, y)]! >= 0 || t === T.ROCK) voir(x, y);
-      }
-    for (const o of houses) if (o !== h) for (let yy = o.y; yy < o.y + o.h; yy++) for (let xx = o.x; xx < o.x + o.w; xx++) voir(xx, yy);
-    return Math.max(44, Math.min(124, H));
-  };
   houses.forEach((h, i) => {
-    props.push({ kind: "house", x: h.x, y: h.y, w: 3, h: 3, blocks: true, color: h.color, variant: urbain(style) ? (i % 4) + 10 * hauteurImmeuble(h) : i % 4 });
+    props.push({ kind: "house", x: h.x, y: h.y, w: 3, h: 3, blocks: true, color: h.color, variant: i % 4 });
     // petit jardin : fleurs et buisson devant certaines maisons
     if (inGrid(h.x + 3, h.y + 2) && tiles[idx(h.x + 3, h.y + 2)] === T.GRASS && !blocked[idx(h.x + 3, h.y + 2)] && i % 2 === 0)
       add({ kind: "flowers", x: h.x + 3, y: h.y + 2, blocks: true, variant: i % 3 });
@@ -607,6 +588,32 @@ function buildLayout(style: StyleVille): Layout {
   const parc = new Uint8Array(GW * GH);
   const tourPres = new Uint8Array(GW * GH);
   if (urbain(style)) placerTours(tiles, zoneOf, blocked, houses, add, tourPres, mulberry32(1979));
+  if (urbain(style)) {
+    // les agents habitent dans les gratte-ciel : chaque pôle reçoit la tour la plus proche de son bureau
+    // (une tour par pôle tant qu'il y en a assez), porte sur la ruelle devant la tour
+    const tours = props.filter((p) => p.kind === "tower");
+    const libre = (x: number, y: number) => inGrid(x, y) && tiles[idx(x, y)] !== T.VOID && tiles[idx(x, y)] !== T.WATER && !blocked[idx(x, y)];
+    const porteDe = (t: Prop): { x: number; y: number } | null => {
+      const w = t.w ?? 1, h = t.h ?? 1;
+      for (let k = 0; k < w; k++) {
+        const x = t.x + Math.floor(w / 2) + (k % 2 ? -1 : 1) * Math.ceil(k / 2);
+        if (libre(x, t.y + h)) return { x, y: t.y + h };
+      }
+      for (let k = 0; k < h; k++) if (libre(t.x + w, t.y + k)) return { x: t.x + w, y: t.y + k };
+      return null;
+    };
+    const avecPorte = tours.map((t) => ({ t, porte: porteDe(t) })).filter((o): o is { t: Prop; porte: { x: number; y: number } } => !!o.porte);
+    const occupants = new Map<Prop, number>();
+    for (const p of habites) {
+      const z = zones.find((zz) => zz.id === p.id);
+      const zx = z ? z.x + z.w / 2 : GW / 2, zy = z ? z.y + z.h / 2 : GH / 2;
+      const d = (t: Prop) => Math.hypot(t.x + (t.w ?? 1) / 2 - zx, t.y + (t.h ?? 1) / 2 - zy);
+      const choix = [...avecPorte].sort((a, b) => (occupants.get(a.t) ?? 0) - (occupants.get(b.t) ?? 0) || d(a.t) - d(b.t))[0];
+      if (!choix) continue;
+      occupants.set(choix.t, (occupants.get(choix.t) ?? 0) + 1);
+      for (const a of agentsOfPole(p.id)) homeOf[a.id] = choix.porte;
+    }
+  }
 
   // arbres : surtout en bordure de l'île, jamais sur les allées
   const isEdge = (x: number, y: number, r: number) => {

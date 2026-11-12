@@ -3,7 +3,7 @@ import type { AtlasEntryDef } from "./atlas";
 import { iso, tourDe, type Prop, type PropKind, type Side, type WallSlab, type Zone } from "../layout";
 import { hash2, mulberry32 } from "@/lib/rng";
 import { urbain, type StyleVille } from "../theme";
-import { automne, dessinFutur, drawCar, drawLoftWall, drawLoftWallFutur, drawResidence, drawTower, residenceTete, tourTete } from "./newyork";
+import { automne, dessinFutur, drawCar, drawLoftWall, drawLoftWallFutur, drawTower, tourTete } from "./newyork";
 
 /** Style de dessin courant (fixé avant la construction de l'atlas). */
 let styleDessin: StyleVille = "sete";
@@ -32,7 +32,7 @@ export function propDefs(props: Prop[]): AtlasEntryDef[] {
     if (seen.has(key)) continue;
     const fw = p.w ?? 1;
     const fh = p.h ?? 1;
-    const head = p.kind === "tower" ? tourTete(p.variant ?? 0) : p.kind === "house" && urbain(styleDessin) ? residenceTete(p.variant ?? 0) : HEAD[p.kind];
+    const head = p.kind === "tower" ? tourTete(p.variant ?? 0) : HEAD[p.kind];
     const W = (fw + fh) * 16;
     const H = (fw + fh) * 8 + head;
     const ox = fh * 16;
@@ -65,7 +65,7 @@ export function towerLitDefs(props: Prop[], zones: Zone[]): AtlasEntryDef[] {
   for (const p of props) {
     const w = p.w ?? 1, h = p.h ?? 1;
     if (p.kind === "tower") occ.push(hex(p.x + 0.1, p.y + 0.1, w - 0.2, h - 0.2, tourDe(p.variant ?? 0).hauteur, p.x + w + p.y + h));
-    if (p.kind === "house") occ.push(hex(p.x, p.y, w, h, Math.max(44, Math.floor((p.variant ?? 0) / 10)) + 4, p.x + w + p.y + h));
+    if (p.kind === "house") occ.push(hex(p.x, p.y, w, h, 56, p.x + w + p.y + h));
   }
   for (const z of zones) occ.push(hex(z.x, z.y, z.w, z.h, 31, z.x + z.w + z.y + z.h));
   const dedans = (o: Occ, x: number, y: number) => {
@@ -83,13 +83,12 @@ export function towerLitDefs(props: Prop[], zones: Zone[]): AtlasEntryDef[] {
   };
   const seen = new Map<string, AtlasEntryDef>();
   for (const p of props) {
-    if (p.kind !== "tower" && p.kind !== "house") continue;
+    if (p.kind !== "tower") continue;
     const key = `${litKey(p)}@${p.x},${p.y}`;
     if (seen.has(key)) continue;
     const fw = p.w ?? 1;
     const fh = p.h ?? 1;
-    const maison = p.kind === "house";
-    const head = maison ? residenceTete(p.variant ?? 0) : tourTete(p.variant ?? 0);
+    const head = tourTete(p.variant ?? 0);
     const d = p.x + fw + p.y + fh;
     const o0 = iso(p.x, p.y);
     const devant = occ.filter((o) => o.d > d);
@@ -103,7 +102,7 @@ export function towerLitDefs(props: Prop[], zones: Zone[]): AtlasEntryDef[] {
       h: (fw + fh) * 8 + head,
       ax: fh * 16,
       ay: head,
-      draw: (pen) => (maison ? drawResidence(pen, fh * 16, head, fw, fh, p.color ?? "#8a8fa3", p.variant ?? 0, true, cache) : drawTower(pen, fh * 16, head, fw, fh, p.variant ?? 0, true, cache)),
+      draw: (pen) => drawTower(pen, fh * 16, head, fw, fh, p.variant ?? 0, true, cache),
     });
   }
   return [...seen.values()];
@@ -461,8 +460,7 @@ function drawProp(p: Pen, prop: Prop, ox: number, oy: number): void {
       drawPhare(p, cx, cy);
       break;
     case "house":
-      if (urbain(styleDessin)) drawResidence(p, ox, oy, prop.w ?? 3, prop.h ?? 3, prop.color ?? "#8a8fa3", v);
-      else drawHouse(p, ox, oy, prop.w ?? 3, prop.h ?? 3, prop.color ?? "#8a8fa3", v);
+      drawHouse(p, ox, oy, prop.w ?? 3, prop.h ?? 3, prop.color ?? "#8a8fa3", v);
       break;
     case "treadmill": {
       box(0.2, 0.15, 0.8, 0.95, 0, 4, rgb("#3d4157"));
