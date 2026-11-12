@@ -12,7 +12,8 @@ async function handle(request: Request) {
   try {
     const r = await runTick(caller.kind);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
-    return NextResponse.json({ ...r.report, appelant: caller.kind });
+    // version en ligne (commit) : visible dans les réponses gardées par Supabase, pour vérifier une mise en ligne
+    return NextResponse.json({ ...r.report, appelant: caller.kind, version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "locale" });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur du moteur" }, { status: 500 });
   }
