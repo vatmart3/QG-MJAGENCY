@@ -372,7 +372,7 @@ function FilActivite() {
                   {a ? <Portrait agentId={a.id} size={1.1} className="mt-0.5 shrink-0" /> : <span className="mt-0.5 w-[18px] text-center">{j.type === "alerte" ? "⚠️" : "⚓"}</span>}
                   <span className="min-w-0 flex-1 text-[11.5px] leading-snug">
                     {a && <b>{a.nom} </b>}
-                    <span className="break-words">{a && j.title.startsWith(`${a.nom} `) ? j.title.slice(a.nom.length + 1) : j.title}</span>
+                    <span className="break-words">{sansNom(j.title, a?.nom)}</span>
                     <span className="ml-1 font-silk text-[8.5px] text-ink-soft tabular-nums">{formatParis(j.at, "HH:mm")}</span>
                   </span>
                 </button>
@@ -383,4 +383,11 @@ function FilActivite() {
       )}
     </section>
   );
+}
+
+/** « 📄 Paul — Clients… » → « Clients… » quand le prénom est déjà affiché */
+function sansNom(titre: string, nom: string | undefined): string {
+  if (!nom) return titre;
+  const t = titre.replace(/^[^\p{L}\p{N}]+/u, "");
+  return t.startsWith(nom) ? t.slice(nom.length).replace(/^[\s—:–-]+/, "") || titre : titre;
 }

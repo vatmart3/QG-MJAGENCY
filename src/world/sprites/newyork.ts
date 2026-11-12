@@ -7,7 +7,41 @@ import { boxOf, isoBox, isoPt, mix, rgb, shade, type Pen, type RGBA } from "./pi
  * murs de loft en brique. Les fenêtres allumées sont dessinées à part (calque « nuit » ajouté en lumière).
  */
 
-const LIT = [rgb("#ffd27a"), rgb("#ffe6a8"), rgb("#fff1c9"), rgb("#bfe1ff"), rgb("#ffc66b")];
+const LIT_NY = [rgb("#ffd27a"), rgb("#ffe6a8"), rgb("#fff1c9"), rgb("#bfe1ff"), rgb("#ffc66b")];
+const LIT_FUTUR = [rgb("#9ff6ff"), rgb("#e6fbff"), rgb("#7fd8ff"), rgb("#ffb3f2"), rgb("#c9f7ff")];
+let LIT = LIT_NY;
+
+/** Style futuriste (verre blanc, néons, toits-jardins) : fixé avant la construction de l'atlas. */
+let futur = false;
+export function dessinFutur(f: boolean): void {
+  futur = f;
+  LIT = f ? LIT_FUTUR : LIT_NY;
+}
+export const estFutur = () => futur;
+
+const NEONS = [rgb("#3ff0ff"), rgb("#ff4fd8"), rgb("#b6ff4f"), rgb("#ffd34d")];
+
+/** Ligne pixel qui saute les pixels masqués (calque de nuit). */
+function ligne(p: Pen, a: [number, number], b: [number, number], c: RGBA, cache?: (x: number, y: number) => boolean): void {
+  let x0 = Math.round(a[0]), y0 = Math.round(a[1]);
+  const x1 = Math.round(b[0]), y1 = Math.round(b[1]);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    if (!cache?.(x0, y0)) p.set(x0, y0, c);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+/** Anneau de néon sur les deux façades visibles d'une boîte, à la hauteur z. */
+function neon(p: Pen, ox: number, oy: number, a0: number, b0: number, a1: number, b1: number, z: number, c: RGBA, cache?: (x: number, y: number) => boolean): void {
+  ligne(p, isoPt(ox, oy, a0, b1, z), isoPt(ox, oy, a1, b1, z), c, cache);
+  ligne(p, isoPt(ox, oy, a1, b1, z), isoPt(ox, oy, a1, b0, z), c, cache);
+}
 
 /** Hauteur réservée au-dessus de l'emprise (px) pour une tour. */
 export function tourTete(variant: number): number {
@@ -85,6 +119,7 @@ function fenetres(
  */
 export function drawTower(p: Pen, ox: number, oy: number, w: number, h: number, variant: number, nuit = false, cache?: (x: number, y: number) => boolean): void {
   const { style, hauteur: H } = tourDe(variant);
+  if (futur && style !== TOUR.times) return drawTowerFutur(p, ox, oy, w, h, variant, nuit, cache);
   const seed = variant * 31 + w * 7 + h * 13;
   const m = 0.1;
   const u0 = m, v0 = m, u1 = w - m, v1 = h - m;
@@ -238,40 +273,6 @@ export function drawTower(p: Pen, ox: number, oy: number, w: number, h: number, 
 
 const withA = (c: RGBA, a: number): RGBA => ((c & 0xffffff00) | (a & 255)) >>> 0;
 
-/** Brownstone (maison d'un pôle) : trois étages, perron, corniche et porte à la couleur du pôle. */
-export function drawBrownstone(p: Pen, ox: number, oy: number, w: number, h: number, couleur: string, v: number): void {
-  const pole = rgb(couleur);
-  const murs = [rgb("#7b4a36"), rgb("#8d5a40"), rgb("#9c4a3a"), rgb("#6f4636")][v % 4]!;
-  const m = 0.18;
-  const H = 40;
-  isoBox(p, ox, oy, m, m, w - m, h - m, 0, H, { top: shade(murs, 0.1), left: shade(murs, -0.06), right: shade(murs, -0.2) });
-  // soubassement en pierre
-  isoBox(p, ox, oy, m, m, w - m, h - m, 0, 6, { top: murs, left: rgb("#8f8273"), right: rgb("#786c60") });
-  // fenêtres à cadre blanc sur les deux façades visibles
-  const vitre = rgb("#c9dbea");
-  const cadre = rgb("#efe8dc");
-  for (const z of [11, 21, 31]) {
-    for (const u of [0.55, w / 2 + (z === 11 ? 0.9 : 0), w - 0.55]) {
-      if (z === 11 && Math.abs(u - w / 2) < 0.5) continue;
-      p.poly([isoPt(ox, oy, u - 0.22, h - m, z), isoPt(ox, oy, u + 0.22, h - m, z), isoPt(ox, oy, u + 0.22, h - m, z + 7), isoPt(ox, oy, u - 0.22, h - m, z + 7)], cadre);
-      p.poly([isoPt(ox, oy, u - 0.15, h - m, z + 1), isoPt(ox, oy, u + 0.15, h - m, z + 1), isoPt(ox, oy, u + 0.15, h - m, z + 6), isoPt(ox, oy, u - 0.15, h - m, z + 6)], vitre);
-    }
-    for (const vv of [0.8, h - 0.8]) {
-      p.poly([isoPt(ox, oy, w - m, vv - 0.22, z), isoPt(ox, oy, w - m, vv + 0.22, z), isoPt(ox, oy, w - m, vv + 0.22, z + 7), isoPt(ox, oy, w - m, vv - 0.22, z + 7)], cadre);
-      p.poly([isoPt(ox, oy, w - m, vv - 0.15, z + 1), isoPt(ox, oy, w - m, vv + 0.15, z + 1), isoPt(ox, oy, w - m, vv + 0.15, z + 6), isoPt(ox, oy, w - m, vv - 0.15, z + 6)], shade(vitre, -0.1));
-    }
-  }
-  // porte (couleur du pôle) et perron
-  const dc = w / 2;
-  p.poly([isoPt(ox, oy, dc - 0.28, h - m, 6), isoPt(ox, oy, dc + 0.28, h - m, 6), isoPt(ox, oy, dc + 0.28, h - m, 18), isoPt(ox, oy, dc - 0.28, h - m, 18)], cadre);
-  p.poly([isoPt(ox, oy, dc - 0.2, h - m, 6), isoPt(ox, oy, dc + 0.2, h - m, 6), isoPt(ox, oy, dc + 0.2, h - m, 17), isoPt(ox, oy, dc - 0.2, h - m, 17)], pole);
-  for (let i = 0; i < 3; i++) isoBox(p, ox, oy, dc - 0.35, h - m, dc + 0.35, h - m + 0.18 + i * 0.12, 0, 6 - i * 2, boxOf(rgb("#a39584"), false));
-  // corniche à la couleur du pôle
-  isoBox(p, ox, oy, m - 0.06, m - 0.06, w - m + 0.06, h - m + 0.06, H, H + 4, { top: shade(pole, 0.25), left: pole, right: shade(pole, -0.2) });
-  // cheminée
-  isoBox(p, ox, oy, w * 0.25, h * 0.25, w * 0.25 + 0.4, h * 0.25 + 0.4, H + 4, H + 11, boxOf(rgb("#6a5148")));
-}
-
 /** Arbre d'automne (New York, novembre). */
 export function automne(v: number): RGBA {
   return [rgb("#d98b2b"), rgb("#c8552f"), rgb("#4f9d4a"), rgb("#e0a63a")][v % 4]!;
@@ -326,4 +327,172 @@ export function drawCar(p: Pen, ox: number, oy: number, axe: "x" | "y", couleur:
     const [tx, ty] = isoPt(ox, oy, 0, 0, 8);
     p.rect(Math.round(tx) - 1, Math.round(ty) - 2, 3, 2, rgb("#fff3c4"));
   }
+}
+
+// ------------------------------------------------------------------ ville futuriste
+/**
+ * Tours futuristes : flèche de verre à gradins et anneaux de néon (verre), tour à dôme (déco), habitat à terrasses
+ * végétalisées (brique), aiguille noire à néons verticaux (fine). Les néons brillent dans le calque de nuit.
+ */
+function drawTowerFutur(p: Pen, ox: number, oy: number, w: number, h: number, variant: number, nuit: boolean, cache?: (x: number, y: number) => boolean): void {
+  const { style, hauteur: H } = tourDe(variant);
+  const seed = variant * 31 + w * 7 + h * 13;
+  const r = mulberry32(seed);
+  const neonC = NEONS[seed % NEONS.length]!;
+  const m = 0.1;
+  const u0 = m, v0 = m, u1 = w - m, v1 = h - m;
+  const boite = (a0: number, b0: number, a1: number, b1: number, z0: number, z1: number, c: RGBA, top?: RGBA) => {
+    if (nuit) return;
+    isoBox(p, ox, oy, a0, b0, a1, b1, z0, z1, { top: top ?? shade(c, 0.12), left: shade(c, -0.1), right: shade(c, -0.24) });
+  };
+  const vitreB = (t: number, f: Face) => shade(t < 0.15 ? rgb("#f4fbff") : t < 0.6 ? rgb("#8fd6f2") : rgb("#4fa3d1"), f === "L" ? -0.08 : 0.04);
+  const facades = (a0: number, b0: number, a1: number, b1: number, z0: number, z1: number, o: { pasH: number; pasZ: number; w: number; h: number; vitre: (t: number, f: Face) => RGBA; allume: number; s: number }) => {
+    fenetres(p, ox, oy, "L", a0, a1, b1, z0, z1, { ...o, seed: o.s + 1, nuit, cache });
+    fenetres(p, ox, oy, "R", b0, b1, a1, z0, z1, { ...o, seed: o.s + 2, nuit, cache });
+  };
+  const anneau = (a0: number, b0: number, a1: number, b1: number, z: number, c = neonC) => neon(p, ox, oy, a0, b0, a1, b1, z, nuit ? c : shade(c, 0.05), cache);
+
+  if (style === TOUR.verre) {
+    // flèche : 4 gradins de verre qui se resserrent, un anneau de néon à chaque étage
+    const n = 4;
+    let z0 = 0;
+    for (let i = 0; i < n; i++) {
+      const ins = Math.min(w, h) * 0.09 * i;
+      const a0 = u0 + ins, b0 = v0 + ins, a1 = u1 - ins, b1 = v1 - ins;
+      const z1 = Math.round(H * [0.42, 0.68, 0.86, 1][i]!);
+      boite(a0, b0, a1, b1, z0, z1, rgb("#cfe9f6"));
+      facades(a0, b0, a1, b1, z0 + 2, z1, { pasH: 3, pasZ: 3, w: 2, h: 1, vitre: vitreB, allume: 0.5, s: seed + i * 9 });
+      anneau(a0, b0, a1, b1, z1 - 1);
+      z0 = z1;
+    }
+    const cx = w / 2, cy = h / 2;
+    const [tx, ty] = isoPt(ox, oy, cx, cy, H);
+    if (!nuit) p.vline(Math.round(tx), Math.round(ty), Math.round(ty - 24), rgb("#e8eef6"));
+    else if (!cache?.(Math.round(tx), Math.round(ty - 24))) p.rect(Math.round(tx) - 1, Math.round(ty - 25), 2, 2, neonC);
+    return;
+  }
+
+  if (style === TOUR.deco) {
+    // tour à dôme : fût blanc, bandeau de verre, dôme en gradins, anneau lumineux
+    const fut = Math.round(H * 0.8);
+    boite(u0, v0, u1, v1, 0, fut, rgb("#eef3f8"));
+    facades(u0, v0, u1, v1, 4, fut, { pasH: 5, pasZ: 6, w: 3, h: 3, vitre: vitreB, allume: 0.45, s: seed });
+    for (let k = 0; k < 6; k++) {
+      const t = k / 6;
+      const ins = (Math.min(w, h) / 2 - 0.15) * (1 - Math.cos((t * Math.PI) / 2));
+      boite(u0 + ins, v0 + ins, u1 - ins, v1 - ins, fut + k * ((H - fut) / 6), fut + (k + 1) * ((H - fut) / 6), rgb("#9fd8f0"));
+    }
+    anneau(u0, v0, u1, v1, fut, rgb("#ff4fd8"));
+    anneau(u0, v0, u1, v1, Math.round(fut * 0.5));
+    return;
+  }
+
+  if (style === TOUR.brique) {
+    // habitat : blocs blancs décalés, terrasses plantées sur chaque toit
+    let z0 = 0;
+    const blocs = 3;
+    for (let i = 0; i < blocs; i++) {
+      const dx = (r() - 0.5) * 0.5, dy = (r() - 0.5) * 0.5;
+      const a0 = u0 + 0.15 + Math.max(0, dx), b0 = v0 + 0.15 + Math.max(0, dy), a1 = u1 - 0.15 + Math.min(0, dx), b1 = v1 - 0.15 + Math.min(0, dy);
+      const z1 = Math.round((H * (i + 1)) / blocs);
+      boite(a0, b0, a1, b1, z0, z1, rgb("#f2f4f1"), rgb("#6fbf5a"));
+      facades(a0, b0, a1, b1, z0 + 2, z1 - 3, { pasH: 5, pasZ: 6, w: 3, h: 3, vitre: vitreB, allume: 0.55, s: seed + i * 5 });
+      if (!nuit) for (let k = 0; k < 4; k++) {
+        const [px, py] = isoPt(ox, oy, a0 + 0.3 + r() * (a1 - a0 - 0.6), b0 + 0.3 + r() * (b1 - b0 - 0.6), z1);
+        p.ellipse(px, py - 2, 2.5, 2, rgb(r() < 0.5 ? "#3f9a4a" : "#58b45a"));
+      }
+      anneau(a0, b0, a1, b1, z1 - 3, rgb("#b6ff4f"));
+      z0 = z1;
+    }
+    return;
+  }
+
+  // aiguille : verre fumé, néons verticaux aux arêtes
+  const a0 = u0 + w * 0.14, b0 = v0 + h * 0.14, a1 = u1 - w * 0.14, b1 = v1 - h * 0.14;
+  boite(a0, b0, a1, b1, 0, H, rgb("#2b3346"));
+  facades(a0, b0, a1, b1, 4, H, { pasH: 3, pasZ: 3, w: 1, h: 2, vitre: (t, f) => shade(t < 0.2 ? rgb("#7aa8d8") : rgb("#3a4660"), f === "L" ? -0.1 : 0), allume: 0.5, s: seed });
+  const nc = nuit ? neonC : shade(neonC, -0.05);
+  ligne(p, isoPt(ox, oy, a1, b1, 0), isoPt(ox, oy, a1, b1, H), nc, cache);
+  ligne(p, isoPt(ox, oy, a0, b1, 0), isoPt(ox, oy, a0, b1, H), nc, cache);
+  ligne(p, isoPt(ox, oy, a1, b0, 0), isoPt(ox, oy, a1, b0, H), nc, cache);
+  anneau(a0, b0, a1, b1, H - 1);
+  const [tx, ty] = isoPt(ox, oy, w / 2, h / 2, H);
+  if (!nuit) p.vline(Math.round(tx), Math.round(ty), Math.round(ty - 16), rgb("#9aa3b5"));
+}
+
+/** Hauteur réservée au-dessus d'un immeuble d'habitation (variant = couleur + 10 × hauteur). */
+export function residenceTete(v: number): number {
+  return Math.max(44, Math.floor(v / 10)) + 26;
+}
+
+/**
+ * Immeuble d'habitation d'un pôle (ville New York ou futuriste) : les agents du pôle y habitent.
+ * Entrée, auvent et corniche (ou néon) à la couleur du pôle ; fenêtres allumées dans le calque de nuit.
+ */
+export function drawResidence(p: Pen, ox: number, oy: number, w: number, h: number, couleur: string, v: number, nuit = false, cache?: (x: number, y: number) => boolean): void {
+  const pole = rgb(couleur);
+  const H = Math.max(44, Math.floor(v / 10));
+  const k = v % 10;
+  const m = 0.16;
+  const seed = H * 17 + k * 101 + w;
+  const u0 = m, v0 = m, u1 = w - m, v1 = h - m;
+  const boite = (a0: number, b0: number, a1: number, b1: number, z0: number, z1: number, c: RGBA, top?: RGBA) => {
+    if (nuit) return;
+    isoBox(p, ox, oy, a0, b0, a1, b1, z0, z1, { top: top ?? shade(c, 0.1), left: shade(c, -0.08), right: shade(c, -0.22) });
+  };
+  const fen = (vitre: (t: number, f: Face) => RGBA, cadre: RGBA | undefined, pasZ: number) => {
+    fenetres(p, ox, oy, "L", u0, u1, v1, 10, H, { pasH: 5, pasZ, w: 2, h: 3, vitre, allume: 0.6, seed: seed + 1, nuit, cache, cadre });
+    fenetres(p, ox, oy, "R", v0, v1, u1, 10, H, { pasH: 5, pasZ, w: 2, h: 3, vitre, allume: 0.6, seed: seed + 2, nuit, cache, cadre });
+  };
+  const dc = w / 2;
+  if (futur) {
+    boite(u0, v0, u1, v1, 0, H, rgb("#eef2f6"));
+    fen((t, f) => shade(t < 0.2 ? rgb("#f4fbff") : rgb("#7fc4e6"), f === "L" ? -0.08 : 0.04), undefined, 6);
+    if (!nuit) {
+      // balcons blancs à chaque étage
+      for (let z = 14; z < H - 4; z += 12) isoBox(p, ox, oy, u0, v1, u1, v1 + 0.22, z, z + 2, { top: rgb("#ffffff"), left: rgb("#dfe6ee"), right: rgb("#c9d3de") });
+      // toit-jardin
+      isoBox(p, ox, oy, u0 + 0.1, v0 + 0.1, u1 - 0.1, v1 - 0.1, H, H + 2, { top: rgb("#6fbf5a"), left: rgb("#4f8f42"), right: rgb("#447c39") });
+      const r = mulberry32(seed);
+      for (let i = 0; i < 4; i++) {
+        const [px, py] = isoPt(ox, oy, u0 + 0.5 + r() * (u1 - u0 - 1), v0 + 0.5 + r() * (v1 - v0 - 1), H + 2);
+        p.ellipse(px, py - 2, 3, 2.5, rgb(r() < 0.5 ? "#3f9a4a" : "#58b45a"));
+      }
+      // entrée vitrée
+      p.poly([isoPt(ox, oy, dc - 0.35, v1, 0), isoPt(ox, oy, dc + 0.35, v1, 0), isoPt(ox, oy, dc + 0.35, v1, 10), isoPt(ox, oy, dc - 0.35, v1, 10)], rgb("#bfe8f8"));
+    }
+    // néon à la couleur du pôle en haut et au-dessus de l'entrée
+    neon(p, ox, oy, u0, v0, u1, v1, H - 2, nuit ? pole : shade(pole, 0.1), cache);
+    ligne(p, isoPt(ox, oy, dc - 0.4, v1 + 0.02, 11), isoPt(ox, oy, dc + 0.4, v1 + 0.02, 11), nuit ? pole : shade(pole, 0.1), cache);
+    return;
+  }
+  // New York : immeuble de briques ou de pierre, auvent et corniche du pôle
+  const murs = [rgb("#9a4a36"), rgb("#7b4a36"), rgb("#b9a58a"), rgb("#8d5a40")][k % 4]!;
+  boite(u0, v0, u1, v1, 0, H, murs);
+  boite(u0, v0, u1, v1, 0, 8, rgb("#8f8273"), shade(murs, 0.1));
+  fen((t, f) => shade(t < 0.25 ? rgb("#c9dbea") : rgb("#3a3f4c"), f === "L" ? -0.1 : 0), rgb("#efe8dc"), 7);
+  if (nuit) return;
+  // entrée : porte, auvent à la couleur du pôle, marches
+  p.poly([isoPt(ox, oy, dc - 0.25, v1, 0), isoPt(ox, oy, dc + 0.25, v1, 0), isoPt(ox, oy, dc + 0.25, v1, 11), isoPt(ox, oy, dc - 0.25, v1, 11)], rgb("#2c2a30"));
+  p.poly([isoPt(ox, oy, dc - 0.45, v1, 13), isoPt(ox, oy, dc + 0.45, v1, 13), isoPt(ox, oy, dc + 0.45, v1 + 0.45, 10), isoPt(ox, oy, dc - 0.45, v1 + 0.45, 10)], pole);
+  isoBox(p, ox, oy, dc - 0.4, v1, dc + 0.4, v1 + 0.3, 0, 2, boxOf(rgb("#a39584"), false));
+  // corniche du pôle et réservoir d'eau un immeuble sur deux
+  isoBox(p, ox, oy, u0 - 0.05, v0 - 0.05, u1 + 0.05, v1 + 0.05, H, H + 4, { top: shade(pole, 0.25), left: pole, right: shade(pole, -0.2) });
+  if (k % 2 === 0) {
+    const [cx, cy] = isoPt(ox, oy, w * 0.35, h * 0.35, H + 4);
+    for (const dx of [-4, 4]) p.vline(Math.round(cx + dx), Math.round(cy), Math.round(cy - 5), rgb("#3a3330"));
+    const bois = rgb("#8b5d3c");
+    p.rect(Math.round(cx - 5), Math.round(cy - 13), 10, 8, bois);
+    p.poly([[cx - 6, cy - 13], [cx, cy - 18], [cx + 6, cy - 13]], rgb("#5b4a3e"));
+  }
+}
+
+/** Mur du fond d'un loft futuriste : panneaux blancs, grande baie, néon à la couleur du pôle. */
+export function drawLoftWallFutur(p: Pen, side: Side, color: string, ox: number, oy: number, u0: number, v0: number, u1: number, v1: number, HB: number): void {
+  const zc = rgb(color);
+  isoBox(p, ox, oy, u0, v0, u1, v1, 0, HB, { top: rgb("#ffffff"), left: rgb("#e6ecf2"), right: rgb("#d3dbe4") });
+  const verre = rgb("#a8dcf2");
+  if (side === "y-") p.poly([isoPt(ox, oy, 0.1, v1, 5), isoPt(ox, oy, 0.9, v1, 5), isoPt(ox, oy, 0.9, v1, 21), isoPt(ox, oy, 0.1, v1, 21)], verre);
+  else p.poly([isoPt(ox, oy, u1, 0.1, 5), isoPt(ox, oy, u1, 0.9, 5), isoPt(ox, oy, u1, 0.9, 21), isoPt(ox, oy, u1, 0.1, 21)], shade(verre, -0.06));
+  isoBox(p, ox, oy, u0 - 0.02, v0 - 0.02, u1 + 0.02, v1 + 0.02, HB - 2, HB, { top: shade(zc, 0.35), left: shade(zc, 0.15), right: zc });
 }

@@ -16,7 +16,7 @@ import { makeBeamTexture, makeGlowTexture, SkyLayer } from "./sky";
 import { buildAtlas, type AtlasFrame } from "./sprites/atlas";
 import { characterAtlasDefs } from "./sprites/characters";
 import { renderGround } from "./sprites/ground";
-import { carDefs, dessinerEnStyle, litKeyAt, miscDefs, propDefs, propKey, slabDefs, slabKey, towerLitDefs } from "./sprites/props";
+import { carDefs, couleursVoitures, dessinerEnStyle, litKeyAt, miscDefs, propDefs, propKey, slabDefs, slabKey, towerLitDefs } from "./sprites/props";
 
 /**
  * LE PORT — la ville. Une instance par page.
@@ -86,7 +86,7 @@ export class Game {
     // allées un peu moins chères que l'herbe → les bonshommes suivent les chemins
     // (New York : trottoirs d'abord, la chaussée est aux taxis, les pelouses en dernier)
     this.extraCost = new Uint8Array(this.layout.tiles.length);
-    const ny = this.layout.style === "newyork";
+    const ny = this.layout.style !== "sete";
     for (let i = 0; i < this.layout.tiles.length; i++) {
       const t = this.layout.tiles[i];
       this.extraCost[i] = ny ? (t === T.GRASS ? (this.layout.parc[i] ? 2 : 0) : t === T.PATH ? 1 : 0) : t === T.GRASS ? 2 : 0;
@@ -124,7 +124,7 @@ export class Game {
 
     // ---- textures procédurales
     const L = this.layout;
-    const ny = L.style === "newyork";
+    const ny = L.style !== "sete";
     dessinerEnStyle(L.style);
     const atlas = buildAtlas([
       ...propDefs(L.props),
@@ -181,7 +181,7 @@ export class Game {
     this.pile = new Pile(this.objects, L, this.frames);
     this.phare = new Lighthouse(this.lights, L, makeBeamTexture(), this.glowTex);
     if (ny) {
-      this.traffic = new Traffic(this.objects, this.lights, L, this.frames, this.glowTex, (cell) => this.agentCells.has(cell));
+      this.traffic = new Traffic(this.objects, this.lights, L, this.frames, this.glowTex, (cell) => this.agentCells.has(cell), couleursVoitures(), L.style === "futur" ? 14 : 0);
       const sommets = L.props
         .filter((p) => p.kind === "tower" && tourSommet(p.variant ?? 0) > 0)
         .map((p) => {
@@ -229,8 +229,8 @@ export class Game {
       const ref = flat ? iso(p.x + 0.5, p.y + 0.5) : iso(p.x + fw - 0.5, p.y + fh - 0.5);
       s.zIndex = ref.y + (p.zBias ?? 0);
       this.objects.addChild(s);
-      if (p.kind === "tower") {
-        // fenêtres allumées la nuit (calque ajouté en lumière, masqué derrière ce qui est devant)
+      if (p.kind === "tower" || (p.kind === "house" && L.style !== "sete")) {
+        // fenêtres allumées la nuit (tours et immeubles d'habitation) (calque ajouté en lumière, masqué derrière ce qui est devant)
         const lk = litKeyAt(p);
         const lf = frameData.get(lk);
         if (lf) {

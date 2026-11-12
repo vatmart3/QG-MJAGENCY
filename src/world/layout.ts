@@ -1,7 +1,7 @@
 import { agentsOfPole, allLieux, allPoles, catalogStore } from "@/data/catalog";
 import { slotById } from "./slots";
 import { hash2, mulberry32 } from "@/lib/rng";
-import { styleVille, type StyleVille } from "./theme";
+import { styleVille, urbain, type StyleVille } from "./theme";
 
 /**
  * Plan de l'île : grille isométrique GW×GH.
@@ -227,7 +227,7 @@ function buildLayout(style: StyleVille): Layout {
       const dy = Math.abs(y + 0.5 - cy) / (GH / 2 - 1.4);
       const n = (hash2(x >> 1, y >> 1, 7) - 0.5) * 0.12;
       // New York : une île carrée, comme un bloc de Manhattan ; Sète : île arrondie
-      if (style === "newyork") {
+      if (urbain(style)) {
         if (x >= 2 && y >= 2 && x <= GW - 3 && y <= GH - 3) mask[idx(x, y)] = 1;
       } else if (Math.pow(dx, 2.5) + Math.pow(dy, 2.5) <= 1 + n) mask[idx(x, y)] = 1;
       const px = x + 0.5 - PHARE.x - 0.5;
@@ -237,8 +237,8 @@ function buildLayout(style: StyleVille): Layout {
   }
   for (const z of ZONE_PLAN) {
     // New York : une bande de terrain en plus derrière la ville (au fond de l'écran) pour la rangée de gratte-ciel
-    const fondY = style === "newyork" ? 7 : 2;
-    const fondX = style === "newyork" && z.y < CANAL_Y[0]! ? 7 : 2;
+    const fondY = urbain(style) ? 7 : 2;
+    const fondX = urbain(style) && z.y < CANAL_Y[0]! ? 7 : 2;
     for (let y = z.y - fondY; y < z.y + ZH + 2; y++)
       for (let x = z.x - fondX; x < z.x + ZW + 2; x++) if (inGrid(x, y)) mask[idx(x, y)] = 1;
   }
@@ -526,8 +526,28 @@ function buildLayout(style: StyleVille): Layout {
     h.color = p.couleur;
     for (const a of agentsOfPole(p.id)) homeOf[a.id] = h.door;
   });
+  // villes (New York, futuriste) : les maisons deviennent des immeubles d'habitation, aussi hauts que possible
+  // sans cacher un pôle, le phare ou un autre immeuble situés derrière (les agents y rentrent le soir)
+  const hauteurImmeuble = (h: House): number => {
+    let H = 124;
+    const cMin = h.x - (h.y + h.h - 1) - 1;
+    const cMax = h.x + h.w - 1 - h.y + 1;
+    const dos = h.x + h.y;
+    const voir = (x: number, y: number) => {
+      const c = x - y;
+      const d = x + y;
+      if (c >= cMin && c <= cMax && d < dos) H = Math.min(H, (dos - d - 1) * 8 - 36);
+    };
+    for (let y = 0; y < GH; y++)
+      for (let x = 0; x < GW; x++) {
+        const t = tiles[idx(x, y)];
+        if (zoneOf[idx(x, y)]! >= 0 || t === T.ROCK) voir(x, y);
+      }
+    for (const o of houses) if (o !== h) for (let yy = o.y; yy < o.y + o.h; yy++) for (let xx = o.x; xx < o.x + o.w; xx++) voir(xx, yy);
+    return Math.max(44, Math.min(124, H));
+  };
   houses.forEach((h, i) => {
-    props.push({ kind: "house", x: h.x, y: h.y, w: 3, h: 3, blocks: true, color: h.color, variant: i % 4 });
+    props.push({ kind: "house", x: h.x, y: h.y, w: 3, h: 3, blocks: true, color: h.color, variant: urbain(style) ? (i % 4) + 10 * hauteurImmeuble(h) : i % 4 });
     // petit jardin : fleurs et buisson devant certaines maisons
     if (inGrid(h.x + 3, h.y + 2) && tiles[idx(h.x + 3, h.y + 2)] === T.GRASS && !blocked[idx(h.x + 3, h.y + 2)] && i % 2 === 0)
       add({ kind: "flowers", x: h.x + 3, y: h.y + 2, blocks: true, variant: i % 3 });
@@ -586,7 +606,7 @@ function buildLayout(style: StyleVille): Layout {
   // ---- 6 bis. New York : gratte-ciel là où ils ne cachent rien d'important
   const parc = new Uint8Array(GW * GH);
   const tourPres = new Uint8Array(GW * GH);
-  if (style === "newyork") placerTours(tiles, zoneOf, blocked, houses, add, tourPres, mulberry32(1979));
+  if (urbain(style)) placerTours(tiles, zoneOf, blocked, houses, add, tourPres, mulberry32(1979));
 
   // arbres : surtout en bordure de l'île, jamais sur les allées
   const isEdge = (x: number, y: number, r: number) => {
@@ -603,7 +623,7 @@ function buildLayout(style: StyleVille): Layout {
     }
     return false;
   };
-  if (style === "newyork") {
+  if (urbain(style)) {
     // pelouses : l'herbe loin des rues et des tours ; le reste est pavé (trottoirs, places)
     for (let y = 0; y < GH; y++)
       for (let x = 0; x < GW; x++) {
@@ -626,7 +646,7 @@ function buildLayout(style: StyleVille): Layout {
       if (nearWalk(x, y)) continue;
       const edge = isEdge(x, y, 1);
       const r = rng();
-      if (style === "newyork") {
+      if (urbain(style)) {
         // arbres d'automne dans les parcs seulement
         if (parc[idx(x, y)] && r < (edge ? 0.2 : 0.09)) add({ kind: "tree", x, y, blocks: true, variant: Math.floor(rng() * 3) });
         continue;

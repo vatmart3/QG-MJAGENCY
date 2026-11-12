@@ -114,7 +114,7 @@ function makeMountainTexture(seed: number, w: number, h: number, peak: number): 
 }
 
 /** Skyline lointaine (style New York) : silhouette blanche (teintée comme les montagnes), raccord horizontal. */
-function makeSkylineTexture(seed: number, w: number, h: number, maxH: number, lumieres: boolean): Texture {
+function makeSkylineTexture(seed: number, w: number, h: number, maxH: number, lumieres: boolean, aiguilles = false): Texture {
   const [c, ctx] = canvas(w, h);
   const r = mulberry32(seed);
   const rr = mulberry32(seed + 1);
@@ -127,7 +127,16 @@ function makeSkylineTexture(seed: number, w: number, h: number, maxH: number, lu
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(x, h - bh, left, bh);
       // gradins et flèches sur quelques tours
-      if (bh > maxH * 0.55 && left > 8) {
+      if (aiguilles) {
+        // futuriste : flèches effilées et dômes
+        if (r() < 0.5) {
+          for (let k = 0; k < 14; k++) ctx.fillRect(x + Math.floor((left * k) / 28), h - bh - k * 2, Math.max(1, left - Math.floor((left * k) / 14)), 2);
+        } else {
+          ctx.beginPath();
+          ctx.ellipse(x + left / 2, h - bh, left / 2, Math.min(10, left / 2), 0, Math.PI, 0);
+          ctx.fill();
+        }
+      } else if (bh > maxH * 0.55 && left > 8) {
         ctx.fillRect(x + 2, h - bh - 6, left - 4, 6);
         if (r() < 0.5) ctx.fillRect(x + Math.floor(left / 2), h - bh - 18, 1, 12);
       }
@@ -192,11 +201,12 @@ export class SkyLayer {
     this.waterSource = new CanvasSource({ resource: this.waterCanvas, scaleMode: "linear" });
     this.water = new Sprite(new Texture({ source: this.waterSource }));
 
-    if (style === "newyork") {
-      // l'autre rive : une skyline à l'horizon (et ses fenêtres allumées la nuit)
-      this.mountainsFar = new TilingSprite({ texture: makeSkylineTexture(3, 700, 140, 120, false), width: 100, height: 140 });
-      this.mountainsNear = new TilingSprite({ texture: makeSkylineTexture(11, 900, 110, 70, false), width: 100, height: 110 });
-      this.skylineLights = new TilingSprite({ texture: makeSkylineTexture(11, 900, 110, 70, true), width: 100, height: 110 });
+    if (style !== "sete") {
+      // l'autre rive : une skyline à l'horizon (et ses fenêtres allumées la nuit) ; futuriste : flèches et dômes
+      const fu = style === "futur";
+      this.mountainsFar = new TilingSprite({ texture: makeSkylineTexture(3, 700, 140, 120, false, fu), width: 100, height: 140 });
+      this.mountainsNear = new TilingSprite({ texture: makeSkylineTexture(11, 900, 110, 70, false, fu), width: 100, height: 110 });
+      this.skylineLights = new TilingSprite({ texture: makeSkylineTexture(11, 900, 110, 70, true, fu), width: 100, height: 110 });
     } else {
       this.mountainsFar = new TilingSprite({ texture: makeMountainTexture(3, 512, 140, 34), width: 100, height: 140 });
       this.mountainsNear = new TilingSprite({ texture: makeMountainTexture(11, 640, 110, 22), width: 100, height: 110 });

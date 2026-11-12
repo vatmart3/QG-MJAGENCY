@@ -35,9 +35,13 @@ export function DemoTab() {
     <div className="space-y-4">
       <Field label="Style de la ville" hint="Change seulement le décor (sur cet appareil) : pôles, agents et missions restent les mêmes.">
         <select className={inputCls} value={style} onChange={(e) => choisirStyleVille(e.target.value as StyleVille)}>
-          {(["newyork", "sete"] as StyleVille[]).map((s) => (
+          {(["newyork", "futur", "sete"] as StyleVille[]).map((s) => (
             <option key={s} value={s}>
-              {s === "newyork" ? `${NOM_STYLE[s]} — gratte-ciel, avenues, taxis, brownstones` : `${NOM_STYLE[s]} — l'île d'origine, maisons et jardins`}
+              {s === "newyork"
+                ? `${NOM_STYLE[s]} — gratte-ciel, avenues, taxis, immeubles`
+                : s === "futur"
+                  ? `${NOM_STYLE[s]} — tours de verre, néons, voitures volantes`
+                  : `${NOM_STYLE[s]} — l'île d'origine, maisons et jardins`}
             </option>
           ))}
         </select>
@@ -53,7 +57,9 @@ export function DemoTab() {
       </Field>
       {override !== null && <p className="-mt-2 text-xs text-ink-soft">Heure forcée : {hhmm(override)}.</p>}
       {!live && <Toggle checked={chatter} onChange={(v) => world.setChatter(v)} label="Bavardage de démo" hint="Répliques d'exemple entre agents" />}
-      <p className="font-silk text-[9px] text-ink-soft">Rendu : {fps} i/s</p>
+      <p className="font-silk text-[9px] text-ink-soft">
+        Rendu : {fps} i/s · Version : {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "locale"}
+      </p>
 
       {live && <MoteurCard />}
       {live ? <TestBench /> : <DemoReset />}

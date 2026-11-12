@@ -1,6 +1,6 @@
 import { Container, Sprite, type Texture } from "pixi.js";
 import { GH, GW, H_PATHS, T, V_PATHS, WORLD_W, idx, inGrid, iso, type Layout } from "./layout";
-import { COULEURS_VOITURES, PHARE_LANTERN } from "./sprites/props";
+import { PHARE_LANTERN } from "./sprites/props";
 
 type Frames = (key: string) => Texture;
 
@@ -320,7 +320,8 @@ interface Voiture {
 /** Voitures qui roulent sur les deux voies de chaque avenue, s'arrêtent devant un agent qui traverse. */
 export class Traffic {
   private voitures: Voiture[] = [];
-  constructor(objects: Container, lights: Container, layout: Layout, frames: Frames, glow: Texture, private occupe: (cell: number) => boolean) {
+  /** @param survol hauteur de vol (px) des voitures volantes de la ville futuriste, 0 = au sol */
+  constructor(objects: Container, lights: Container, layout: Layout, frames: Frames, glow: Texture, private occupe: (cell: number) => boolean, couleurs: string[], private survol = 0) {
     const route = (x: number, y: number) => inGrid(x, y) && (layout.tiles[idx(x, y)] === T.PATH || layout.tiles[idx(x, y)] === T.BRIDGE);
     const voies: Voie[] = [];
     const paires = (l: number[]) => l.filter((v, i) => l[i + 1] === v + 1);
@@ -350,7 +351,7 @@ export class Traffic {
     for (const v of voies) {
       const n = Math.max(1, Math.round((v.b - v.a) / 16));
       for (let i = 0; i < n; i++) {
-        const couleur = COULEURS_VOITURES[k++ % COULEURS_VOITURES.length]!;
+        const couleur = couleurs[k++ % couleurs.length]!;
         const s = new Sprite(frames(`car:${couleur}:${v.axe}`));
         s.pivot.set(16, 14);
         objects.addChild(s);
@@ -368,23 +369,24 @@ export class Traffic {
   update(dt: number, night: number): void {
     for (const c of this.voitures) {
       const v = c.voie;
-      // un agent sur la case devant : on attend qu'il traverse
+      // un agent sur la case devant : on attend qu'il traverse (les voitures volantes passent au-dessus)
       const devant = c.pos + v.dir * 0.9;
       const cell = v.axe === "x" ? idx(Math.floor(devant), Math.floor(v.fixe)) : idx(Math.floor(v.fixe), Math.floor(devant));
-      if (!this.occupe(cell)) c.pos += v.dir * c.vitesse * dt;
+      if (this.survol > 0 || !this.occupe(cell)) c.pos += v.dir * c.vitesse * (this.survol > 0 ? 1.6 : 1) * dt;
       if (c.pos > v.b) c.pos = v.a;
       if (c.pos < v.a) c.pos = v.b;
       const u = v.axe === "x" ? c.pos : v.fixe;
       const w = v.axe === "x" ? v.fixe : c.pos;
       const p = iso(u, w);
+      const vol = this.survol ? this.survol + Math.sin(c.pos * 2.1) * 2 : 0;
       c.s.x = Math.round(p.x);
-      c.s.y = Math.round(p.y);
+      c.s.y = Math.round(p.y - vol);
       c.s.zIndex = p.y + 3;
       // apparition / disparition en douceur au bout de la rue
       c.s.alpha = Math.min(1, (c.pos - v.a) / 0.8, (v.b - c.pos) / 0.8);
       const f = iso(v.axe === "x" ? c.pos + v.dir * 0.45 : u, v.axe === "x" ? w : c.pos + v.dir * 0.45);
-      c.phare.position.set(f.x, f.y - 3);
-      c.phare.alpha = night * 0.7 * c.s.alpha;
+      c.phare.position.set(f.x, f.y - 3 - vol);
+      c.phare.alpha = (this.survol ? 0.35 + night * 0.5 : night * 0.7) * c.s.alpha;
     }
   }
 }

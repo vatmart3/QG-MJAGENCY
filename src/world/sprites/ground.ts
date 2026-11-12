@@ -25,13 +25,16 @@ function smoothNoise(x: number, seed: number): number {
 
 /** style New York : herbe pavée hors des parcs, rues en bitume, falaises de schiste */
 let ny = false;
+/** ville futuriste : dalles blanches, chaussées sombres à lignes cyan, falaises métalliques */
+let futurOn = false;
 let parc: Uint8Array = new Uint8Array(0);
 
 export function renderGround(layout: Layout): HTMLCanvasElement {
   const pc = new PixelCanvas(WORLD_W, WORLD_H);
   const p = pc.region(0, 0, WORLD_W, WORLD_H);
   const { tiles, zoneOf, zones } = layout;
-  ny = layout.style === "newyork";
+  ny = layout.style !== "sete";
+  futurOn = layout.style === "futur";
   parc = layout.parc;
   const tileAt = (x: number, y: number) => (inGrid(x, y) ? tiles[idx(x, y)]! : T.VOID);
 
@@ -107,23 +110,26 @@ const route = (t: T) => t === T.PATH || t === T.BRIDGE;
 function tileColorNY(t: T, gx: number, gy: number, fu: number, fv: number, px: number, py: number, tileAt: (x: number, y: number) => T): RGBA | null {
   const h = hash2(px, py, 3);
   if (t === T.GRASS && !parc[idx(gx, gy)]) {
-    // trottoir : dalles de béton
+    // trottoir : dalles de béton (futuriste : panneaux blancs, bordure lumineuse)
     const nearRoad = (dx: number, dy: number) => route(tileAt(gx + dx, gy + dy));
-    if ((fv > 0.9 && nearRoad(0, 1)) || (fu > 0.9 && nearRoad(1, 0)) || (fv < 0.1 && nearRoad(0, -1)) || (fu < 0.1 && nearRoad(-1, 0))) return rgb("#e4dfd6");
-    if (frac((gx + fu) * 2) < 0.06 || frac((gy + fv) * 2) < 0.06) return rgb("#aca69c");
-    const base = mix(rgb("#cdc8bf"), rgb("#c2bcb2"), hash2(Math.floor((gx + fu) * 2), Math.floor((gy + fv) * 2), 21));
-    return h < 0.01 ? rgb("#9d978e") : base;
+    if ((fv > 0.9 && nearRoad(0, 1)) || (fu > 0.9 && nearRoad(1, 0)) || (fv < 0.1 && nearRoad(0, -1)) || (fu < 0.1 && nearRoad(-1, 0))) return futurOn ? rgb("#8ff3ff") : rgb("#e4dfd6");
+    if (frac((gx + fu) * 2) < 0.06 || frac((gy + fv) * 2) < 0.06) return futurOn ? rgb("#c3ccd8") : rgb("#aca69c");
+    const base = futurOn
+      ? mix(rgb("#eef2f6"), rgb("#e1e7ee"), hash2(Math.floor((gx + fu) * 2), Math.floor((gy + fv) * 2), 21))
+      : mix(rgb("#cdc8bf"), rgb("#c2bcb2"), hash2(Math.floor((gx + fu) * 2), Math.floor((gy + fv) * 2), 21));
+    return h < 0.01 ? shade(base, -0.12) : base;
   }
   if (t === T.GRASS) {
     // parc : pelouse et feuilles mortes
     let c = [rgb("#7fb55e"), rgb("#76ad57"), rgb("#86bb64"), rgb("#70a652")][Math.floor(hash2(px >> 1, py >> 1, 1) * 4)]!;
     if (h < 0.03) c = rgb("#5f9447");
-    else if (h > 0.985) c = [rgb("#e0a63a"), rgb("#d9772b"), rgb("#c8552f")][Math.floor(hash2(px, py, 9) * 3)]!;
+    else if (h > 0.985) c = futurOn ? rgb("#9ff6ff") : [rgb("#e0a63a"), rgb("#d9772b"), rgb("#c8552f")][Math.floor(hash2(px, py, 9) * 3)]!;
     return c;
   }
   if (t === T.PATH || t === T.BRIDGE) {
     const L = route(tileAt(gx - 1, gy)), Rr = route(tileAt(gx + 1, gy)), U = route(tileAt(gx, gy - 1)), D = route(tileAt(gx, gy + 1));
-    const asphalte = mix(rgb("#585c69"), rgb("#4f5360"), hash2(px >> 1, py >> 1, 17));
+    const asphalte = futurOn ? mix(rgb("#262b3a"), rgb("#2d3344"), hash2(px >> 1, py >> 1, 17)) : mix(rgb("#585c69"), rgb("#4f5360"), hash2(px >> 1, py >> 1, 17));
+    const ligneC = futurOn ? rgb("#3ff0ff") : rgb("#e8c547");
     const horiz = L && Rr && !(U && D);
     const vert = U && D && !(L && Rr);
     const carrefour = (U || D) && (L || Rr) && !horiz && !vert;
@@ -134,13 +140,13 @@ function tileColorNY(t: T, gx: number, gy: number, fu: number, fv: number, px: n
       const nextCross = (dx: number) => { const a = tileAt(gx + dx, gy - 1), b = tileAt(gx + dx, gy + 1); return route(a) && route(b); };
       if ((nextCross(1) && fu > 0.45) || (nextCross(-1) && fu < 0.55)) return zebre(gy + fv);
       // ligne médiane jaune entre les deux voies
-      if (((!U && D && fv > 0.92) || (U && !D && fv < 0.08)) && frac((gx + fu) * 1.5) < 0.55) return rgb("#e8c547");
+      if (((!U && D && fv > 0.92) || (U && !D && fv < 0.08)) && frac((gx + fu) * 1.5) < 0.55) return ligneC;
       return asphalte;
     }
     if (vert) {
       const nextCross = (dy: number) => { const a = tileAt(gx - 1, gy + dy), b = tileAt(gx + 1, gy + dy); return route(a) && route(b); };
       if ((nextCross(1) && fv > 0.45) || (nextCross(-1) && fv < 0.55)) return zebre(gx + fu);
-      if (((!L && Rr && fu > 0.92) || (L && !Rr && fu < 0.08)) && frac((gy + fv) * 1.5) < 0.55) return rgb("#e8c547");
+      if (((!L && Rr && fu > 0.92) || (L && !Rr && fu < 0.08)) && frac((gy + fv) * 1.5) < 0.55) return ligneC;
       return asphalte;
     }
     if (carrefour) return h < 0.02 ? shade(asphalte, 0.08) : asphalte;
@@ -148,10 +154,10 @@ function tileColorNY(t: T, gx: number, gy: number, fu: number, fv: number, px: n
   }
   if (t === T.WATER) {
     const edgeN = tileAt(gx, gy - 1) !== T.WATER && tileAt(gx, gy - 1) !== T.BRIDGE;
-    if (edgeN && fv < 0.18) return rgb("#2f5f80");
+    if (edgeN && fv < 0.18) return futurOn ? rgb("#3ff0ff") : rgb("#2f5f80");
     const w = Math.sin((gx + fu) * 2.2 + (gy + fv) * 9) + Math.sin((gx + fu) * 5.1 - (gy + fv) * 3);
-    if (w > 1.7 && h < 0.6) return rgb("#8fc0d8");
-    return mix(rgb("#4a86a8"), rgb("#2f5f80"), (gy + fv - 29) * 0.25);
+    if (w > 1.7 && h < 0.6) return futurOn ? rgb("#b8fbff") : rgb("#8fc0d8");
+    return futurOn ? mix(rgb("#2fb3d0"), rgb("#1f7fa8"), (gy + fv - 29) * 0.25) : mix(rgb("#4a86a8"), rgb("#2f5f80"), (gy + fv - 29) * 0.25);
   }
   return null;
 }
@@ -262,6 +268,17 @@ function drawFace(p: Pen, gx: number, gy: number, side: "left" | "right", water:
         const streak = hash2(x, Math.floor((y + x * 3) / 5), 13);
         c = streak > 0.75 ? rgb("#f2fbff") : streak > 0.4 ? rgb("#9fdaf0") : rgb("#6fc0e0");
         if (d > depth - 8) c = mix(c, rgb("#ffffff"), 0.4);
+      } else if (futurOn) {
+        // socle métallique : panneaux clairs, liseré lumineux sous le bord
+        if (d < 2) c = rgb("#e6ebf1");
+        else if (d < 4) c = rgb("#3ff0ff");
+        else {
+          const panneau = Math.floor((d - 4) / 9);
+          c = [rgb("#c9d2de"), rgb("#b8c3d1"), rgb("#a9b5c5"), rgb("#97a4b6"), rgb("#8693a6"), rgb("#76839a")][Math.min(5, panneau)]!;
+          if ((d - 4) % 9 === 0) c = rgb("#6f7d93");
+          if (x % 16 === 0) c = shade(c, -0.15);
+          if (d >= depth - 1) c = rgb("#3ff0ff");
+        }
       } else if (ny) {
         // schiste de Manhattan : strates grises pailletées de mica
         if (d < 3) c = rgb("#b9b3a9");

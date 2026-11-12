@@ -43,7 +43,7 @@ export function useNow(intervalMs = 30_000): number {
 
 /** Style de la ville choisi dans ce navigateur (New York ou Sète), mis à jour quand on le change. */
 export function useStyleVille(): StyleVille {
-  const [s, setS] = useState<StyleVille>("newyork");
+  const [s, setS] = useState<StyleVille>("futur");
   useEffect(() => {
     setS(styleVille());
     const on = (e: Event) => setS((e as CustomEvent<StyleVille>).detail);

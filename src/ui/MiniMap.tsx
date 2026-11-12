@@ -7,7 +7,7 @@ import { ui } from "@/store/ui";
 import { GH, GW, T, getLayout, idx } from "@/world/layout";
 import { getGame } from "./gameRef";
 import { useIsMobile, useStyleVille } from "./hooks";
-import { choisirStyleVille, NOM_STYLE } from "@/world/theme";
+import { choisirStyleVille, NOM_STYLE, STYLE_SUIVANT, type StyleVille } from "@/world/theme";
 import { entrerTV } from "./hud/ModeTV";
 
 // projection mini : 1 case = 4×2 px
@@ -55,8 +55,9 @@ export function MiniMap() {
         const t = layout.tiles[idx(x, y)] as T;
         if (t === T.VOID) continue;
         const zi = layout.zoneOf[idx(x, y)]!;
-        const ny = layout.style === "newyork";
-        const couleurNY = t === T.GRASS ? (layout.parc[idx(x, y)] ? "#7fb55e" : "#c7c1b6") : t === T.PATH ? "#5a5e6b" : undefined;
+        const ny = layout.style !== "sete";
+        const fu = layout.style === "futur";
+        const couleurNY = t === T.GRASS ? (layout.parc[idx(x, y)] ? "#7fb55e" : fu ? "#e3e8ee" : "#c7c1b6") : t === T.PATH ? (fu ? "#2b3142" : "#5a5e6b") : undefined;
         ctx.fillStyle = zi >= 0 ? layout.zones[zi]!.floor : ((ny ? couleurNY : undefined) ?? TILE_COL[t] ?? "#93d36e");
         const p = mini(x, y);
         ctx.beginPath();
@@ -79,7 +80,7 @@ export function MiniMap() {
     }
     // tranche de falaise
     ctx.globalCompositeOperation = "destination-over";
-    ctx.fillStyle = layout.style === "newyork" ? "#6f7184" : "#8d5a35";
+    ctx.fillStyle = layout.style === "futur" ? "#9aa6b8" : layout.style === "newyork" ? "#6f7184" : "#8d5a35";
     for (let y = 0; y < GH; y++)
       for (let x = 0; x < GW; x++) {
         if (layout.tiles[idx(x, y)] === T.VOID) continue;
@@ -153,8 +154,8 @@ export function MiniMap() {
   );
 }
 
-function ZoomControls({ onToggleMap, mapOpen, style }: { onToggleMap: () => void; mapOpen: boolean; style: "newyork" | "sete" }) {
-  const autre = style === "newyork" ? "sete" : "newyork";
+function ZoomControls({ onToggleMap, mapOpen, style }: { onToggleMap: () => void; mapOpen: boolean; style: StyleVille }) {
+  const autre = STYLE_SUIVANT[style];
   const btn = "grid size-9 place-items-center rounded-full text-ink transition hover:bg-white active:scale-95";
   return (
     <div className="glass pointer-events-auto flex items-center gap-0.5 rounded-full p-1">
@@ -175,7 +176,7 @@ function ZoomControls({ onToggleMap, mapOpen, style }: { onToggleMap: () => void
         title={`Ville : ${NOM_STYLE[style]} — passer en style ${NOM_STYLE[autre]}`}
         aria-label={`Passer la ville en style ${NOM_STYLE[autre]}`}
       >
-        {style === "newyork" ? "NY" : "Sète"}
+        {style === "newyork" ? "NY" : style === "futur" ? "Futur" : "Sète"}
       </button>
       <button type="button" className="hidden h-9 rounded-full px-2.5 font-silk text-[9px] uppercase text-ink transition hover:bg-white active:scale-95 sm:block" onClick={entrerTV} title="Mode TV : la ville en plein écran, la caméra se promène toute seule" aria-label="Passer en mode TV">
         📺 TV
