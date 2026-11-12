@@ -16,10 +16,13 @@ import { CommandBar } from "./CommandBar";
 import { MiniMap } from "./MiniMap";
 import { PoleSheet } from "./PoleSheet";
 import { TopBar } from "./TopBar";
+import { Hud } from "./hud/Hud";
+import { ModeTV } from "./hud/ModeTV";
 
 /** La ville EST l'interface : tout le reste flotte au-dessus. */
 export function PortShell({ children }: { children: ReactNode }) {
   const ready = useUI((s) => s.ready);
+  const tv = useUI((s) => s.tv);
   const loaded = useCatalog((s) => s.loaded);
   const structure = useCatalog((s) => s.structure);
   const [fail, setFail] = useState<{ reason: string; message: string } | null>(null);
@@ -82,9 +85,11 @@ export function PortShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
-      <TopBar />
-      <MiniMap />
-      <CommandBar />
+      {!tv && <TopBar />}
+      {!tv && <MiniMap />}
+      {!tv && <CommandBar />}
+      <Hud />
+      <ModeTV />
       <AgentSheet />
       <PoleSheet />
       <Ambiance />

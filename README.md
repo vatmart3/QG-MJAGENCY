@@ -177,6 +177,16 @@ images »). Migration `…1800`.
 - Sécurité : si Claude Code n'est pas passé depuis 3 h, ses tâches reviennent automatiquement sur la clé API.
   Migration `…1500` (`tasks.executeur`, `claim_tasks_claude`).
 
+## Sur la ville : tableau de bord, agenda du jour, fil en direct, mode TV
+
+- **Tableau de bord** (en haut à gauche, repliable) : encaissé du mois et barre vers l'objectif, affaires signées,
+  prospects trouvés / mails envoyés / réponses reçues aujourd'hui, coût de l'IA du jour, factures en retard.
+- **Mon agenda du jour** : les appels préparés par Sacha (heure, téléphone cliquable, **script en un clic**), les
+  actions en retard, les demandes en Douane. Cocher « fait » passe l'affaire à « contacté » et le note au Journal.
+- **En direct** (à droite) : les dernières actions des agents ; un clic emmène sur l'agent dans la ville.
+- **Mode TV** (bouton 📺 à côté du zoom) : plein écran sans menus, la caméra passe de pôle en pôle, s'arrête sur un
+  agent au travail, montre toute la ville ; grande horloge. Échap pour sortir. Sur téléphone : bouton « Aujourd'hui ».
+
 ## Ville style New York (par défaut) ou Sète
 
 - **Réglages → Affichage & tests → Style de la ville**, ou le bouton **NY / Sète** à côté du zoom. Choix gardé dans

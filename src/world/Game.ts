@@ -7,7 +7,7 @@ import { world } from "@/store/world";
 import { AgentView, type WorldServices } from "./agents/AgentView";
 import { Balises, Boats, Gulls, Lighthouse, Particles, Pile, Sparkles, Traffic } from "./ambient";
 import { ambianceAt } from "./daynight";
-import { T, TOUR, WORLD_H, WORLD_W, getLayout, idx, iso, tourDe, worldToCell, zoneAt, type Layout, type Prop } from "./layout";
+import { GH, GW, T, TOUR, WORLD_H, WORLD_W, getLayout, idx, iso, tourDe, worldToCell, zoneAt, type Layout, type Prop } from "./layout";
 import type { StyleVille } from "./theme";
 import { tourSommet } from "./sprites/newyork";
 import { EcranGeant } from "./times";
@@ -426,6 +426,31 @@ export class Game {
     const s = Math.round(target * res) / res;
     this.zoomTween = null;
     this.viewport.animate({ position: { x: wx, y: wy }, scale: s, time: 700, ease: "easeInOutSine", removeOnInterrupt: true });
+  }
+
+  /** Mode TV : vue d'ensemble de la ville, ou un point à une échelle donnée. */
+  overview(): void {
+    const c = iso(GW / 2, GH / 2);
+    const s = this.zoomLevels.find((z) => z >= 0.5 - 1e-3) ?? 0.5;
+    this.zoomTween = null;
+    this.viewport.animate({ position: { x: c.x, y: c.y - 40 }, scale: s, time: 1600, ease: "easeInOutSine", removeOnInterrupt: true });
+  }
+
+  flyToExact(wx: number, wy: number, scale: number, time = 1600): void {
+    const res = this.app.renderer.resolution;
+    const s = Math.max(0.25, Math.round(scale * res) / res);
+    this.zoomTween = null;
+    this.viewport.animate({ position: { x: wx, y: wy }, scale: s, time, ease: "easeInOutSine", removeOnInterrupt: true });
+  }
+
+  /** Position monde d'un agent (null s'il est caché) et d'une zone. */
+  agentPos(id: string): { x: number; y: number } | null {
+    const a = this.agents.get(id);
+    return a && !a.isHidden ? { x: a.worldPos.x, y: a.worldPos.y - 12 } : null;
+  }
+  zonePos(id: string): { x: number; y: number } | null {
+    const z = this.layout.zones.find((zz) => zz.id === id);
+    return z ? iso(z.x + z.w / 2, z.y + z.h / 2) : null;
   }
 
   flyToAgent(id: string): void {

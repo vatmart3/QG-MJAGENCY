@@ -8,6 +8,7 @@ import { GH, GW, T, getLayout, idx } from "@/world/layout";
 import { getGame } from "./gameRef";
 import { useIsMobile, useStyleVille } from "./hooks";
 import { choisirStyleVille, NOM_STYLE } from "@/world/theme";
+import { entrerTV } from "./hud/ModeTV";
 
 // projection mini : 1 case = 4×2 px
 const MW = 4;
@@ -175,6 +176,9 @@ function ZoomControls({ onToggleMap, mapOpen, style }: { onToggleMap: () => void
         aria-label={`Passer la ville en style ${NOM_STYLE[autre]}`}
       >
         {style === "newyork" ? "NY" : "Sète"}
+      </button>
+      <button type="button" className="hidden h-9 rounded-full px-2.5 font-silk text-[9px] uppercase text-ink transition hover:bg-white active:scale-95 sm:block" onClick={entrerTV} title="Mode TV : la ville en plein écran, la caméra se promène toute seule" aria-label="Passer en mode TV">
+        📺 TV
       </button>
       <button type="button" className={`${btn} ${mapOpen ? "bg-white/70" : ""}`} onClick={onToggleMap} aria-label="Afficher la carte" aria-pressed={mapOpen}>
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>

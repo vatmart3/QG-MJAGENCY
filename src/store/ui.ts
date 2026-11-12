@@ -15,6 +15,8 @@ export interface UIState {
   userEmail: string | null;
   /** dernier passage du moteur d'agents (mode direct) */
   moteur: { kind: "anthropic" | "mock" | null; dernier: number | null; erreur: string | null; enCours: boolean };
+  /** mode TV : ville en plein écran, sans menus, caméra qui se promène */
+  tv: boolean;
 }
 
 export const uiStore = createStore<UIState>(() => ({
@@ -27,6 +29,7 @@ export const uiStore = createStore<UIState>(() => ({
   conn: "demo",
   userEmail: null,
   moteur: { kind: null, dernier: null, erreur: null, enCours: false },
+  tv: false,
 }));
 
 export const useUI = <T>(selector: (s: UIState) => T): T => useStore(uiStore, selector);

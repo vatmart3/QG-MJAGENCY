@@ -340,10 +340,13 @@ async function scenarioFinance() {
   const usage0 = await q<{ n: string }>("select count(*) as n from public.usage");
   // le test remonte le temps : on oublie la dernière exécution de la routine
   await q("update public.routines set derniere_execution = null where id = 'rt_echues'");
-  await run("2026-11-22T06:20:00Z", 1);
-  await run("2026-11-22T06:25:00Z", 1);
+  // dates relatives à l'échéance (la facture est émise aujourd'hui) : J+12 puis J+31
+  const [ech] = await q<{ echeance: string }>("select to_char(echeance, 'YYYY-MM-DD') as echeance from public.invoices where id = $1", [brouillon.id]);
+  const jPlus = (n: number, hm: string) => new Date(new Date(`${ech!.echeance}T${hm}:00Z`).getTime() + n * 86400_000).toISOString();
+  await run(jPlus(12, "06:20"), 1);
+  await run(jPlus(12, "06:25"), 1);
   const r1 = await q<{ titre: string; payload: { relance: number } }>("select titre, payload from public.approvals where type_action = 'relance' order by cree_le");
-  await run("2026-12-11T06:20:00Z", 1);
+  await run(jPlus(31, "06:20"), 1);
   const r2 = await q<{ payload: { relance: number; jamais_auto: boolean } }>("select payload from public.approvals where type_action = 'relance' order by cree_le");
   const usage1 = await q<{ n: string }>("select count(*) as n from public.usage");
   check(r1.length === 1 && r1[0]!.payload.relance === 2 && r2.length === 2 && r2[1]!.payload.relance === 3 && r2[1]!.payload.jamais_auto, "relances : ferme à J+12, mise en demeure à J+31 (jamais automatique), une seule par niveau");

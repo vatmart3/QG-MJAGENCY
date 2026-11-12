@@ -1,3 +1,4 @@
+import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 import type { Lead, Opportunity } from "@/commercial/db";
 import { chiffrer, FORMULES, MENSUELS, MODULES, NIVEAUX } from "@/commercial/offres";
@@ -246,7 +247,8 @@ export const planProspect = defineTool({
       lien = `(agenda indisponible : ${e instanceof Error ? e.message : String(e)})`;
     }
     const quand = jourHeure(c.debut);
-    await ctx.db.commercial.updateOpportunity(opp.id, { prochaine_action: `${verbe} ${l.nom} — ${quand}`, echeance: c.debut.toISOString().slice(0, 10) });
+    // heure exacte de l'appel : l'agenda du jour du QG l'affiche avec le script (« Message prévu » dans les notes)
+    await ctx.db.commercial.updateOpportunity(opp.id, { prochaine_action: `${verbe} ${l.nom} — ${quand}`, echeance: formatInTimeZone(c.debut, "Europe/Paris", "yyyy-MM-dd"), rdv_le: c.debut.toISOString() });
     await ctx.db.insertJournal({ type: "alerte", titre: `À faire (fondateurs) : ${verbe} ${l.nom} — ${quand}`.slice(0, 300), contenu: `${input.message}\n\nOffre : ${offre} · budget interne ${ch.resume}`.slice(0, 3000), agent_id: ctx.agent.id, pole_id: ctx.agent.pole_id });
     return { content: `Étude enregistrée, affaire créée (${ch.resume}). Pas d'e-mail : créneau réservé dans l'agenda des fondateurs ${quand} avec ton script ${lien}.`, etape: `Planifie : ${l.nom}` };
   },
