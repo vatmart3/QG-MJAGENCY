@@ -8,7 +8,7 @@ import { lireTelegram } from "@/integrations/telegram";
 import { lireModeIa } from "./cerveau";
 import type { SiteSuivi, TechDb } from "@/tech/db";
 import { lireFinance, num, type Client, type Invoice, type Ligne, type Payment, type Quote, type Subscription } from "@/finance/types";
-import { AUTONOMIE_DEFAUT, lireAutonomie, type ERoutine, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb } from "./db";
+import { AUTONOMIE_DEFAUT, lireAutonomie, type ERoutine, type EAgent, type EApproval, type EEmail, type EMission, type ERun, type ETask, type EngineDb, type ECalendrier } from "./db";
 
 /**
  * Implémentation Postgres directe du moteur (tests d'intégration en local,
@@ -161,6 +161,20 @@ export function pgEngineDb(pool: Pool): EngineDb {
     },
     async insertJournal(row) {
       await insert("journal", { ...row, titre: row.titre.slice(0, 300) });
+    },
+    async ajouterCalendrier(row) {
+      const r: Record<string, unknown> = { ...row, titre: row.titre.slice(0, 200) };
+      const keys = Object.keys(r).filter((k) => r[k] !== undefined);
+      const cols = keys.map((k) => '"' + k + '"').join(", ");
+      const vals = keys.map((_, i) => "$" + (i + 1)).join(", ");
+      const res = await q<{ id: string }>("insert into public.calendrier (" + cols + ") values (" + vals + ") on conflict (cle) do nothing returning id", keys.map((k) => r[k]));
+      return res[0]?.id ?? null;
+    },
+    async calendrierEntre(debut, fin) {
+      return (await q(
+        "select id, titre, details, categorie, canal, to_char(c.jour, 'YYYY-MM-DD') as jour, to_char(c.heure, 'HH24:MI') as heure, statut, priorite, pour, agent_id, opportunity_id, lien, cle from public.calendrier c where c.jour between $1 and $2 order by c.jour, c.heure nulls last",
+        [debut, fin],
+      )) as unknown as ECalendrier[];
     },
     async journalSince(titre, sinceIso) {
       return (await q("select 1 from public.journal where titre = $1 and cree_le >= $2 limit 1", [titre, sinceIso])).length > 0;

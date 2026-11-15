@@ -1,7 +1,7 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { supabaseEngineDb } from "@/engine/db";
 import { eur } from "@/finance/types";
-import { AIDE_WHATSAPP, envoyerWhatsApp, interpreter, messagesEntrants, reponseBavardage, signatureValide } from "@/integrations/whatsapp";
+import { AIDE_WHATSAPP, bornesSemaine, envoyerWhatsApp, interpreter, messagesEntrants, reponseBavardage, signatureValide, texteSemaine } from "@/integrations/whatsapp";
 import { adminSupabase } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +63,10 @@ export async function POST(request: Request) {
           `🤖 IA aujourd'hui : ${eur(depense)} sur ${eur(settings.budget_jour)}.`,
         ].join("\n\n"),
       );
+    } else if (c.type === "semaine") {
+      const b = bornesSemaine();
+      const taches = await db.calendrierEntre(b.lundi, b.dimanche).catch(() => []);
+      await repondre(m.de, texteSemaine(taches, b.aujourdhui, (s) => `*${s}*`));
     } else if (c.type === "douane") {
       const attente = await db.pendingApprovals();
       const app = process.env.APP_URL?.replace(/\/$/, "");

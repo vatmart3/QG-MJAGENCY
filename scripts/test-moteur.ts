@@ -24,12 +24,13 @@ import { executeApprovals } from "@/engine/douane";
 import { kpis, kpisTexte } from "@/engine/kpis";
 import { notifierFondateurs } from "@/engine/notifications";
 import { createHmac } from "node:crypto";
-import { interpreter, messagesEntrants, normNumero, reponseBavardage, signatureValide } from "@/integrations/whatsapp";
+import { interpreter, messagesEntrants, normNumero, reponseBavardage, signatureValide, texteSemaine } from "@/integrations/whatsapp";
 import { boutonTelegram, carteDouane, messageTelegram, secretValide, secretWebhook } from "@/integrations/telegram";
 import { autoriseClaude, jouerPas, prendreTaches } from "@/engine/claude-worker";
 import { toolByName } from "@/engine/tools";
 import { jetonDesinscription, jetonValide, lirePilote, prochainCreneau, relancesProspects, reponsesProspects, tacheOptimisation, tacheProspectionAuto } from "@/commercial/pilote";
 import { chiffrer } from "@/commercial/offres";
+import { jourDepuis } from "@/engine/tools/create_founder_todo";
 type ERoutineRow = Record<string, unknown>;
 
 const url = process.env.DATABASE_URL ?? "postgres:///leport_test";
@@ -699,7 +700,8 @@ async function scenarioPilote() {
   check(rr.reponses === 1 && rr.stops.length === 1 && st[l2] === "ecarte" && (await db.commercial.estDesinscrit("bonjour@fleuriste-b.fr")) && st[l1] === "repondu" && opp.length === 1, "« STOP » → désinscrit pour toujours ; une réponse → « a répondu » + affaire dans le pipeline");
 
   // relance unique à J+5, sans IA, dans le fil du premier mail
-  await q("update public.leads set statut = 'contacte', contacte_le = now() - interval '6 days', relance_le = null where id = $1", [l3]);
+  // date fixe : 6 jours avant le passage du 11/11 (le test ne dépend pas du jour où il tourne)
+  await q("update public.leads set statut = 'contacte', contacte_le = '2026-11-05T10:00:00Z', relance_le = null where id = $1", [l3]);
   await q("insert into public.approvals (agent_id, type_action, titre, apercu, objet, destinataire, payload, statut, decide_par, execution_statut, execution) values ('sacha', 'email', 'Prospection : Garage C', 'x', 'Votre garage', 'garage@garage-c.fr', $1, 'approuve', 'pilote commercial', 'fait', '{\"threadId\": \"th-1\"}')", [JSON.stringify({ kind: "email", lead_id: l3, prospection: true })]);
   await q(`update public.settings set pilote_commercial = '{"actif": true, "mails_par_jour": 10, "score_min": 55, "relance_jours": 5}' where id = 1`);
   const nr = await relancesProspects(db, new Date("2026-11-11T14:00:00Z"));
@@ -755,9 +757,33 @@ async function scenarioOsm() {
   check(rp.crees === 0 && rp.erreurs.length > 0 && rp.recherches === 0 && Date.now() - t0 < 5000, "OpenStreetMap en panne : pas de plantage, l'erreur est remontée à l'écran et au Journal");
 }
 
+async function scenarioCalendrier() {
+  console.log("\n— Calendrier des fondateurs : les agents y ajoutent posts, appels, réponses ; /semaine sur Telegram");
+  await reset();
+  await q("delete from public.calendrier");
+  const mercredi = new Date("2026-11-18T09:00:00Z");
+  check(
+    jourDepuis("vendredi", mercredi) === "2026-11-20" && jourDepuis("demain", mercredi) === "2026-11-19" && jourDepuis("mercredi", mercredi) === "2026-11-18" && jourDepuis("lundi", mercredi) === "2026-11-23" && jourDepuis("25/11", mercredi) === "2026-11-25" && jourDepuis("2026-12-01", mercredi) === "2026-12-01" && jourDepuis(undefined, mercredi) === "2026-11-18",
+    "dates comprises : vendredi, demain, lundi prochain, 25/11, AAAA-MM-JJ, aujourd'hui par défaut",
+  );
+  const outil = toolByName("create_founder_todo")!;
+  const ctx = { db, llm, task: null as never, agent: (await db.agents()).find((a) => a.id === "chloe")!, run: null as never, team: await db.agents(), poles: new Map(), memory: [], now: mercredi, settings: await db.settings(), services: demoServices } as unknown as Parameters<typeof outil.run>[0];
+  const post = { titre: "Publier la vidéo TikTok « Avant / après »", jour: "vendredi", heure: "18h30", categorie: "contenu", canal: "tiktok", details: "Accroche : ce restaurant a doublé ses réservations…" };
+  await outil.run(ctx, post as never);
+  await outil.run(ctx, post as never);
+  await outil.run(ctx, { titre: "Signer le devis La Marée", echeance: "demain" } as never);
+  const semaine = await db.calendrierEntre("2026-11-16", "2026-11-22");
+  const v = semaine.find((t) => t.canal === "tiktok");
+  check(semaine.length === 2 && v?.jour === "2026-11-20" && v.heure === "18:30" && v.categorie === "contenu" && v.agent_id === "chloe" && semaine.some((t) => t.jour === "2026-11-19" && t.titre.startsWith("Signer")), "Chloé ajoute un post TikTok (vendredi 18:30, texte joint), sans doublon ; l'ancienne « échéance » marche encore");
+  const txt = texteSemaine(semaine, "2026-11-18", (x) => `*${x}*`);
+  const agents = (await db.agents()).map((a) => ({ id: a.id, nom: a.nom }));
+  check(txt.includes("0/2 faites") && txt.includes("18:30 Publier la vidéo TikTok") && interpreter("semaine", agents).type === "semaine" && interpreter("calendrier", agents).type === "semaine", `/semaine : le calendrier jour par jour (${txt.split("\n")[0]})`);
+}
+
 async function scenarioChaine() {
   console.log("\n— Chaîne commerciale : étude, offre chiffrée (Carte des offres), affaire, mail ou appel planifié, fiche RDV, optimisation");
   await reset();
+  await q("delete from public.calendrier");
   await pool.query("set session_replication_role = replica; delete from public.opportunities; delete from public.leads; delete from public.desinscrits; delete from public.approvals; set session_replication_role = origin;");
   await q(`update public.settings set pilote_commercial = '{"actif": true, "mails_par_jour": 5, "appels_par_jour": 3, "score_min": 55}' where id = 1`);
   // chiffrage exact
@@ -780,6 +806,8 @@ async function scenarioChaine() {
   const oS = opps.find((o) => o.lead_id === sans);
   const agenda = await q<{ titre: string }>("select titre from public.journal where titre like 'À faire (fondateurs) : 📞 Appeler Boulangerie Sans Mail%'");
   check(rA.content.includes("send_email") && Number(oA?.montant) === 3285 && !!oA?.notes.includes("ne pas annoncer"), "avec e-mail : étude + affaire chiffrée (budget interne jamais annoncé), puis le mail");
+  const appelsCal = await q<{ heure: string; details: string }>("select to_char(heure, 'HH24:MI') as heure, details from public.calendrier where cle like 'approche:%'");
+  check(appelsCal.length === 1 && appelsCal[0]!.details.includes("Script d'appel") && /^\d\d:\d\d$/.test(appelsCal[0]!.heure), "l'appel préparé arrive au calendrier des fondateurs, à l'heure du créneau, avec le script");
   check(rS.content.includes("créneau réservé") && !!oS?.notes.includes("Pack Démarrage") && !!oS?.prochaine_action.startsWith("📞 Appeler") && agenda.length === 1, `sans e-mail : créneau d'appel dans l'agenda avec le script, fondateurs prévenus (${oS?.prochaine_action})`);
 
   const send = toolByName("send_email")!;
@@ -790,6 +818,8 @@ async function scenarioChaine() {
   // il répond : Théo prépare la fiche RDV tout seul
   await reponsesProspects(db, [{ id: "rep-1", de: "Boulangerie <contact@avec-mail.fr>", objet: "Re: Votre boulangerie", extrait: "Bonjour, ça m'intéresse, rappelez-moi" }]);
   const theo = await q("select 1 from public.tasks where agent_id = 'theo' and titre like 'Fiche RDV%'");
+  const aRappeler = await q<{ priorite: number }>("select priorite from public.calendrier where cle like 'reponse:%'");
+  check(aRappeler.length === 1 && Number(aRappeler[0]!.priorite) === 3, "un prospect répond → « Rappeler » en urgent dans le calendrier du jour");
   check(theo.length === 1, "réponse du prospect → Théo prépare la fiche RDV, les fondateurs sont prévenus");
 
   // vendredi : Marius analyse et ajuste
@@ -823,6 +853,7 @@ async function scenarioChaine() {
     await scenarioPilote();
     await scenarioOsm();
     await scenarioChaine();
+    await scenarioCalendrier();
   } catch (e) {
     console.error(e);
     failures++;

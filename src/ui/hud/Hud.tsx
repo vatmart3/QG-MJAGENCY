@@ -200,6 +200,8 @@ function Stat({ valeur, label, href, accent, alerte }: { valeur: number | string
 
 // ------------------------------------------------------------------ agenda du jour
 interface Action {
+  /** « cal » : tâche du calendrier ; sinon : affaire du pipeline */
+  source?: "cal";
   id: string;
   heure: string | null;
   texte: string;
@@ -241,15 +243,30 @@ function AgendaJour() {
       .or(`echeance.lte.${jour},rdv_le.lt.${demain}`)
       .order("rdv_le", { ascending: true, nullsFirst: false })
       .limit(30);
+    // tâches du calendrier : aujourd'hui et en retard, pas encore faites
+    const { data: cal } = await sb.from("calendrier").select("id, titre, details, jour, heure, statut, canal").neq("statut", "fait").lte("jour", jour).order("jour").order("heure", { ascending: true, nullsFirst: false }).limit(30);
+    const duCalendrier: Action[] = ((cal ?? []) as { id: string; titre: string; details: string | null; jour: string; heure: string | null; statut: string; canal: string | null }[]).map((c) => ({
+      source: "cal",
+      id: c.id,
+      heure: c.heure ? c.heure.slice(0, 5) : null,
+      texte: c.titre,
+      telephone: c.details?.match(/(?:Tél\.?|tel\.?)\s*([+\d][\d .]{8,})/i)?.[1]?.trim() ?? null,
+      script: c.details,
+      enRetard: c.jour < jour,
+      etape: c.statut,
+      notes: null,
+    }));
     type Row = { id: string; prochaine_action: string; echeance: string | null; rdv_le: string | null; notes: string | null; etape: string; leads: { nom: string; telephone: string | null } | { nom: string; telephone: string | null }[] | null };
-    setActions(
-      ((data ?? []) as Row[]).map((r) => {
+    const appelsCal = new Set(duCalendrier.map((c) => c.texte));
+    setActions([
+      ...duCalendrier,
+      ...((data ?? []) as Row[]).map((r) => {
         const lead = Array.isArray(r.leads) ? r.leads[0] : r.leads;
         const heure = r.rdv_le ? formatParis(new Date(r.rdv_le).getTime(), "HH:mm") : (r.prochaine_action.match(/(\d{1,2})h(\d{2})/)?.slice(1, 3).join(":") ?? null);
         const enRetard = (r.echeance ?? jour) < jour || (!!r.rdv_le && new Date(r.rdv_le).getTime() < new Date(`${jour}T00:00:00`).getTime());
         return { id: r.id, heure, texte: r.prochaine_action.replace(/\s—\s[^—]*$/, ""), telephone: lead?.telephone ?? null, script: scriptDe(r.notes), enRetard, etape: r.etape, notes: r.notes };
-      }),
-    );
+      }).filter((a) => !appelsCal.has(a.texte)),
+    ].sort((a, b) => (a.heure ?? "99") .localeCompare(b.heure ?? "99")));
   }, [conn]);
   useEffect(() => {
     void charger();
@@ -261,6 +278,11 @@ function AgendaJour() {
     setFaits((f) => new Set(f).add(a.id));
     const sb = browserSupabase();
     if (conn === "demo" || !sb) return toast({ kind: "fete", titre: "C'est noté (démo)", texte: a.texte });
+    if (a.source === "cal") {
+      const { error } = await sb.from("calendrier").update({ statut: "fait", fait_le: new Date().toISOString(), maj_le: new Date().toISOString() }).eq("id", a.id);
+      if (error) return toast({ kind: "alerte", titre: "Pas enregistré", texte: error.message });
+      return toast({ kind: "fete", titre: "Bien joué !", texte: a.texte, href: "/calendrier" });
+    }
     const quand = formatParis(Date.now(), "dd/MM HH:mm");
     const { error } = await sb
       .from("opportunities")

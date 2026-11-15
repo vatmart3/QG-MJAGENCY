@@ -97,6 +97,25 @@ export interface EMission {
   telegram_envoye_le?: string | null;
 }
 
+/** Tâche du calendrier des fondateurs (onglet Calendrier). */
+export interface ECalendrier {
+  id: string;
+  titre: string;
+  details: string | null;
+  categorie: "contenu" | "appel" | "rdv" | "prospection" | "client" | "finance" | "admin" | "autre";
+  canal: string | null;
+  jour: string;
+  heure: string | null;
+  statut: "a_faire" | "en_cours" | "fait";
+  priorite: number;
+  pour: string | null;
+  agent_id: string | null;
+  opportunity_id: string | null;
+  lien: string | null;
+  cle: string | null;
+}
+export type NewCalendrier = Partial<Omit<ECalendrier, "id">> & { titre: string; jour: string; cree_par?: string; duree_min?: number | null };
+
 export interface EApproval {
   id: string;
   agent_id: string | null;
@@ -223,6 +242,10 @@ export interface EngineDb {
 
   insertMessage(row: { conversation_id?: string | null; from_agent: string | null; to_agent: string | null; task_id?: string | null; type: "question" | "reponse" | "delegation" | "livrable" | "bavardage"; contenu: string; resume_bulle: string | null }): Promise<void>;
   insertJournal(row: { type: string; titre: string; contenu?: string | null; agent_id?: string | null; pole_id?: string | null }): Promise<void>;
+  /** calendrier des fondateurs : ajoute une tâche (rien si sa clé existe déjà) ; renvoie son id, ou null si doublon */
+  ajouterCalendrier(row: NewCalendrier): Promise<string | null>;
+  /** tâches du calendrier entre deux jours (AAAA-MM-JJ, inclus) */
+  calendrierEntre(debut: string, fin: string): Promise<ECalendrier[]>;
   journalSince(titre: string, sinceIso: string): Promise<boolean>;
   insertApproval(row: { agent_id: string; task_id: string | null; type_action: string; titre: string; apercu: string; destinataire?: string | null; objet?: string | null; payload?: Record<string, unknown>; execution_statut?: ExecutionStatut | null; statut?: EApproval["statut"]; decide_par?: string | null }): Promise<string>;
   /** envois validés (ou refusés) dont l'exécution n'est pas encore traitée */
@@ -417,6 +440,15 @@ export function supabaseEngineDb(sb: SupabaseClient): EngineDb {
     },
     async insertJournal(row) {
       ok(await sb.from("journal").insert({ ...row, titre: row.titre.slice(0, 300) }));
+    },
+    async ajouterCalendrier(row) {
+      const r = { ...row, titre: row.titre.slice(0, 200) };
+      const res = r.cle ? await sb.from("calendrier").upsert(r, { onConflict: "cle", ignoreDuplicates: true }).select("id") : await sb.from("calendrier").insert(r).select("id");
+      const l = rows<{ id: string }>(res);
+      return l[0]?.id ?? null;
+    },
+    async calendrierEntre(debut, fin) {
+      return rows<ECalendrier>(await sb.from("calendrier").select("*").gte("jour", debut).lte("jour", fin).order("jour").order("heure", { ascending: true, nullsFirst: false }));
     },
     async journalSince(titre, sinceIso) {
       const r = rows(await sb.from("journal").select("id").eq("titre", titre).gte("cree_le", sinceIso).limit(1));

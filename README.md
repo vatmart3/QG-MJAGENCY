@@ -177,6 +177,18 @@ images »). Migration `…1800`.
 - Sécurité : si Claude Code n'est pas passé depuis 3 h, ses tâches reviennent automatiquement sur la clé API.
   Migration `…1500` (`tasks.executeur`, `claim_tasks_claude`).
 
+## Calendrier des fondateurs (onglet Calendrier)
+
+- Tout ce qu'il y a à faire dans la semaine : **posts TikTok / Instagram / LinkedIn** (texte complet à copier),
+  **appels** (heure + script), **rendez-vous**, relances, finance, admin. Vue **Semaine** (une colonne par jour,
+  glisser-déposer pour déplacer) ou **Tableau** façon Monday (groupé par catégorie, statut À faire / En cours / Fait
+  en couleur, cliquable). Fiche de tâche : modifier, copier le texte, urgent, supprimer. Mise à jour en direct.
+- **Rempli par les agents** : `create_founder_todo` (jour, heure, catégorie, canal, détails ; comprend « demain »,
+  « vendredi », « 18/11 ») pour Chloé (chaque post prévu), Lina, Gabin, Marius, Sacha, Théo, Noé, Victor, Céleste,
+  Margaux, Rémi ; automatiquement : chaque **appel préparé** par le pilote commercial, chaque **prospect qui répond**
+  (« Rappeler », urgent). Les tâches du jour apparaissent aussi dans « Mon agenda du jour » sur la ville.
+- Telegram / WhatsApp : **/semaine** (ou « calendrier ») → la semaine jour par jour. Migration `…1900`.
+
 ## Sur la ville : tableau de bord, agenda du jour, fil en direct, mode TV
 
 - **Tableau de bord** (en haut à gauche, repliable) : encaissé du mois et barre vers l'objectif, affaires signées,

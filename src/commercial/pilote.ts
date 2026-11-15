@@ -155,6 +155,23 @@ export async function reponsesProspects(db: EngineDb, mails: { id: string; de: s
       if (!opp) opp = await db.commercial.insertOpportunity({ titre: lead.nom, lead_id: lead.id, etape: "contacte", prochaine_action: "Rappeler et fixer un rendez-vous", notes: `A répondu : « ${m.objet} »` });
       else await db.commercial.updateOpportunity(opp.id, { etape: opp.etape === "nouveau" ? "contacte" : opp.etape, prochaine_action: "Il a répondu : rappeler et fixer un rendez-vous (fiche de Théo prête)" });
       await db.insertJournal({ type: "alerte", titre: `🎣 ${lead.nom} a répondu ! À rappeler — Théo prépare la fiche RDV`, contenu: `${m.objet}\n${m.extrait}`.slice(0, 600), agent_id: "sacha", pole_id: "prospection" });
+      // au calendrier des fondateurs : à rappeler aujourd'hui
+      const jourRep = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd");
+      await db
+        .ajouterCalendrier({
+          titre: `📞 Rappeler ${lead.nom} — a répondu à la prospection`,
+          jour: jourRep,
+          categorie: "prospection",
+          canal: lead.telephone ? "telephone" : "email",
+          details: [lead.telephone ? `Tél. ${lead.telephone}` : "", lead.email ? `E-mail : ${lead.email}` : "", "", `Sa réponse : « ${m.objet} »`, m.extrait, "", "La fiche RDV de Théo arrive dans Rapports."].filter((x, i, a) => x !== "" || a[i - 1] !== "").join("\n").slice(0, 3000),
+          priorite: 3,
+          agent_id: "sacha",
+          opportunity_id: opp.id,
+          lien: "/commercial",
+          cree_par: "pilote commercial",
+          cle: `reponse:${lead.id}:${jourRep}`,
+        })
+        .catch(() => null);
       // la chaîne continue : Théo prépare le rendez-vous (questions, objections, offre chiffrée)
       await tacheTheo(db, opp.id, "pilote commercial").catch(() => null);
       reponses++;

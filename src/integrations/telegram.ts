@@ -185,6 +185,7 @@ export const AIDE_TELEGRAM = [
   "• Pour un agent précis : « @victor devis site vitrine pour La Marée » ou « Victor : … ».",
   "• /point → ce qui tourne au port en ce moment.",
   "• /douane → ce qui attend ta validation, avec les boutons Accepter / Refuser.",
+  "• /semaine → ton calendrier de la semaine (posts TikTok, appels, rendez-vous…).",
   "• /calme → seulement l'important · /tout → chaque action des agents.",
   "• Un petit mot (bonjour, ça va ?, merci, bonne nuit) → je réponds tout de suite, gratuitement, sans IA.",
   "Je te renvoie le résultat ici quand la mission est terminée.",

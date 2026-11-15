@@ -62,7 +62,7 @@ export function messagesEntrants(payload: unknown): MessageEntrant[] {
 }
 
 export type Bavardage = "nuit" | "ca_va" | "salut" | "merci" | "bravo" | "ok";
-export type Commande = { type: "aide" } | { type: "point" } | { type: "douane" } | { type: "bavardage"; genre: Bavardage; cible: string | null } | { type: "mission"; texte: string; cible: string | null };
+export type Commande = { type: "aide" } | { type: "point" } | { type: "douane" } | { type: "semaine" } | { type: "bavardage"; genre: Bavardage; cible: string | null } | { type: "mission"; texte: string; cible: string | null };
 
 const sansAccents = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
@@ -124,6 +124,7 @@ export function interpreter(texte: string, agents: { id: string; nom: string }[]
   if (/^(aide|help|\?|menu|commandes?)$/.test(n)) return { type: "aide" };
   if (/^(point|etat|statut|status|ca va le port|le point)$/.test(n)) return { type: "point" };
   if (/^(douane|a valider|validations?)$/.test(n)) return { type: "douane" };
+  if (/^(semaine|calendrier|agenda|planning|ma semaine|a faire)$/.test(n)) return { type: "semaine" };
   const m = t.match(/^@?([\p{L}-]{2,20})\s*[:,]\s*([\s\S]+)$/u) ?? t.match(/^@([\p{L}-]{2,20})\s+([\s\S]+)$/u);
   if (m) {
     const ref = sansAccents(m[1]!);
@@ -138,12 +139,35 @@ export function interpreter(texte: string, agents: { id: string; nom: string }[]
   return { type: "mission", texte: t, cible: null };
 }
 
+/** Le calendrier de la semaine en texte (Telegram et WhatsApp), jour par jour. */
+export function texteSemaine(taches: { titre: string; jour: string; heure: string | null; statut: string }[], aujourdhui: string, gras: (s: string) => string): string {
+  if (!taches.length) return "🗓️ Rien au calendrier cette semaine. Les agents y ajoutent les posts, appels et rendez-vous au fil de l'eau.";
+  const jours = [...new Set(taches.map((t) => t.jour))].sort();
+  const nom = (j: string) => new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${j}T12:00:00Z`));
+  const faits = taches.filter((t) => t.statut === "fait").length;
+  const lignes = [`🗓️ ${gras("Ta semaine")} — ${faits}/${taches.length} faites`];
+  for (const j of jours) {
+    lignes.push("", gras(`${j === aujourdhui ? "👉 " : ""}${nom(j)}`));
+    for (const t of taches.filter((x) => x.jour === j)) lignes.push(`${t.statut === "fait" ? "✅" : t.statut === "en_cours" ? "⏳" : j < aujourdhui ? "⚠️" : "▫️"} ${t.heure ? `${t.heure.slice(0, 5)} ` : ""}${t.titre}`);
+  }
+  return lignes.join("\n").slice(0, 3900);
+}
+
+/** Lundi et dimanche de la semaine en cours (AAAA-MM-JJ, heure de Paris). */
+export function bornesSemaine(now = new Date()): { lundi: string; dimanche: string; aujourdhui: string } {
+  const aujourdhui = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris" }).format(now);
+  const d = new Date(`${aujourdhui}T12:00:00Z`);
+  const l = new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * 86400_000);
+  return { lundi: l.toISOString().slice(0, 10), dimanche: new Date(l.getTime() + 6 * 86400_000).toISOString().slice(0, 10), aujourdhui };
+}
+
 export const AIDE_WHATSAPP = [
   "⚓ *LE PORT* — ce que tu peux m'écrire :",
   "• Une mission, tout simplement : « Prépare une offre pour les restaurants de Sète » → Marius organise l'équipe.",
   "• Pour un agent précis : « @victor devis site vitrine pour La Marée » ou « Victor : … ».",
   "• *point* → ce qui tourne au port en ce moment.",
   "• *douane* → ce qui attend ta validation.",
+  "• *semaine* → ton calendrier de la semaine (posts, appels, rendez-vous…).",
   "• *aide* → ce message.",
   "• Un petit mot (bonjour, ça va ?, merci, bonne nuit) → réponse tout de suite, gratuite, sans IA.",
   "Je te renvoie le résultat ici quand la mission est terminée.",

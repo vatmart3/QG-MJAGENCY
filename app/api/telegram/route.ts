@@ -2,7 +2,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { supabaseEngineDb } from "@/engine/db";
 import { eur } from "@/finance/types";
 import { AIDE_TELEGRAM, boutonTelegram, carteDouane, envoyerTelegram, html, lireTelegram, messageTelegram, modifierMessage, repondreBouton, secretValide, type BoutonTelegram, type ReglagesTelegram } from "@/integrations/telegram";
-import { interpreter, reponseBavardage } from "@/integrations/whatsapp";
+import { bornesSemaine, interpreter, reponseBavardage, texteSemaine } from "@/integrations/whatsapp";
 import { adminSupabase } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -110,6 +110,12 @@ export async function POST(request: Request) {
         `🤖 IA aujourd'hui : ${eur(depense)} sur ${eur(settings.budget_jour)}.`,
       ].join("\n\n"),
     );
+  } else if (c.type === "semaine") {
+    const b = bornesSemaine();
+    const taches = await db.calendrierEntre(b.lundi, b.dimanche).catch(() => []);
+    const app = process.env.APP_URL?.replace(/\/$/, "");
+    // titres échappés pour le HTML de Telegram, jours en gras
+    await repondre(`${texteSemaine(taches.map((t) => ({ ...t, titre: html(t.titre) })), b.aujourdhui, (s) => `<b>${s}</b>`)}${app ? `\n\nTout le calendrier : ${app}/calendrier` : ""}`);
   } else if (c.type === "douane") {
     // chaque demande avec ses boutons (les 8 plus anciennes) ; pour modifier un texte, c'est dans le QG
     const attente = await db.pendingApprovals();

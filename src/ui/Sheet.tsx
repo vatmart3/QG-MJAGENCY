@@ -28,7 +28,8 @@ export function Sheet({ open, onClose, title, kicker, accent = "#2a2140", icon, 
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // une fenêtre ouverte par-dessus (fiche du calendrier…) peut garder la touche Échap pour elle
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);

@@ -248,7 +248,25 @@ export const planProspect = defineTool({
     }
     const quand = jourHeure(c.debut);
     // heure exacte de l'appel : l'agenda du jour du QG l'affiche avec le script (« Message prévu » dans les notes)
-    await ctx.db.commercial.updateOpportunity(opp.id, { prochaine_action: `${verbe} ${l.nom} — ${quand}`, echeance: formatInTimeZone(c.debut, "Europe/Paris", "yyyy-MM-dd"), rdv_le: c.debut.toISOString() });
+    const jourAppel = formatInTimeZone(c.debut, "Europe/Paris", "yyyy-MM-dd");
+    await ctx.db.commercial.updateOpportunity(opp.id, { prochaine_action: `${verbe} ${l.nom} — ${quand}`, echeance: jourAppel, rdv_le: c.debut.toISOString() });
+    // au calendrier des fondateurs, avec le script
+    await ctx.db
+      .ajouterCalendrier({
+        titre: `${verbe} ${l.nom}`,
+        jour: jourAppel,
+        heure: formatInTimeZone(c.debut, "Europe/Paris", "HH:mm"),
+        categorie: canal === "telephone" ? "appel" : "prospection",
+        canal: canal === "telephone" ? "telephone" : canal === "instagram" ? "instagram" : "visite",
+        details: description,
+        priorite: 2,
+        agent_id: ctx.agent.id,
+        opportunity_id: opp.id,
+        lien: "/commercial",
+        cree_par: "pilote commercial",
+        cle: `approche:${opp.id}:${jourAppel}`,
+      })
+      .catch(() => null);
     await ctx.db.insertJournal({ type: "alerte", titre: `À faire (fondateurs) : ${verbe} ${l.nom} — ${quand}`.slice(0, 300), contenu: `${input.message}\n\nOffre : ${offre} · budget interne ${ch.resume}`.slice(0, 3000), agent_id: ctx.agent.id, pole_id: ctx.agent.pole_id });
     return { content: `Étude enregistrée, affaire créée (${ch.resume}). Pas d'e-mail : créneau réservé dans l'agenda des fondateurs ${quand} avec ton script ${lien}.`, etape: `Planifie : ${l.nom}` };
   },

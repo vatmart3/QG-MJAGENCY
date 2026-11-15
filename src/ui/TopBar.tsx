@@ -29,6 +29,7 @@ export function TopBar() {
     { href: "/taches", label: "Tâches", count: running },
     { href: "/flux", label: "Flux" },
     { href: "/rapports", label: "Rapports", count: rapports || undefined },
+    { href: "/calendrier", label: "Calendrier" },
     { href: "/commercial", label: "Commercial" },
     { href: "/atelier", label: "Atelier" },
     { href: "/douane", label: "Douane", count: approvals, alert: approvals > 0 },
