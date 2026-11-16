@@ -187,7 +187,7 @@ images »). Migration `…1800`.
   liaisons, clic sur un agent ou une pièce, mode TV. Mêmes comportements que la ville : bureau, discussions, réunions à
   La Criée, colis à la Douane, café, déjeuner, pauses.
 - **Visite à pied** (bouton « 🚶 Visiter ») : première personne, **Z Q S D** (ou W A S D, flèches) pour marcher, souris
-  pour regarder, Maj pour courir, **E** pour parler à l'agent en face (ouvre sa fiche), Échap pour la pause. Collisions
+  pour regarder, Maj pour courir, **E** pour parler à l'agent en face (ouvre sa fiche), **Échap pour sortir** (retour maquette). Collisions
   avec les murs et les meubles, plafond et luminaires, nom et état des agents au-dessus de leur tête, nom de la pièce
   en haut à gauche. Sur téléphone : manette tactile + glisser pour regarder.
 - Écrans géants en direct (hall : infos du port ; réunion et ciné : offres), jour / nuit, qualité adaptative (finesse

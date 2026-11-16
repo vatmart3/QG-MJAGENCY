@@ -72,6 +72,7 @@ export class Bureau {
   private manette = { x: 0, y: 0 };
   private tactile = false;
   private captureLe = 0;
+  private pourParler = false;
   // qualité adaptative : on allège le rendu si l'appareil peine (téléphone, vieux portable)
   private qualite = 0;
   private fpsT = 0;
@@ -321,14 +322,24 @@ export class Bureau {
       this.touches.add(e.code);
       if (e.code.startsWith("Arrow") || e.code === "Space") e.preventDefault();
       if (e.code === "KeyE") this.parler();
-      if (e.code === "Escape" && document.pointerLockElement !== el) this.quitterVisite();
+      // en pause : Échap ferme d'abord la fiche ouverte, sinon ramène à la maquette
+      const u = uiStore.getState();
+      if (e.code === "Escape" && document.pointerLockElement !== el && !u.selectedAgent && !u.selectedPole) this.quitterVisite();
     };
     const toucheHaut = (e: KeyboardEvent) => this.touches.delete(e.code);
     const verrou = () => {
       if (this.mode !== "visite" || this.tactile) return;
-      if (document.pointerLockElement === el) this.captureLe = performance.now();
-      uiStore.setState({ visite: document.pointerLockElement === el ? "oui" : "pause" });
-      if (document.pointerLockElement !== el) this.touches.clear();
+      if (document.pointerLockElement === el) {
+        this.captureLe = performance.now();
+        uiStore.setState({ visite: "oui" });
+        return;
+      }
+      this.touches.clear();
+      // souris libérée pour parler à un agent (touche E) : simple pause ; sinon c'est Échap → retour à la maquette
+      if (this.pourParler) {
+        this.pourParler = false;
+        uiStore.setState({ visite: "pause" });
+      } else this.quitterVisite();
     };
     const flou = () => this.touches.clear();
     window.addEventListener("keydown", toucheBas);
@@ -533,7 +544,10 @@ export class Bureau {
   private parler(): void {
     const id = uiStore.getState().visiteCible;
     if (!id) return;
-    if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock();
+    if (document.pointerLockElement === this.renderer.domElement) {
+      this.pourParler = true;
+      document.exitPointerLock();
+    }
     ui.selectAgent(id);
   }
 

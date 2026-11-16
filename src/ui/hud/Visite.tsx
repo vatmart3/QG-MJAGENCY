@@ -69,7 +69,7 @@ export function Visite() {
           <Touche k="Souris">regarder</Touche>
           <Touche k="Maj">courir</Touche>
           <Touche k="E">parler</Touche>
-          <Touche k="Échap">pause</Touche>
+          <Touche k="Échap">sortir</Touche>
         </div>
       )}
 
