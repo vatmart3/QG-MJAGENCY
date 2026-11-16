@@ -16,6 +16,9 @@ export interface Scene {
   reprendreVisite?(): void;
   quitterVisite?(): void;
   manetteVers?(x: number, y: number): void;
+  /** téléphone de la visite (touche G) */
+  ouvrirTelephone?(): void;
+  fermerTelephone?(): void;
 }
 
 let current: Scene | null = null;

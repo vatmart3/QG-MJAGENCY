@@ -23,6 +23,10 @@ export interface UIState {
   visiteLieu: string | null;
   /** agent juste devant soi pendant la visite (touche E pour lui parler) */
   visiteCible: string | null;
+  /** le téléphone de la visite est sorti (touche G) */
+  telephone: boolean;
+  /** cette page EST l'écran du téléphone (chargée dans son cadre) : pas de 3D, onglets en plein écran */
+  dansTelephone: boolean;
 }
 
 export const uiStore = createStore<UIState>(() => ({
@@ -39,6 +43,8 @@ export const uiStore = createStore<UIState>(() => ({
   visite: "non",
   visiteLieu: null,
   visiteCible: null,
+  telephone: false,
+  dansTelephone: false,
 }));
 
 export const useUI = <T>(selector: (s: UIState) => T): T => useStore(uiStore, selector);

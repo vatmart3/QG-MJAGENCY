@@ -7,6 +7,7 @@ import { ui, useUI } from "@/store/ui";
 import { useWorld } from "@/store/world";
 import { getGame } from "../gameRef";
 import { useIsMobile } from "../hooks";
+import { fermerTelephone, ouvrirTelephone } from "./Telephone";
 
 /** Entre dans le bâtiment à pied (à appeler depuis un clic : la souris est capturée pour regarder autour de soi). */
 export function entrerVisite(): void {
@@ -22,6 +23,7 @@ export function Visite() {
   const lieu = useUI((s) => s.visiteLieu);
   const cible = useUI((s) => s.visiteCible);
   const selection = useUI((s) => s.selectedAgent);
+  const telephone = useUI((s) => s.telephone);
   const mobile = useIsMobile();
   const [aide, setAide] = useState(true);
   useEffect(() => {
@@ -51,7 +53,7 @@ export function Visite() {
       {visite === "oui" && !mobile && <div className="pointer-events-none fixed top-1/2 left-1/2 z-20 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/90 shadow-[0_0_0_1.5px_rgba(0,0,0,0.35)]" />}
 
       {/* parler à l'agent en face */}
-      {agent && !selection && (
+      {agent && !selection && !telephone && (
         <button
           type="button"
           onClick={() => ui.selectAgent(agent.id)}
@@ -69,12 +71,13 @@ export function Visite() {
           <Touche k="Souris">regarder</Touche>
           <Touche k="Maj">courir</Touche>
           <Touche k="E">parler</Touche>
+          <Touche k="G">téléphone</Touche>
           <Touche k="Échap">sortir</Touche>
         </div>
       )}
 
       {/* pause : la souris est libre */}
-      {visite === "pause" && (
+      {visite === "pause" && !telephone && (
         <div className="fixed bottom-[max(18px,env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-2xl bg-white/95 p-2 pl-4 text-[13px] shadow-xl backdrop-blur">
           <span className="text-ink-soft">Visite en pause</span>
           <button type="button" onClick={() => getGame()?.reprendreVisite?.()} className="rounded-full bg-ink px-4 py-2 font-medium text-white">
@@ -86,7 +89,19 @@ export function Visite() {
         </div>
       )}
 
-      {mobile && <Manette />}
+      {/* le téléphone : tous les onglets du QG (touche G) */}
+      <button
+        type="button"
+        onClick={() => (telephone ? fermerTelephone() : ouvrirTelephone())}
+        className={`fixed z-30 flex items-center gap-2 rounded-full bg-white/90 px-3.5 py-2 text-[13px] font-semibold text-ink shadow-lg backdrop-blur transition hover:bg-white ${mobile ? "right-[max(14px,env(safe-area-inset-right))] bottom-[max(28px,calc(env(safe-area-inset-bottom)+20px))]" : "top-[max(14px,env(safe-area-inset-top))] right-[220px]"} ${telephone && mobile ? "hidden" : ""}`}
+        aria-pressed={telephone}
+        aria-label={telephone ? "Ranger le téléphone" : "Sortir le téléphone : tous les onglets du QG"}
+      >
+        📱 {telephone ? "Ranger" : "Téléphone"}
+        {!mobile && <kbd className="rounded bg-ink/10 px-1.5 py-0.5 font-sans text-[11px]">G</kbd>}
+      </button>
+
+      {mobile && !telephone && <Manette />}
     </>
   );
 }

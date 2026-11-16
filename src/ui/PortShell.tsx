@@ -19,6 +19,8 @@ import { TopBar } from "./TopBar";
 import { Hud } from "./hud/Hud";
 import { ModeTV } from "./hud/ModeTV";
 import { Visite } from "./hud/Visite";
+import { AccueilTelephone, BarreTelephone, NOM_CADRE, Telephone, useClavierTelephone } from "./hud/Telephone";
+import { usePathname } from "next/navigation";
 
 /** La ville EST l'interface : tout le reste flotte au-dessus. */
 export function PortShell({ children }: { children: ReactNode }) {
@@ -28,6 +30,13 @@ export function PortShell({ children }: { children: ReactNode }) {
   const loaded = useCatalog((s) => s.loaded);
   const structure = useCatalog((s) => s.structure);
   const [fail, setFail] = useState<{ reason: string; message: string } | null>(null);
+  // null tant qu'on ne sait pas : la 3D ne se charge jamais dans l'écran du téléphone
+  const [tel, setTel] = useState<boolean | null>(null);
+  useEffect(() => {
+    const dedans = window.name === NOM_CADRE && window.self !== window.top;
+    setTel(dedans);
+    if (dedans) uiStore.setState({ dansTelephone: true, ready: true });
+  }, []);
 
   useEffect(() => {
     // ?heure=22.5 pour prévisualiser une autre heure de la journée
@@ -75,10 +84,11 @@ export function PortShell({ children }: { children: ReactNode }) {
   }, []);
 
   if (fail) return <AccessProblem reason={fail.reason} message={fail.message} />;
+  if (tel) return <EcranTelephone pret={loaded}>{children}</EcranTelephone>;
 
   return (
     <main className="fixed inset-0 overflow-hidden select-none">
-      {loaded && <CityCanvas key={structure} />}
+      {loaded && tel === false && <CityCanvas key={structure} />}
       {(!ready || !loaded) && (
         <div className="absolute inset-0 z-50 grid place-items-center bg-lavender">
           <div className="text-center">
@@ -93,11 +103,40 @@ export function PortShell({ children }: { children: ReactNode }) {
       {!visite && <Hud />}
       <ModeTV />
       <Visite />
+      <Telephone />
       <AgentSheet />
       <PoleSheet />
       <Ambiance />
       <Toasts />
       {children}
+    </main>
+  );
+}
+
+/** L'écran du téléphone de la visite : accueil avec les applications, onglets en plein écran, pas de 3D. */
+function EcranTelephone({ pret, children }: { pret: boolean; children: ReactNode }) {
+  const path = usePathname();
+  useClavierTelephone();
+  return (
+    <main className="fixed inset-0 overflow-hidden bg-[#3b3f8f]">
+      {!pret ? (
+        <div className="absolute inset-0 grid place-items-center text-white">
+          <div className="text-center">
+            <div className="animate-bounce text-4xl">⚓</div>
+            <p className="mt-2 font-pixel text-lg">Allumage…</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <AccueilTelephone />
+          {path === "/" && <CommandBar />}
+          {children}
+          <AgentSheet />
+          <PoleSheet />
+          <Toasts />
+          <BarreTelephone />
+        </>
+      )}
     </main>
   );
 }

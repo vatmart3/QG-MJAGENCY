@@ -322,6 +322,16 @@ export class Bureau {
       this.touches.add(e.code);
       if (e.code.startsWith("Arrow") || e.code === "Space") e.preventDefault();
       if (e.code === "KeyE") this.parler();
+      if (e.code === "KeyG" && !e.repeat) {
+        if (uiStore.getState().telephone) this.fermerTelephone();
+        else this.ouvrirTelephone();
+        return;
+      }
+      // téléphone sorti : Échap le range (et la visite reprend)
+      if (e.code === "Escape" && uiStore.getState().telephone) {
+        this.fermerTelephone();
+        return;
+      }
       // en pause : Échap ferme d'abord la fiche ouverte, sinon ramène à la maquette
       const u = uiStore.getState();
       if (e.code === "Escape" && document.pointerLockElement !== el && !u.selectedAgent && !u.selectedPole) this.quitterVisite();
@@ -335,7 +345,8 @@ export class Bureau {
         return;
       }
       this.touches.clear();
-      // souris libérée pour parler à un agent (touche E) : simple pause ; sinon c'est Échap → retour à la maquette
+      // souris libérée pour parler à un agent (E) ou sortir le téléphone (G) : simple pause ;
+      // sinon c'est Échap → retour à la maquette
       if (this.pourParler) {
         this.pourParler = false;
         uiStore.setState({ visite: "pause" });
@@ -522,7 +533,27 @@ export class Bureau {
     this.controls.update();
     for (const t of this.tags.values()) t.remove();
     this.tags.clear();
-    uiStore.setState({ visite: "non", visiteLieu: null, visiteCible: null });
+    uiStore.setState({ visite: "non", visiteLieu: null, visiteCible: null, telephone: false });
+  }
+
+  /** Sort le téléphone (touche G) : la souris est libérée pour s'en servir, la visite attend. */
+  ouvrirTelephone(): void {
+    if (this.mode !== "visite" || uiStore.getState().telephone) return;
+    if (document.pointerLockElement === this.renderer.domElement) {
+      this.pourParler = true;
+      document.exitPointerLock();
+    }
+    this.touches.clear();
+    ui.closeSheets();
+    uiStore.setState({ telephone: true });
+  }
+
+  /** Range le téléphone et reprend la marche. */
+  fermerTelephone(): void {
+    if (!uiStore.getState().telephone) return;
+    uiStore.setState({ telephone: false });
+    window.focus();
+    this.reprendreVisite();
   }
 
   /** Manette tactile : x = droite, y = avant (de -1 à 1). */

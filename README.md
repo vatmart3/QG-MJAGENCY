@@ -190,6 +190,11 @@ images »). Migration `…1800`.
   pour regarder, Maj pour courir, **E** pour parler à l'agent en face (ouvre sa fiche), **Échap pour sortir** (retour maquette). Collisions
   avec les murs et les meubles, plafond et luminaires, nom et état des agents au-dessus de leur tête, nom de la pièce
   en haut à gauche. Sur téléphone : manette tactile + glisser pour regarder.
+- **Le téléphone (touche G pendant la visite)** : un téléphone tenu en main avec **tous les onglets du QG** (Équipe,
+  Tâches, Calendrier, Douane, Commercial, Finances, Rapports, Flux, Atelier, Journal, Réglages) et la barre de mission.
+  Son écran est le QG chargé « en mode téléphone » dans un cadre (`src/ui/hud/Telephone.tsx`) : pas de 3D, accueil avec
+  les applications, onglets en plein écran dans leur version mobile, barre d'accueil en bas. G ou Échap le range et la
+  marche reprend ; il se rouvre là où on l'a laissé.
 - Écrans géants en direct (hall : infos du port ; réunion et ciné : offres), jour / nuit, qualité adaptative (finesse
   puis ombres réduites si l'appareil peine). Les villes en pixel art restent au choix (bouton 3D / Futur / NY / Sète).
 

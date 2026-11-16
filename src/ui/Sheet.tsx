@@ -25,6 +25,7 @@ interface SheetProps {
  */
 export function Sheet({ open, onClose, title, kicker, accent = "#2a2140", icon, children, side = "right", width = 420, tilt = 0.6, footer }: SheetProps) {
   const mobile = useIsMobile();
+  const tel = useUI((s) => s.dansTelephone);
 
   useEffect(() => {
     if (!open) return;
@@ -57,6 +58,21 @@ export function Sheet({ open, onClose, title, kicker, accent = "#2a2140", icon, 
       </button>
     </header>
   );
+
+  if (tel) {
+    // écran du téléphone : l'onglet occupe tout l'écran, la croix ramène à l'accueil
+    return (
+      <AnimatePresence>
+        {open && (
+          <motion.div key="sheet-t" className="paper fixed inset-0 z-40 flex flex-col" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 34, stiffness: 360 }}>
+            <div className="pt-5">{header}</div>
+            <div className="scroll-soft min-h-0 flex-1 overflow-y-auto px-4 pb-10">{children}</div>
+            {footer && <div className="border-t border-paper-edge px-4 pt-3 pb-7">{footer}</div>}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  }
 
   if (mobile) {
     return (
