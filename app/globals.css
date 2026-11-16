@@ -190,6 +190,42 @@ body {
   max-width: 180px;
 }
 
+/* bureau 3D, visite à pied : « Zoé · au travail » au-dessus des agents */
+.tag3d {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background: rgba(32, 34, 46, 0.82);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+  transform-origin: 50% 100%;
+  backdrop-filter: blur(4px);
+}
+.tag3d i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pole, #888);
+}
+.tag3d b {
+  font-weight: 700;
+}
+.tag3d span {
+  opacity: 0.75;
+}
+.tag3d.is-cible {
+  background: rgba(255, 211, 77, 0.95);
+  color: #1b1e30;
+}
+
 .agent-tooltip {
   position: absolute;
   left: 0;

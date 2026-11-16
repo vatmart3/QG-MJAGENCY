@@ -35,7 +35,16 @@ interface BubbleEl {
   id: number;
 }
 
+/** Étiquette d'une pièce sans fiche dans le catalogue (hall, salle des serveurs… du bureau 3D). */
+export interface EtiquetteLibre {
+  id: string;
+  nom: string;
+  icone: string;
+  couleur: string;
+}
+
 export class Overlay {
+  private libres = new Map<string, EtiquetteLibre>();
   private labels: Label[] = [];
   private bubbles = new Map<string, BubbleEl>();
   private tooltip: HTMLDivElement;
@@ -46,9 +55,9 @@ export class Overlay {
 
   constructor(
     host: HTMLElement,
-    layout: Layout,
+    layout: Layout | { etiquettes: EtiquetteLibre[] },
     onZoneClick: (zoneId: string) => void,
-    pharePos: { x: number; y: number },
+    pharePos: { x: number; y: number } | null,
   ) {
     const root = document.createElement("div");
     root.className = "overlay-layer";
@@ -59,8 +68,12 @@ export class Overlay {
     this.svg.setAttribute("class", "flow-layer");
     this.svg.setAttribute("aria-hidden", "true");
     root.appendChild(this.svg);
-    for (const z of layout.zones) {
-      const pole = poleById(z.id);
+    // bureau 3D : la position des étiquettes est donnée à chaque image (labelPos), pas par le plan de l'île
+    const zones = "etiquettes" in layout ? layout.etiquettes.map((e) => ({ id: e.id, x: 0, y: 0, w: 0, h: 0, walls: "none" as const })) : layout.zones;
+    if ("etiquettes" in layout) for (const e of layout.etiquettes) this.libres.set(e.id, e);
+    for (const z of zones) {
+      const libre = this.libres.get(z.id);
+      const pole = poleById(z.id) ?? (libre ? { ...libre, kind: "lieu" as const } : undefined);
       if (!pole) continue;
       const el = document.createElement("button");
       el.type = "button";
@@ -80,6 +93,11 @@ export class Overlay {
       const c = iso(z.x + z.w / 2, z.y + z.h / 2);
       this.labels.push({ el, count, wx: c.x, wy: c.y - (glass ? 64 : 50), lastCount: "", zone: z.id });
     }
+    this.tooltip = document.createElement("div");
+    this.tooltip.className = "agent-tooltip";
+    this.tooltip.style.display = "none";
+    root.appendChild(this.tooltip);
+    if (!pharePos) return;
     // le phare
     const el = document.createElement("button");
     el.type = "button";
@@ -95,11 +113,6 @@ export class Overlay {
     });
     root.appendChild(el);
     this.labels.push({ el, count, wx: pharePos.x, wy: pharePos.y - 130, lastCount: "", zone: "phare" });
-
-    this.tooltip = document.createElement("div");
-    this.tooltip.className = "agent-tooltip";
-    this.tooltip.style.display = "none";
-    root.appendChild(this.tooltip);
   }
 
   update(params: {
@@ -113,8 +126,10 @@ export class Overlay {
     hover: string | null;
     now: number;
     links: FlowLink[];
+    /** bureau 3D : position écran d'une étiquette de pièce (null = cachée) */
+    labelPos?: (zone: string) => { x: number; y: number } | null;
   }): void {
-    const { toScreen, scale, heads, bubbles, presence, pending, agents, hover, now, links } = params;
+    const { toScreen, scale, heads, bubbles, presence, pending, agents, hover, now, links, labelPos } = params;
     this.updateLinks(links, heads, toScreen, scale, now);
     const compact = scale < 0.9;
     this.root.dataset.compact = compact ? "1" : "0";
@@ -123,8 +138,9 @@ export class Overlay {
     const H = this.root.clientHeight;
 
     for (const l of this.labels) {
-      const s = toScreen(l.wx, l.wy);
-      const visible = s.x > -120 && s.x < W + 120 && s.y > -40 && s.y < H + 60;
+      const lp = labelPos ? labelPos(l.zone) : undefined;
+      const s = lp ?? toScreen(l.wx, l.wy);
+      const visible = lp !== null && s.x > -120 && s.x < W + 120 && s.y > -40 && s.y < H + 60;
       l.el.style.visibility = visible ? "visible" : "hidden";
       if (visible) l.el.style.transform = `translate3d(${Math.round(s.x)}px, ${Math.round(s.y)}px, 0) translate(-50%, -100%)`;
       let text: string;

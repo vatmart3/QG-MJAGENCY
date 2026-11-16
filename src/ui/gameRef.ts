@@ -1,10 +1,27 @@
-import type { Game } from "@/world/Game";
+/**
+ * Accès impératif à la scène depuis l'interface React (caméra, zoom) : la ville en pixel art ou le bureau 3D.
+ */
+export interface Scene {
+  zoomStep(dir: 1 | -1): void;
+  flyToAgent(id: string): void;
+  flyToZone(zoneId: string): void;
+  /** vue d'ensemble */
+  overview(): void;
+  /** mode TV : la caméra va sur une pièce / un agent ; false si impossible */
+  tvZone(id: string): boolean;
+  tvAgent(id: string): boolean;
+  destroy(): void;
+  /** bureau 3D seulement : visite à pied */
+  entrerVisite?(): void;
+  reprendreVisite?(): void;
+  quitterVisite?(): void;
+  manetteVers?(x: number, y: number): void;
+}
 
-/** Accès impératif à la ville depuis l'interface React (caméra, zoom). */
-let current: Game | null = null;
+let current: Scene | null = null;
 
-export const setGame = (g: Game | null): void => {
+export const setGame = (g: Scene | null): void => {
   current = g;
 };
 
-export const getGame = (): Game | null => current;
+export const getGame = (): Scene | null => current;

@@ -177,6 +177,22 @@ images »). Migration `…1800`.
 - Sécurité : si Claude Code n'est pas passé depuis 3 h, ses tâches reviennent automatiquement sur la clé API.
   Migration `…1500` (`tasks.executeur`, `claim_tasks_claude`).
 
+## Le bureau 3D (style par défaut) : maquette et visite à pied
+
+- **Un bâtiment d'entreprise fermé, en 3D** (three.js, `src/bureau/`) remplace la ville par défaut : les pôles donnent
+  sur « La rue des pôles » par des cloisons vitrées, les lieux de vie sont autour (café, restaurant, salle de réunion,
+  Douane, archives, médiathèque, sport, détente, hall d'accueil, salle des serveurs, studio podcast, jardin d'hiver,
+  ciné, jeux vidéo, siestes). Le plan suit le catalogue : un pôle ajouté = une pièce de plus.
+- **Maquette** : toit ouvert, caméra libre (glisser, molette, clic droit pour tourner), étiquettes des pièces, bulles,
+  liaisons, clic sur un agent ou une pièce, mode TV. Mêmes comportements que la ville : bureau, discussions, réunions à
+  La Criée, colis à la Douane, café, déjeuner, pauses.
+- **Visite à pied** (bouton « 🚶 Visiter ») : première personne, **Z Q S D** (ou W A S D, flèches) pour marcher, souris
+  pour regarder, Maj pour courir, **E** pour parler à l'agent en face (ouvre sa fiche), Échap pour la pause. Collisions
+  avec les murs et les meubles, plafond et luminaires, nom et état des agents au-dessus de leur tête, nom de la pièce
+  en haut à gauche. Sur téléphone : manette tactile + glisser pour regarder.
+- Écrans géants en direct (hall : infos du port ; réunion et ciné : offres), jour / nuit, qualité adaptative (finesse
+  puis ombres réduites si l'appareil peine). Les villes en pixel art restent au choix (bouton 3D / Futur / NY / Sète).
+
 ## Calendrier des fondateurs (onglet Calendrier)
 
 - Tout ce qu'il y a à faire dans la semaine : **posts TikTok / Instagram / LinkedIn** (texte complet à copier),

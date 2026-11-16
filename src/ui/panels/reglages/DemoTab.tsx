@@ -33,11 +33,13 @@ export function DemoTab() {
 
   return (
     <div className="space-y-4">
-      <Field label="Style de la ville" hint="Change seulement le décor (sur cet appareil) : pôles, agents et missions restent les mêmes.">
+      <Field label="Style du QG" hint="Change seulement le décor (sur cet appareil) : pôles, agents et missions restent les mêmes.">
         <select className={inputCls} value={style} onChange={(e) => choisirStyleVille(e.target.value as StyleVille)}>
-          {(["newyork", "futur", "sete"] as StyleVille[]).map((s) => (
+          {(["bureau", "futur", "newyork", "sete"] as StyleVille[]).map((s) => (
             <option key={s} value={s}>
-              {s === "newyork"
+              {s === "bureau"
+                ? `${NOM_STYLE[s]} — le bâtiment de l'agence, visitable à pied (Z Q S D)`
+                : s === "newyork"
                 ? `${NOM_STYLE[s]} — gratte-ciel, avenues, taxis, immeubles`
                 : s === "futur"
                   ? `${NOM_STYLE[s]} — tours de verre, néons, voitures volantes`

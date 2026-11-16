@@ -1,14 +1,14 @@
 /**
- * Style de la ville : « newyork » (gratte-ciel, avenues, taxis, immeubles), « futur » (ville futuriste : tours de
+ * Style du QG : « bureau » (bâtiment d'entreprise en 3D, visitable à pied), ou les villes en pixel art : « newyork » (gratte-ciel, avenues, taxis, immeubles), « futur » (ville futuriste : tours de
  * verre et néons, voitures volantes) ou « sete » (l'île d'origine).
  * Seul le décor change : pôles, bureaux, agents, chemins et missions restent identiques.
  * Choix enregistré dans ce navigateur (Réglages → Ville, ou le bouton sur la carte).
  */
 
-export type StyleVille = "newyork" | "futur" | "sete";
+export type StyleVille = "bureau" | "newyork" | "futur" | "sete";
 
 /** Styles « ville » (île carrée, gratte-ciel, avenues, immeubles) : New York et Futuriste. */
-export const urbain = (s: StyleVille): boolean => s !== "sete";
+export const urbain = (s: StyleVille): boolean => s === "newyork" || s === "futur";
 
 const CLE = "leport.ville";
 export const EVT_STYLE_VILLE = "leport:ville";
@@ -19,9 +19,9 @@ export function styleVille(): StyleVille {
   if (choisi) return choisi;
   try {
     const v = typeof localStorage !== "undefined" ? localStorage.getItem(CLE) : null;
-    return v === "sete" || v === "newyork" ? v : "futur";
+    return v === "sete" || v === "newyork" || v === "futur" ? v : "bureau";
   } catch {
-    return "futur";
+    return "bureau";
   }
 }
 
@@ -35,6 +35,6 @@ export function choisirStyleVille(s: StyleVille): void {
   window.dispatchEvent(new CustomEvent<StyleVille>(EVT_STYLE_VILLE, { detail: s }));
 }
 
-export const NOM_STYLE: Record<StyleVille, string> = { newyork: "New York", futur: "Futuriste", sete: "Sète" };
+export const NOM_STYLE: Record<StyleVille, string> = { bureau: "Bureau 3D", newyork: "New York", futur: "Futuriste", sete: "Sète" };
 /** ordre du bouton sur la carte */
-export const STYLE_SUIVANT: Record<StyleVille, StyleVille> = { newyork: "futur", futur: "sete", sete: "newyork" };
+export const STYLE_SUIVANT: Record<StyleVille, StyleVille> = { bureau: "futur", futur: "newyork", newyork: "sete", sete: "bureau" };

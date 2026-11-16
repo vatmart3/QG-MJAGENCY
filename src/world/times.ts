@@ -92,129 +92,129 @@ export class EcranGeant {
     if (frame === this.dernier) return;
     this.dernier = frame;
     for (const e of this.ecrans) {
-      if (e.g.role === "infos") this.infos(e, st, heure);
-      else if (e.g.role === "pubs") this.pubs(e);
-      else this.bandeau(e, st);
+      if (e.g.role === "infos") dessinerInfos(e.ctx, e.canvas, this.t, st, heure);
+      else if (e.g.role === "pubs") dessinerPubs(e.ctx, e.canvas, this.t);
+      else dessinerBandeau(e.ctx, e.canvas, this.t, st);
       e.source.update();
     }
   }
+}
 
-  // ---------------------------------------------------------------- écran des infos du port
-  private infos(e: Ecran, st: WorldState, heure: number): void {
-    const { ctx, canvas } = e;
-    const W = canvas.width, H = canvas.height;
-    const agents = Object.values(st.agents);
-    const auTravail = agents.filter((a) => a.state === "working").length;
-    const enLigne = agents.filter((a) => a.state !== "offline").length;
-    const enCours = st.tasks.filter((t) => t.status === "running" || t.status === "queued" || t.status === "waiting_tool").length;
-    const douane = st.approvals.length;
-    const dernier = st.journal.find((j) => j.agentId);
-    const slides = ["port", "travail", "douane", "taches", ...(dernier ? ["action"] : [])];
-    const i = Math.floor(this.t / SLIDE_S) % slides.length;
-    const k = (this.t % SLIDE_S) / SLIDE_S;
-    const fonds: Record<string, [string, string]> = { port: ["#0d1640", "#2a3fa8"], travail: ["#06302a", "#119c74"], douane: ["#3a0b14", "#c0392b"], taches: ["#24104a", "#7a3fd6"], action: ["#101423", "#3a4766"] };
-    const [c1, c2] = fonds[slides[i]!]!;
-    const g = ctx.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, c1);
-    g.addColorStop(1, c2);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-    // trame LED
-    ctx.fillStyle = "rgba(0,0,0,0.18)";
-    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
-    const hh = String(Math.floor(heure)).padStart(2, "0"), mm = String(Math.floor((heure % 1) * 60)).padStart(2, "0");
-    const titre = (t: string, y: number, size: number, col = "#ffffff") => texte(ctx, t, W / 2, y, size, col, W * 0.92);
-    const s = slides[i]!;
-    if (s === "port") {
-      titre("LE PORT", H * 0.34, H * 0.26, "#ffd34d");
-      titre("MJAGENCY · SÈTE", H * 0.58, H * 0.11);
-      titre(`${hh}:${mm}`, H * 0.8, H * 0.15, "#8ff0ff");
-    } else if (s === "travail") {
-      titre("AU TRAVAIL", H * 0.2, H * 0.12, "#b8ffe4");
-      titre(String(auTravail), H * 0.5, H * 0.36, "#ffffff");
-      titre(`${enLigne} EN LIGNE SUR ${allAgents().length}`, H * 0.82, H * 0.1);
-    } else if (s === "douane") {
-      titre("LA DOUANE", H * 0.2, H * 0.12, "#ffd0c8");
-      titre(douane ? String(douane) : "✓", H * 0.5, H * 0.36);
-      titre(douane ? "À VALIDER" : "TOUT EST VALIDÉ", H * 0.82, H * 0.11);
-    } else if (s === "taches") {
-      titre("TÂCHES EN COURS", H * 0.2, H * 0.11, "#e2d0ff");
-      titre(String(enCours), H * 0.5, H * 0.36);
-      titre(`${st.missions.filter((m) => m.status !== "terminee" && m.status !== "annulee").length} MISSION(S)`, H * 0.82, H * 0.11);
-    } else if (dernier) {
-      const nom = (dernier.agentId && agentById(dernier.agentId)?.nom) || "LE PORT";
-      titre("EN DIRECT", H * 0.15, H * 0.1, "#ff6b6b");
-      titre(nom.toUpperCase(), H * 0.36, H * 0.17, "#ffd34d");
-      const lignes = couper(ctx, dernier.title.replace(/^[^\p{L}\p{N}]+/u, ""), W * 0.88, H * 0.1);
-      lignes.slice(0, 3).forEach((l, j) => titre(l, H * (0.58 + j * 0.14), H * 0.1));
-    }
-    // fondu entre deux images
-    if (k < 0.08 || k > 0.94) {
-      ctx.fillStyle = `rgba(0,0,0,${k < 0.08 ? 1 - k / 0.08 : (k - 0.94) / 0.06})`;
-      ctx.fillRect(0, 0, W, H);
-    }
+// ---------------------------------------------------------------- écran des infos du port
+/** Écran des infos du port (agents au travail, Douane, tâches, dernière action, heure). */
+export function dessinerInfos(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, t: number, st: WorldState, heure: number): void {
+  const W = canvas.width, H = canvas.height;
+  const agents = Object.values(st.agents);
+  const auTravail = agents.filter((a) => a.state === "working").length;
+  const enLigne = agents.filter((a) => a.state !== "offline").length;
+  const enCours = st.tasks.filter((t) => t.status === "running" || t.status === "queued" || t.status === "waiting_tool").length;
+  const douane = st.approvals.length;
+  const dernier = st.journal.find((j) => j.agentId);
+  const slides = ["port", "travail", "douane", "taches", ...(dernier ? ["action"] : [])];
+  const i = Math.floor(t / SLIDE_S) % slides.length;
+  const k = (t % SLIDE_S) / SLIDE_S;
+  const fonds: Record<string, [string, string]> = { port: ["#0d1640", "#2a3fa8"], travail: ["#06302a", "#119c74"], douane: ["#3a0b14", "#c0392b"], taches: ["#24104a", "#7a3fd6"], action: ["#101423", "#3a4766"] };
+  const [c1, c2] = fonds[slides[i]!]!;
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, c1);
+  g.addColorStop(1, c2);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  // trame LED
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+  const hh = String(Math.floor(heure)).padStart(2, "0"), mm = String(Math.floor((heure % 1) * 60)).padStart(2, "0");
+  const titre = (t: string, y: number, size: number, col = "#ffffff") => texte(ctx, t, W / 2, y, size, col, W * 0.92);
+  const s = slides[i]!;
+  if (s === "port") {
+    titre("LE PORT", H * 0.34, H * 0.26, "#ffd34d");
+    titre("MJAGENCY · SÈTE", H * 0.58, H * 0.11);
+    titre(`${hh}:${mm}`, H * 0.8, H * 0.15, "#8ff0ff");
+  } else if (s === "travail") {
+    titre("AU TRAVAIL", H * 0.2, H * 0.12, "#b8ffe4");
+    titre(String(auTravail), H * 0.5, H * 0.36, "#ffffff");
+    titre(`${enLigne} EN LIGNE SUR ${allAgents().length}`, H * 0.82, H * 0.1);
+  } else if (s === "douane") {
+    titre("LA DOUANE", H * 0.2, H * 0.12, "#ffd0c8");
+    titre(douane ? String(douane) : "✓", H * 0.5, H * 0.36);
+    titre(douane ? "À VALIDER" : "TOUT EST VALIDÉ", H * 0.82, H * 0.11);
+  } else if (s === "taches") {
+    titre("TÂCHES EN COURS", H * 0.2, H * 0.11, "#e2d0ff");
+    titre(String(enCours), H * 0.5, H * 0.36);
+    titre(`${st.missions.filter((m) => m.status !== "terminee" && m.status !== "annulee").length} MISSION(S)`, H * 0.82, H * 0.11);
+  } else if (dernier) {
+    const nom = (dernier.agentId && agentById(dernier.agentId)?.nom) || "LE PORT";
+    titre("EN DIRECT", H * 0.15, H * 0.1, "#ff6b6b");
+    titre(nom.toUpperCase(), H * 0.36, H * 0.17, "#ffd34d");
+    const lignes = couper(ctx, dernier.title.replace(/^[^\p{L}\p{N}]+/u, ""), W * 0.88, H * 0.1);
+    lignes.slice(0, 3).forEach((l, j) => titre(l, H * (0.58 + j * 0.14), H * 0.1));
   }
+  // fondu entre deux images
+  if (k < 0.08 || k > 0.94) {
+    ctx.fillStyle = `rgba(0,0,0,${k < 0.08 ? 1 - k / 0.08 : (k - 0.94) / 0.06})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
 
-  // ---------------------------------------------------------------- écran des pubs (offres de MJAGENCY)
-  private pubs(e: Ecran): void {
-    const { ctx, canvas } = e;
-    const W = canvas.width, H = canvas.height;
-    const i = Math.floor(this.t / SLIDE_S) % PUBS.length;
-    const p = PUBS[i]!;
-    const k = (this.t % SLIDE_S) / SLIDE_S;
-    const g = ctx.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, p.fond[0]);
-    g.addColorStop(1, p.fond[1]);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-    // rayons animés
-    ctx.save();
-    ctx.globalAlpha = 0.12;
-    ctx.fillStyle = "#ffffff";
-    for (let j = 0; j < 6; j++) {
-      const x = ((j / 6 + this.t * 0.08) % 1) * W * 1.6 - W * 0.3;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x + W * 0.12, 0);
-      ctx.lineTo(x - W * 0.2, H);
-      ctx.lineTo(x - W * 0.32, H);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-    ctx.fillStyle = "rgba(0,0,0,0.16)";
-    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
-    const entree = Math.min(1, k / 0.12);
-    texte(ctx, p.titre, W / 2 - (1 - entree) * W, H * 0.27, H * 0.17, "#ffffff", W * 0.92);
-    // le prix clignote doucement
-    const pulse = 1 + Math.sin(this.t * 5) * 0.04;
-    texte(ctx, p.prix, W / 2, H * 0.56, H * 0.25 * pulse, p.accent, W * 0.92);
-    texte(ctx, p.sous, W / 2, H * 0.83, H * 0.09, "#ffffff", W * 0.92);
-    if (k > 0.94) {
-      ctx.fillStyle = `rgba(255,255,255,${(k - 0.94) / 0.06})`;
-      ctx.fillRect(0, 0, W, H);
-    }
+// ---------------------------------------------------------------- écran des pubs (offres de MJAGENCY)
+/** Écran des offres de MJAGENCY. */
+export function dessinerPubs(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, t: number): void {
+  const W = canvas.width, H = canvas.height;
+  const i = Math.floor(t / SLIDE_S) % PUBS.length;
+  const p = PUBS[i]!;
+  const k = (t % SLIDE_S) / SLIDE_S;
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, p.fond[0]);
+  g.addColorStop(1, p.fond[1]);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  // rayons animés
+  ctx.save();
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = "#ffffff";
+  for (let j = 0; j < 6; j++) {
+    const x = ((j / 6 + t * 0.08) % 1) * W * 1.6 - W * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + W * 0.12, 0);
+    ctx.lineTo(x - W * 0.2, H);
+    ctx.lineTo(x - W * 0.32, H);
+    ctx.closePath();
+    ctx.fill();
   }
+  ctx.restore();
+  ctx.fillStyle = "rgba(0,0,0,0.16)";
+  for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+  const entree = Math.min(1, k / 0.12);
+  texte(ctx, p.titre, W / 2 - (1 - entree) * W, H * 0.27, H * 0.17, "#ffffff", W * 0.92);
+  // le prix clignote doucement
+  const pulse = 1 + Math.sin(t * 5) * 0.04;
+  texte(ctx, p.prix, W / 2, H * 0.56, H * 0.25 * pulse, p.accent, W * 0.92);
+  texte(ctx, p.sous, W / 2, H * 0.83, H * 0.09, "#ffffff", W * 0.92);
+  if (k > 0.94) {
+    ctx.fillStyle = `rgba(255,255,255,${(k - 0.94) / 0.06})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
 
-  // ---------------------------------------------------------------- bandeau défilant
-  private bandeau(e: Ecran, st: WorldState): void {
-    const { ctx, canvas } = e;
-    const W = canvas.width, H = canvas.height;
-    ctx.fillStyle = "#07080d";
-    ctx.fillRect(0, 0, W, H);
-    const items = st.journal
-      .filter((j) => j.agentId)
-      .slice(0, 8)
-      .map((j) => `${(agentById(j.agentId!)?.nom ?? "").toUpperCase()} · ${j.title.replace(/^[^\p{L}\p{N}]+/u, "")}`);
-    const msg = (items.length ? items : ["LE PORT · 39 AGENTS AU SERVICE DES COMMERÇANTS DE SÈTE", "SITE VITRINE DÈS 890 €", "MJAGENCY.EU"]).join("   ✦   ") + "   ✦   ";
-    ctx.font = `600 ${Math.round(H * 0.7)}px ${FONT}`;
-    ctx.textBaseline = "middle";
-    const largeur = ctx.measureText(msg).width;
-    const x = -((this.t * 26 * K) % largeur);
-    ctx.fillStyle = "#ffcf4a";
-    ctx.fillText(msg, x, H / 2 + 1);
-    ctx.fillText(msg, x + largeur, H / 2 + 1);
-  }
+// ---------------------------------------------------------------- bandeau défilant
+/** Bandeau défilant : les dernières actions des agents. */
+export function dessinerBandeau(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, t: number, st: WorldState): void {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = "#07080d";
+  ctx.fillRect(0, 0, W, H);
+  const items = st.journal
+    .filter((j) => j.agentId)
+    .slice(0, 8)
+    .map((j) => `${(agentById(j.agentId!)?.nom ?? "").toUpperCase()} · ${j.title.replace(/^[^\p{L}\p{N}]+/u, "")}`);
+  const msg = (items.length ? items : ["LE PORT · 39 AGENTS AU SERVICE DES COMMERÇANTS DE SÈTE", "SITE VITRINE DÈS 890 €", "MJAGENCY.EU"]).join("   ✦   ") + "   ✦   ";
+  ctx.font = `600 ${Math.round(H * 0.7)}px ${FONT}`;
+  ctx.textBaseline = "middle";
+  const largeur = ctx.measureText(msg).width;
+  const x = -((t * 26 * K) % largeur);
+  ctx.fillStyle = "#ffcf4a";
+  ctx.fillText(msg, x, H / 2 + 1);
+  ctx.fillText(msg, x + largeur, H / 2 + 1);
 }
 
 function texte(ctx: CanvasRenderingContext2D, t: string, x: number, y: number, size: number, col: string, max: number): void {

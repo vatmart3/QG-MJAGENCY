@@ -453,6 +453,20 @@ export class Game {
     return z ? iso(z.x + z.w / 2, z.y + z.h / 2) : null;
   }
 
+  tvZone(id: string): boolean {
+    const p = this.zonePos(id);
+    if (!p) return false;
+    this.flyToExact(p.x, p.y - 10, 1.5);
+    return true;
+  }
+
+  tvAgent(id: string): boolean {
+    const p = this.agentPos(id);
+    if (!p) return false;
+    this.flyToExact(p.x, p.y, 2.5);
+    return true;
+  }
+
   flyToAgent(id: string): void {
     const a = this.agents.get(id);
     if (!a) return;

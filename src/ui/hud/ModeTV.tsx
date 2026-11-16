@@ -29,7 +29,7 @@ export function ModeTV() {
   const tv = useUI((s) => s.tv);
   const douane = useWorld((s) => s.approvals.length);
   const travail = useWorld((s) => Object.values(s.agents).filter((a) => a.state === "working").length);
-  const [cible, setCible] = useState("Toute la ville");
+  const [cible, setCible] = useState("Vue d'ensemble");
   const [maintenant, setMaintenant] = useState(Date.now());
   const [souris, setSouris] = useState(true);
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,27 +45,21 @@ export function ModeTV() {
       const st = world.get();
       if (pas % 5 === 0) {
         g.overview();
-        setCible("Toute la ville");
+        setCible("Vue d'ensemble");
       } else if (pas % 5 === 3) {
         const actifs = Object.values(st.agents).filter((a) => a.state === "working").map((a) => a.id);
         const id = actifs[Math.floor(Math.random() * actifs.length)];
-        const p = id ? g.agentPos(id) : null;
-        if (id && p) {
-          g.flyToExact(p.x, p.y, 2.5);
+        if (id && g.tvAgent(id)) {
           const a = agentById(id);
           const tache = st.agents[id]?.task;
           setCible(`${a?.nom ?? id}${tache ? ` — ${tache.title}` : " au travail"}`);
         } else {
           g.overview();
-          setCible("Toute la ville");
+          setCible("Vue d'ensemble");
         }
       } else {
         const pole = poles[(pas * 7) % Math.max(1, poles.length)];
-        const p = pole ? g.zonePos(pole.id) : null;
-        if (pole && p) {
-          g.flyToExact(p.x, p.y - 10, 1.5);
-          setCible(`${pole.icone} ${pole.nom}`);
-        }
+        if (pole && g.tvZone(pole.id)) setCible(`${pole.icone} ${pole.nom}`);
       }
       pas++;
     };

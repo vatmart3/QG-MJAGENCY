@@ -10,7 +10,7 @@ import { phaseLabel } from "@/world/daynight";
 import { useWorld } from "@/store/world";
 import { ui, useUI } from "@/store/ui";
 import { getGame } from "./gameRef";
-import { useHour, useIsMobile } from "./hooks";
+import { useHour, useIsMobile, useStyleVille } from "./hooks";
 import { Portrait } from "./Portrait";
 
 export function TopBar() {
@@ -22,9 +22,10 @@ export function TopBar() {
   const rapports = useWorld((s) => Object.keys(s.rapports).length);
   const online = useWorld((s) => Object.values(s.agents).filter((a) => a.state !== "offline").length);
   const hour = useHour();
+  const style = useStyleVille();
 
   const tabs = [
-    { href: "/", label: "Ville", count: undefined as number | undefined },
+    { href: "/", label: style === "bureau" ? "Bureau" : "Ville", count: undefined as number | undefined },
     { href: "/equipe", label: "Équipe", count: allAgents().length },
     { href: "/taches", label: "Tâches", count: running },
     { href: "/flux", label: "Flux" },

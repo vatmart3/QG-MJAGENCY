@@ -9,6 +9,7 @@ import { getGame } from "./gameRef";
 import { useIsMobile, useStyleVille } from "./hooks";
 import { choisirStyleVille, NOM_STYLE, STYLE_SUIVANT, type StyleVille } from "@/world/theme";
 import { entrerTV } from "./hud/ModeTV";
+import { entrerVisite, PlanMini } from "./hud/Visite";
 
 // projection mini : 1 case = 4×2 px
 const MW = 4;
@@ -38,7 +39,8 @@ export function MiniMap() {
   const mobile = useIsMobile();
   const [open, setOpen] = useState(true);
   const style = useStyleVille();
-  const layout = useMemo(() => getLayout(style), [style]);
+  const bureau = style === "bureau";
+  const layout = useMemo(() => getLayout(bureau ? "sete" : style), [bureau, style]);
 
   useEffect(() => {
     if (mobile) setOpen(false);
@@ -102,10 +104,11 @@ export function MiniMap() {
       {open && (
         <div className="glass pointer-events-auto rounded-2xl p-2" style={{ width: mobile ? 210 : 260 }}>
           <div className="mb-1 flex items-center justify-between px-1">
-            <span className="font-silk text-[9px] uppercase text-ink-soft">Carte du port</span>
+            <span className="font-silk text-[9px] uppercase text-ink-soft">{bureau ? "Plan du bureau" : "Carte du port"}</span>
             <span className="font-silk text-[9px] text-ink-soft">{Object.values(agents).filter((a) => a.state !== "offline").length} actifs</span>
           </div>
-          <div className="relative" style={{ aspectRatio: `${W} / ${H}` }}>
+          {bureau && <PlanMini onAller={fly} />}
+          <div className="relative" hidden={bureau} style={{ aspectRatio: `${W} / ${H}` }}>
             <canvas ref={ref} width={W} height={H} className="absolute inset-0 h-full w-full" />
             <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full overflow-visible">
               {layout.zones.map((z) => {
@@ -173,11 +176,16 @@ function ZoomControls({ onToggleMap, mapOpen, style }: { onToggleMap: () => void
         type="button"
         className="h-9 rounded-full px-2.5 font-silk text-[9px] uppercase text-ink transition hover:bg-white active:scale-95"
         onClick={() => choisirStyleVille(autre)}
-        title={`Ville : ${NOM_STYLE[style]} — passer en style ${NOM_STYLE[autre]}`}
-        aria-label={`Passer la ville en style ${NOM_STYLE[autre]}`}
+        title={`Style : ${NOM_STYLE[style]} — passer en ${NOM_STYLE[autre]}`}
+        aria-label={`Passer en style ${NOM_STYLE[autre]}`}
       >
-        {style === "newyork" ? "NY" : style === "futur" ? "Futur" : "Sète"}
+        {style === "bureau" ? "3D" : style === "newyork" ? "NY" : style === "futur" ? "Futur" : "Sète"}
       </button>
+      {style === "bureau" && (
+        <button type="button" className="h-9 rounded-full bg-ink px-3 text-[12px] font-medium whitespace-nowrap text-white transition hover:bg-ink/90 active:scale-95" onClick={entrerVisite} title="Entrer dans le bâtiment et s'y promener à pied (Z Q S D)" aria-label="Visiter le bureau à pied">
+          🚶 Visiter
+        </button>
+      )}
       <button type="button" className="hidden h-9 rounded-full px-2.5 font-silk text-[9px] uppercase text-ink transition hover:bg-white active:scale-95 sm:block" onClick={entrerTV} title="Mode TV : la ville en plein écran, la caméra se promène toute seule" aria-label="Passer en mode TV">
         📺 TV
       </button>

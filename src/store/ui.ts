@@ -17,6 +17,12 @@ export interface UIState {
   moteur: { kind: "anthropic" | "mock" | null; dernier: number | null; erreur: string | null; enCours: boolean };
   /** mode TV : ville en plein écran, sans menus, caméra qui se promène */
   tv: boolean;
+  /** visite à pied du bureau 3D : « oui » (on se déplace), « pause » (souris libérée), « non » */
+  visite: "non" | "oui" | "pause";
+  /** pièce où l'on se trouve pendant la visite */
+  visiteLieu: string | null;
+  /** agent juste devant soi pendant la visite (touche E pour lui parler) */
+  visiteCible: string | null;
 }
 
 export const uiStore = createStore<UIState>(() => ({
@@ -30,6 +36,9 @@ export const uiStore = createStore<UIState>(() => ({
   userEmail: null,
   moteur: { kind: null, dernier: null, erreur: null, enCours: false },
   tv: false,
+  visite: "non",
+  visiteLieu: null,
+  visiteCible: null,
 }));
 
 export const useUI = <T>(selector: (s: UIState) => T): T => useStore(uiStore, selector);

@@ -18,11 +18,13 @@ import { PoleSheet } from "./PoleSheet";
 import { TopBar } from "./TopBar";
 import { Hud } from "./hud/Hud";
 import { ModeTV } from "./hud/ModeTV";
+import { Visite } from "./hud/Visite";
 
 /** La ville EST l'interface : tout le reste flotte au-dessus. */
 export function PortShell({ children }: { children: ReactNode }) {
   const ready = useUI((s) => s.ready);
   const tv = useUI((s) => s.tv);
+  const visite = useUI((s) => s.visite !== "non");
   const loaded = useCatalog((s) => s.loaded);
   const structure = useCatalog((s) => s.structure);
   const [fail, setFail] = useState<{ reason: string; message: string } | null>(null);
@@ -85,11 +87,12 @@ export function PortShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
-      {!tv && <TopBar />}
-      {!tv && <MiniMap />}
-      {!tv && <CommandBar />}
-      <Hud />
+      {!tv && !visite && <TopBar />}
+      {!tv && !visite && <MiniMap />}
+      {!tv && !visite && <CommandBar />}
+      {!visite && <Hud />}
       <ModeTV />
+      <Visite />
       <AgentSheet />
       <PoleSheet />
       <Ambiance />
